@@ -1,0 +1,43 @@
+// 运行时主题 token。值必须保持 CSS 自定义属性形态（:root / :root.light 覆盖 + JS 动态写入主色）。
+// SCSS 这里只做结构嵌套，不把 --* 转成 $ 变量。
+
+:root {
+  color-scheme: dark;
+
+  // 主色 --color-primary 由 useTheme() 动态写入(预设色板或跟随专辑封面),不在此写死。
+
+  // One dark palette, ordered by elevation. No pure black.
+  --color-bg-primary: #101113;
+  --color-bg-secondary: #15171a;
+  --color-bg-elevated: #1b1e22;
+  --color-bg-overlay: #22262b;
+
+  --color-text-primary: #f4f7f5;
+  --color-text-secondary: #a7b0aa;
+  --color-text-muted: #6f7a73;
+  --color-border: #2a2f35;
+
+  --color-control: #23272d;
+  --color-control-hover: #2b3037;
+
+  &.light {
+    color-scheme: light;
+
+    --color-bg-primary: #f5f7f6;
+    --color-bg-secondary: #ffffff;
+    --color-bg-elevated: #ffffff;
+    --color-bg-overlay: #ffffff;
+
+    --color-text-primary: #1a1d1b;
+    --color-text-secondary: #5a635e;
+    --color-text-muted: #8a948e;
+    --color-border: #e0e4e1;
+
+    --color-control: #f0f2f1;
+    --color-control-hover: #e8ebea;
+  }
+}
+
+.dark {
+  color-scheme: dark;
+}

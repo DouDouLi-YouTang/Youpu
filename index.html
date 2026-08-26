@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f172a" />
+    <!--
+      Content-Security-Policy:dev 模式 vite HMR 需 unsafe-eval/inline + ws;自定义协议
+      muice-cover:/muice-cache: 用于本地封面/播放缓存;网易云资源走 https/http。
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http: muice-cover: muice-cache:; media-src 'self' blob: data: https: http: muice-cache:; connect-src 'self' ws: wss: http: https:; font-src 'self' data:; worker-src 'self' blob:;"
+    />
+    <title>有谱</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/app/main.ts"></script>
+  </body>
+</html>

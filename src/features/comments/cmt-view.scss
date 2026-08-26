@@ -1,0 +1,248 @@
+// cmt-view.scss - CommentsView 组件样式，由 CommentsView.vue 的
+// <style scoped lang="scss" src="./cmt-view.scss"> 引入。
+// Transition 生成的 class（comment-view-enter-* 等）作用在宿主根 section 上，自带 data-v，可留在 scoped 内。
+// comments-sort 疑似死代码（全仓模板未见该 class 使用），按约保留在 scoped 内，ant 内部类用 :deep() 穿透。
+
+.comment-view {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-primary);
+
+  &__bar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 14px 18px;
+    flex-shrink: 0;
+    padding: 12px 20px;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-border) 90%, transparent);
+    background: color-mix(in srgb, var(--color-bg-secondary) 86%, transparent);
+    backdrop-filter: blur(16px) saturate(1.1);
+  }
+
+  &__title {
+    margin: 0;
+    overflow: hidden;
+    color: var(--color-text-primary);
+    font-size: 17px;
+    font-weight: 750;
+    letter-spacing: -0.02em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__sub {
+    margin: 2px 0 0;
+    color: var(--color-text-muted);
+    font-size: 12px;
+  }
+
+  &__tabs {
+    display: inline-flex;
+    padding: 3px;
+    border-radius: 999px;
+    background: var(--color-control);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-border) 55%, transparent);
+  }
+
+  &__tab {
+    height: 30px;
+    padding: 0 16px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition:
+      color 0.14s ease,
+      background-color 0.14s ease,
+      box-shadow 0.14s ease;
+
+    &:hover {
+      color: var(--color-text-primary);
+    }
+
+    &--on {
+      background: var(--color-bg-elevated);
+      color: var(--color-text-primary);
+      font-weight: 650;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+    }
+  }
+
+  &__close {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    place-items: center;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition:
+      background-color 0.14s ease,
+      color 0.14s ease;
+
+    &:hover {
+      background: var(--color-control);
+      color: var(--color-text-primary);
+    }
+  }
+
+  &__scroll {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  &__state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+
+    &--sm {
+      min-height: 120px;
+    }
+  }
+
+  &__sheet {
+    width: min(720px, 100%);
+    margin: 0 auto;
+    padding: 8px 20px 48px;
+  }
+
+  &__section {
+    margin-top: 4px;
+
+    + .comment-view__section {
+      margin-top: 20px;
+    }
+  }
+
+  &__section-heading {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 2px 4px;
+    color: var(--color-text-primary);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+  }
+
+  &__fire {
+    display: grid;
+    place-items: center;
+    color: $color-hot;
+    font-size: 12px;
+  }
+
+  &__count {
+    color: var(--color-text-muted);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  &__list {
+    display: flex;
+    flex-direction: column;
+    margin-top: 2px;
+  }
+
+  &__end {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 56px;
+    padding: 18px 0 8px;
+    color: var(--color-text-muted);
+    font-size: 12px;
+  }
+
+  &__end-txt--dim {
+    opacity: 0.65;
+  }
+
+  &__retry {
+    height: 32px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--color-control);
+    color: var(--color-text-primary);
+    font-size: 12px;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--color-control-hover);
+    }
+  }
+}
+
+/* 顶栏:毛玻璃 + 居中排序 tab */
+
+/* 阅读栏：顶栏保留，列表区域干净铺开 */
+
+/* 列表本身不套卡片；分割线在 CommentItem 内 */
+
+.comment-view-enter-active {
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.comment-view-leave-active {
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.comment-view-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.comment-view-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+/* 疑似死代码：全仓模板/脚本均无 comments-sort class（仅 index.scss 与 package-global.scss
+   还保有同名样式源），按约保留跟随 scoped 并汇报；ant 内部类用 :deep() 穿透 */
+.comments-sort {
+  &.ant-segmented {
+    border: 1px solid var(--color-border);
+    background: var(--color-control);
+    border-radius: 999px;
+    padding: 2px !important;
+  }
+
+  :deep(.ant-segmented-thumb) {
+    background: var(--color-primary, $color-spotify) !important;
+    border-radius: 999px;
+    box-shadow: none !important;
+  }
+
+  :deep(.ant-segmented-item) {
+    min-width: 42px;
+    color: var(--color-text-secondary);
+    text-align: center;
+    border-radius: 999px;
+    font-size: 12px;
+    transition: color .18s;
+  }
+
+  :deep(.ant-segmented-item-selected) {
+    background: var(--color-primary, $color-spotify) !important;
+    font-weight: 600;
+    color: var(--color-text-primary) !important;
+  }
+}

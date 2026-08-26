@@ -1,0 +1,177 @@
+// HistoryPage 页面样式，由 HistoryPage.vue 的 <style scoped src> 引入，作用域随宿主组件。
+// 注意：HistoryPage.vue 内还留有一个更早的同名内联 <style scoped> 块（选择器与本文件重复）。
+// 两者 scoped 特异性相同，CSS 层叠按源码顺序取胜——本文件对应的 <style src> 块必须保持在
+// 该内联块之后，因此实际生效的样式以本文件为准；内联块暂不合并/删除（属另行清理范围）。
+
+.history-page {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.history-hero {
+  position: relative;
+  isolation: isolate;
+  flex-shrink: 0;
+  overflow: hidden;
+  padding: 22px 20px 18px;
+
+  &__mosaic {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    filter: blur(18px) saturate(1.1);
+    opacity: 0.55;
+    transform: scale(1.15);
+
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+  }
+
+  &__ph {
+    grid-column: 1 / -1;
+    grid-row: 1 / -1;
+    display: grid;
+    place-items: center;
+    background: color-mix(in srgb, var(--color-primary) 18%, #1a1c20);
+    color: rgba(255, 255, 255, 0.35);
+    font-size: 48px;
+  }
+
+  &__veil {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background:
+      linear-gradient(
+        180deg,
+        rgba(12, 14, 16, 0.4) 0%,
+        rgba(12, 14, 16, 0.58) 50%,
+        color-mix(in srgb, var(--color-bg-primary) 92%, $color-black) 100%
+      ),
+      linear-gradient(90deg, rgba(10, 12, 14, 0.45), transparent 55%);
+  }
+
+  &__body {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 14px 16px;
+  }
+
+  &__icon {
+    display: grid;
+    width: 72px;
+    height: 72px;
+    flex-shrink: 0;
+    place-items: center;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.12);
+    color: $color-white;
+    font-size: 28px;
+    box-shadow:
+      0 10px 28px rgba(0, 0, 0, 0.28),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  }
+
+  &__label {
+    margin: 0 0 4px;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  &__title {
+    margin: 0;
+    color: $color-white;
+    font-size: 26px;
+    font-weight: 780;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  &__desc {
+    margin: 6px 0 0;
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 13px;
+  }
+
+  &__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}
+
+.history-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+  transition:
+    filter 0.15s ease,
+    background-color 0.15s ease,
+    transform 0.1s ease;
+
+  &:active {
+    transform: scale(0.97);
+  }
+
+  &--primary {
+    background: var(--color-primary);
+    color: $color-white;
+    box-shadow: 0 6px 16px color-mix(in srgb, var(--color-primary) 40%, transparent);
+
+    &:hover {
+      filter: brightness(1.08);
+    }
+  }
+
+  &--danger {
+    background: rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.9);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+
+    &:hover {
+      background: color-mix(in srgb, $color-danger 35%, transparent);
+      color: $color-white;
+    }
+  }
+}
+
+.history-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 8px 12px 16px;
+}
+
+.history-empty {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+}
+

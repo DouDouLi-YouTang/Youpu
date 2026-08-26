@@ -1,0 +1,461 @@
+// 由 ImmersivePlayer.vue <style scoped src> 引入，不再经 barrel。
+// 子组件内部元素（LyricLines / MiniSongInfo / LyricContributors / ImmersiveCover 渲染，
+// 不带宿主 data-v）尾部用 :deep() 穿透；宿主自身渲染的元素保持普通选择器。
+
+.immersive-root {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  overflow: hidden;
+  background: var(--color-bg-primary);
+  // 内容区默认 no-drag；仅顶部拖拽带 drag，避免按钮被当拖拽吞掉点击
+  -webkit-app-region: no-drag;
+  color: var(--color-text-primary);
+
+  // 底部控制条高度 = ImmersiveControls .immersive-controls 的 height，改动需同步两处
+  --bottombar-height: 90px;
+  // 文字阴影：仅本 class 开启时定义 --rnp-drop-shadow，避免阴影常开；light 主题下阴影更浅
+  &.rnp-shadow {
+    --rnp-drop-shadow: drop-shadow(0px 4px 5px rgba(0, 0, 0, 0.3));
+  }
+
+  &.rnp-shadow.rnp-light {
+    --rnp-drop-shadow: drop-shadow(0px 4px 5px rgba(0, 0, 0, 0.25));
+  }
+  // 文字辉光：三层堆叠 bloom（紧实核心+中层+弥散外晕，0 偏移、alpha 递减）替代单层软影；
+  // -rgb 补 255,255,255 fallback 防变量缺失时整条 filter 坍缩为 none；!important 覆盖 rnp-shadow
+  &.rnp-text-glow {
+    --rnp-drop-shadow: drop-shadow(
+        0px 0px 3px rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.6)
+      )
+      drop-shadow(0px 0px 8px rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.35))
+      drop-shadow(0px 0px 16px rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.2)) !important;
+  }
+  // 颜色模式 rnp-dark/rnp-light/rnp-auto：shade-2(+rgb) 是沉浸层文字色，overlay 是背景遮罩色，
+  // bg(+rgb) 是纯色背景/设置面板底色。use-color-extraction 以 inline style 注入这些变量，
+  // inline 优先级高于样式表，故 light 侧须 !important 翻转，dark 侧不加以保留专辑主色染色；
+  // base 与 -rgb 须成对翻转，否则出现「背景变浅、面板仍深色」的分裂
+  &.rnp-dark {
+    color: var(--rnp-accent-color-shade-2);
+  }
+
+  &.rnp-light {
+    --rnp-accent-color-shade-2: var(--rnp-accent-color-shade-2-light, #0f0f0f) !important;
+    --rnp-accent-color-shade-2-rgb: var(--rnp-accent-color-shade-2-light-rgb, 15, 15, 15) !important;
+    --rnp-accent-color-overlay: #fff !important;
+    --rnp-accent-color-bg: #f0f0f0 !important;
+    --rnp-accent-color-bg-rgb: 240, 240, 240 !important;
+    color: var(--rnp-accent-color-shade-2);
+  }
+  // 全屏 + idle 隐藏光标
+  &.rnp-full-screen.rnp-idle {
+    cursor: none;
+  }
+  // 迷你歌曲信息：只在 lyric-only 模式显示，开启 autoHideMiniSongInfo 时跟随 rnp-idle 隐藏
+  &.display-mode-lyric-only {
+    :deep(.rnp-mini-song-info) {
+      opacity: 1;
+    }
+
+    .immersive-lyric {
+      box-sizing: border-box;
+      padding: clamp(28px, 4vh, 48px) clamp(72px, 9vw, 144px) clamp(8px, 1vh, 20px);
+    }
+
+    :deep(.rnp-lyrics) {
+      width: 100%;
+      margin-left: 0;
+      padding-right: 0;
+      padding-left: 0;
+    }
+  }
+
+  &.display-mode-lyric-only.auto-hide-mini-song-info.rnp-idle {
+    :deep(.rnp-mini-song-info) {
+      opacity: 0;
+    }
+  }
+  // 歌词贡献者显隐：show 态组件内默认 opacity:.5（无需规则）；hover 态默认隐藏，鼠标移入歌词区才显示；
+  // hide 态始终隐藏且不响应点击；class 挂在 .immersive-root 上用 :deep 穿透到组件
+  &.rnp-lyric-contributors-hover {
+    :deep(.rnp-contributors-inner) {
+      opacity: 0;
+    }
+
+    .immersive-lyric:hover {
+      :deep(.rnp-contributors-inner) {
+        opacity: 0.5;
+      }
+    }
+  }
+
+  &.rnp-lyric-contributors-hide {
+    :deep(.rnp-contributors-inner) {
+      opacity: 0;
+      pointer-events: none;
+    }
+  }
+
+  &.rnp-full-screen {
+    .rnp-settings-button {
+      right: 52px;
+    }
+
+    .rnp-full-screen-button {
+      -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 448 512'%3E%3Cpath d='M160 64c0-17.7-14.3-32-32-32S96 46.3 96 64v64H32c-17.7 0-32 14.3-32 32s14.3 32 32 32h96c17.7 0 32-14.3 32-32V64zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32h64v64c0 17.7 14.3 32 32 32s32-14.3 32-32v-96c0-17.7-14.3-32-32-32H32zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32v96c0 17.7 14.3 32 32 32h96c17.7 0 32-14.3 32-32s-14.3-32-32-32h-64V64zM320 320c-17.7 0-32 14.3-32 32v96c0 17.7 14.3 32 32 32s32-14.3 32-32v-64h64c17.7 0 32-14.3 32-32s-14.3-32-32-32h-64z'/%3E%3C/svg%3E");
+    }
+  }
+  // idle 隐藏（对齐关闭按钮 .immersive-close-hidden 的渐隐逻辑）
+  &.rnp-idle {
+    .rnp-settings-button {
+      opacity: 0;
+      pointer-events: none;
+    }
+  }
+
+  &.lyric-rotate {
+    :deep(.rnp-lyrics) {
+      overflow: visible;
+      -webkit-mask-image: none;
+      mask-image: none;
+    }
+  }
+
+  &.display-mode-cover-only {
+    .immersive-cover-slot {
+      flex: 0 0 100%;
+    }
+
+    .immersive-cover-slot.cover-halign-center {
+      :deep(.rnp-cover) {
+        margin-left: 0;
+      }
+    }
+  }
+
+  &.display-mode-lyric-only.center-lyric {
+    :deep(.rnp-lyrics) {
+      display: flex;
+      justify-content: center;
+      text-align: center;
+      margin-left: 0;
+    }
+
+    :deep(.rnp-lyrics-line) {
+      transform-origin: center !important;
+      text-align: center;
+    }
+  }
+
+  &:not(.rnp-idle) .rnp-full-screen-button,
+  &.always-show-bottombar .rnp-full-screen-button {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  &.rnp-full-screen:not(.rnp-idle) .rnp-full-screen-clock,
+  &.rnp-full-screen.always-show-bottombar .rnp-full-screen-clock {
+    left: 60px;
+  }
+
+  &.rnp-shadow :deep(.rnp-cover-title),
+  &.rnp-text-glow :deep(.rnp-cover-title),
+  &.rnp-shadow :deep(.rnp-cover-artist),
+  &.rnp-text-glow :deep(.rnp-cover-artist) {
+    filter: var(--rnp-drop-shadow);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    &.rnp-auto {
+      color: var(--rnp-accent-color-shade-2);
+    }
+  }
+
+  @media (prefers-color-scheme: light) {
+    &.rnp-auto {
+      --rnp-accent-color-shade-2: var(--rnp-accent-color-shade-2-light, #0f0f0f) !important;
+      --rnp-accent-color-shade-2-rgb: var(
+        --rnp-accent-color-shade-2-light-rgb,
+        15,
+        15,
+        15
+      ) !important;
+      --rnp-accent-color-overlay: #fff !important;
+      --rnp-accent-color-bg: #f0f0f0 !important;
+      --rnp-accent-color-bg-rgb: 240, 240, 240 !important;
+      color: var(--rnp-accent-color-shade-2);
+    }
+  }
+}
+
+.immersive-drag-region {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  z-index: 5;
+  -webkit-app-region: drag;
+}
+
+.immersive-content {
+  position: relative;
+  z-index: 2;
+  // pointer-events:none 让全视口覆盖层不再拦截鼠标，进度条(z-index:1)在无歌词行处
+  // 可正常 hover/拖动；需交互的子元素（歌词行 .rnp-lyrics-line）各自恢复 auto
+  pointer-events: none;
+  display: flex;
+  height: 100%;
+  width: 100%;
+  align-items: center;
+  // 左 ~45% 封面 + 右 ~45% 歌词，两列并排布局
+  gap: 0;
+}
+
+.immersive-cover-slot {
+  display: flex;
+  flex: 0 0 45%;
+  flex-direction: column;
+  // 垂直/水平对齐由 cover-valign / cover-halign class 控制；默认 flex-end 对应 bottom
+  justify-content: flex-end;
+  align-items: flex-start;
+  height: 100%;
+  min-height: 0;
+  // 控制条 absolute 脱离布局、覆盖底部 --bottombar-height；封面槽须在底部让出该高度
+  // + 12px 呼吸，否则 cover-valign=bottom 时封面贴到窗口底被控制条压住
+  box-sizing: border-box;
+  padding-bottom: calc(var(--bottombar-height, 90px) + 12px);
+  // 封面块已强制正方/正圆且 flex 不压缩，窗口过矮时顶部裁切，绝不压扁成椭圆
+  overflow: hidden;
+
+  &.cover-valign-middle {
+    justify-content: center;
+  }
+
+  &.cover-halign-center {
+    align-items: center;
+  }
+}
+
+.immersive-lyric {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+}
+
+// 关闭(right:8)/最小化(right:52)/最大化(right:96)/设置(right:140)四个按钮从右到左排列，
+// 均位于顶部拖拽带内，故切回 no-drag 以接收点击
+.immersive-minimize {
+  position: absolute;
+  top: 8px;
+  right: 52px;
+  z-index: 6;
+  -webkit-app-region: no-drag;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 9999px;
+  background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.1);
+  color: var(--rnp-accent-color-shade-2, var(--color-text-primary));
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    opacity 0.3s ease;
+
+  &:hover {
+    background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.2);
+  }
+}
+
+.immersive-maximize {
+  position: absolute;
+  top: 8px;
+  right: 96px;
+  z-index: 6;
+  -webkit-app-region: no-drag;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 9999px;
+  background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.1);
+  color: var(--rnp-accent-color-shade-2, var(--color-text-primary));
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    opacity 0.3s ease;
+
+  &:hover {
+    background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.2);
+  }
+}
+
+.immersive-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 6;
+  -webkit-app-region: no-drag;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 9999px;
+  background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.1);
+  color: var(--rnp-accent-color-shade-2, var(--color-text-primary));
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    opacity 0.3s ease;
+
+  &:hover {
+    background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.2);
+  }
+}
+
+// 跟随控制条 idle：鼠标静止时随控制条一起渐隐，移动唤出（ESC 仍可退出）
+.immersive-close-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+// 全屏按钮 + 时钟：非 idle 或底栏常显时显示，全屏后切换为收起图标并亮起时钟；
+// 按钮恒贴左边(left:25px)——本应用左上角无原生窗口控件(TitleBar 按钮在右上角)，故非全屏态也贴边
+.rnp-full-screen-button {
+  position: absolute;
+  top: 20px;
+  left: 25px;
+  z-index: 6;
+  width: 25px;
+  height: 25px;
+  padding: 0;
+  border: 0;
+  background-color: var(--rnp-accent-color, var(--color-primary));
+  color: transparent;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  -webkit-app-region: no-drag;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 448 512'%3E%3Cpath d='M32 32C14.3 32 0 46.3 0 64v96c0 17.7 14.3 32 32 32s32-14.3 32-32V96h64c17.7 0 32-14.3 32-32S145.7 32 128 32H32zM64 352c0-17.7-14.3-32-32-32S0 334.3 0 352v96c0 17.7 14.3 32 32 32h96c17.7 0 32-14.3 32-32s-14.3-32-32-32H64v-64zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32h64v64c0 17.7 14.3 32 32 32s32-14.3 32-32V64c0-17.7-14.3-32-32-32h-96zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32v64h-64c-17.7 0-32 14.3-32 32s14.3 32 32 32h96c17.7 0 32-14.3 32-32v-96z'/%3E%3C/svg%3E");
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: 65%;
+}
+
+// 设置按钮：与关闭按钮(.immersive-close)同款样式；非全屏 right:140 = 最大化 96 + 36 宽 + 8 间距；
+// 全屏时最小化/最大化已隐藏，收拢到 right:52（紧挨关闭左侧，避免右侧空洞，见上方 &.rnp-full-screen 覆写）
+.rnp-settings-button {
+  position: fixed;
+  top: 8px;
+  right: 140px;
+  z-index: 6;
+  -webkit-app-region: no-drag;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 9999px;
+  background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.1);
+  color: var(--rnp-accent-color-shade-2, var(--color-text-primary));
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    opacity 0.3s ease;
+
+  &:hover,
+  &.active {
+    background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.2);
+  }
+}
+
+.rnp-full-screen-clock {
+  position: absolute;
+  top: 18.5px;
+  left: 20px;
+  z-index: 6;
+  width: 60px;
+  height: 25px;
+  color: var(--rnp-accent-color-shade-2, var(--color-text-primary));
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 25px;
+  pointer-events: none;
+  cursor: default;
+  transition: left 0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+}
+
+// 演示模式退出提示：顶部居中常驻，呼吸式淡入淡出提醒用户可退出
+.immersive-presentation-hint {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  z-index: 6;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.12);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--rnp-accent-color-shade-2, var(--color-text-primary));
+  font-size: 0.75rem;
+  pointer-events: none;
+  -webkit-app-region: no-drag;
+  transform: translateX(-50%);
+  animation: presentation-hint-pulse-5f4dbd72 2.4s ease-in-out infinite;
+}
+
+@keyframes presentation-hint-pulse-5f4dbd72 {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+
+  50% {
+    opacity: 0.85;
+  }
+}
+
+// 演示模式提示淡出：停止呼吸动画后 opacity 归零，避免 pulse infinite 覆盖 leave 透明度
+.hint-fade-leave-active {
+  animation: none;
+  transition: opacity 0.4s ease;
+}
+
+.hint-fade-leave-to {
+  opacity: 0;
+}
+
+.immersive-slide-enter-active {
+  transition:
+    transform 0.5s cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 0.5s ease;
+}
+
+.immersive-slide-leave-active {
+  transition:
+    transform 0.5s cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 0.5s ease;
+}
+
+.immersive-slide-enter-from {
+  transform: translateY(100%);
+  opacity: 0;
+}
+
+.immersive-slide-leave-to {
+  transform: translateY(100%);
+  opacity: 0;
+}

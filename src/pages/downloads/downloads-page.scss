@@ -1,0 +1,327 @@
+// DownloadsPage 页面样式，由 DownloadsPage.vue 的 <style scoped src> 引入，作用域随宿主组件。
+
+.downloads-page {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: 20px 24px 28px;
+
+  &__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-shrink: 0;
+    margin-bottom: 16px;
+  }
+
+  &__title {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  &__desc {
+    margin: 6px 0 0;
+    color: var(--color-text-secondary);
+    font-size: 13px;
+  }
+
+  &__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  &__body {
+    flex: 1;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+}
+
+.downloads-alert {
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.downloads-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 280px;
+}
+
+.downloads-section {
+  margin-bottom: 22px;
+
+  &__title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 10px;
+    color: var(--color-text-primary);
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  &__count {
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--color-control);
+    color: var(--color-text-secondary);
+    font-size: 11px;
+    font-weight: 650;
+    line-height: 20px;
+    text-align: center;
+  }
+}
+
+.downloads-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.downloads-row {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-bg-secondary);
+  transition: background-color 0.12s ease;
+
+  &:hover {
+    background: color-mix(in srgb, var(--color-control) 55%, var(--color-bg-secondary));
+  }
+
+  &__cover {
+    position: relative;
+    width: 52px;
+    height: 52px;
+    overflow: hidden;
+    border-radius: 10px;
+    background: var(--color-control);
+
+    img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+  }
+
+  &__cover-ph {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 100%;
+    color: var(--color-text-muted);
+    font-size: 16px;
+  }
+
+  &__cover-mark {
+    position: absolute;
+    right: 3px;
+    bottom: 3px;
+    display: grid;
+    width: 18px;
+    height: 18px;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--color-bg-secondary);
+    font-size: 12px;
+    line-height: 1;
+  }
+
+  &__cover-mark--ok {
+    color: $color-success;
+  }
+
+  &__cover-mark--err {
+    color: $color-danger;
+  }
+
+  &__main {
+    min-width: 0;
+  }
+
+  &__top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  &__name {
+    overflow: hidden;
+    color: var(--color-text-primary);
+    font-size: 14px;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__badge {
+    flex-shrink: 0;
+    height: 20px;
+    padding: 0 7px;
+    border-radius: 999px;
+    background: var(--color-control);
+    color: var(--color-text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 20px;
+    white-space: nowrap;
+  }
+
+  &__badge--active {
+    background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+    color: var(--color-primary);
+  }
+
+  &__badge--ok {
+    background: color-mix(in srgb, $color-success 14%, transparent);
+    color: #16a34a;
+  }
+
+  &__badge--err {
+    background: color-mix(in srgb, $color-danger 12%, transparent);
+    color: $color-danger;
+  }
+
+  &__badge--muted {
+    opacity: 0.8;
+  }
+
+  &__artist {
+    margin: 3px 0 0;
+    overflow: hidden;
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__meta {
+    margin: 4px 0 0;
+    overflow: hidden;
+    color: var(--color-text-muted);
+    font-size: 11.5px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__file {
+    color: var(--color-text-muted);
+  }
+
+  &__err {
+    margin: 4px 0 0;
+    color: $color-danger;
+    font-size: 12px;
+  }
+
+  &__actions {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 2px;
+  }
+
+  @media (max-width: 640px) {
+    grid-template-columns: 48px minmax(0, 1fr);
+
+    &__actions {
+      grid-column: 1 / -1;
+      justify-content: flex-end;
+    }
+  }
+
+  &--active {
+    border-color: color-mix(in srgb, var(--color-primary) 28%, var(--color-border));
+    background: color-mix(in srgb, var(--color-primary) 6%, var(--color-bg-secondary));
+  }
+
+  &--fail {
+    border-color: color-mix(in srgb, $color-danger 22%, var(--color-border));
+  }
+
+  &--gone {
+    opacity: 0.72;
+  }
+}
+
+.downloads-progress {
+  margin-top: 8px;
+
+  &__track {
+    height: 5px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--color-control);
+  }
+
+  &__fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--color-primary) 75%, $color-white),
+      var(--color-primary)
+    );
+    transition: width 0.2s ease;
+  }
+
+  &__meta {
+    display: block;
+    margin-top: 5px;
+    color: var(--color-text-muted);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.downloads-action {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 15px;
+  cursor: pointer;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
+
+  &:hover:not(:disabled) {
+    background: var(--color-control);
+    color: var(--color-text-primary);
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  &--danger {
+    &:hover:not(:disabled) {
+      background: color-mix(in srgb, $color-danger 12%, transparent);
+      color: $color-danger;
+    }
+  }
+}

@@ -1,0 +1,77 @@
+# 发布流水线：推送 v* tag 自动打包 Windows 安装包并发布到 GitHub Releases。
+#
+# 版本约定（semver，见 README「版本与更新通道」）：
+#   v0.2.0        -> 正式版：Release 为普通发布，更新元数据为 latest.yml
+#   v0.2.0-beta.1 -> Beta 版：Release 标记 pre-release，更新元数据为 beta.yml
+#
+# 触发方式：双击 publish-release.bat 一键发布，或本地执行
+#   npm version 0.2.0   # 或 0.2.0-beta.1
+#   git push github main && git push github v0.2.0
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build & Publish (windows)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build app
+        run: npm run build
+
+      - name: Pack server modules
+        run: npm run pack:modules
+
+      # 只构建、不上传。electron-builder 的 --publish 会对 exe 与 blockmap 两个
+      # 产物各触发一次 GitHub release 创建，导致同一 tag 重复建 release、资产被拆开。
+      # --publish never 仍会照常生成 latest.yml / beta.yml(供自动更新用)。
+      - name: Build installer
+        run: npx electron-builder --win --x64 --publish never
+
+      # 统一用 softprops 创建「单个」release 并上传全部资产，避免重复 release。
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*/youpu-*.exe
+            dist/*/youpu-*.exe.blockmap
+            dist/*/youpu-*.zip
+            dist/*/latest.yml
+            dist/*/beta.yml
+          fail_on_unmatched_files: false
+          prerelease: ${{ contains(github.ref, '-') }}
+
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: youpu-${{ github.ref_name }}-win-x64
+          path: |
+            dist/*/youpu-*.exe
+            dist/*/youpu-*.zip
+            dist/*/latest.yml
+            dist/*/beta.yml
+          if-no-files-found: warn
+          retention-days: 14

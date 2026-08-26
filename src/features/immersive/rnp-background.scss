@@ -1,0 +1,245 @@
+// 由 ImmersiveBackground.vue <style scoped src> 引入，不再经 barrel。
+// 全部选择器均为 ImmersiveBackground 自身模板渲染，无需 :deep()。
+// @keyframes（带 -919d3135 hash）定义/引用同文件，scoped 重写后名字仍一致，
+// 与旧内联块（同宿主另一个 <style scoped> 块）里的无 hash 同名 keyframes 互不冲突。
+
+.rnp-fluid-svg {
+  position: absolute;
+  pointer-events: none;
+}
+
+.rnp-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+
+  > div {
+    position: absolute;
+    inset: 0;
+  }
+}
+
+// blur
+.rnp-background-blur {
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  transition: background-image 1.5s ease;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--rnp-accent-color-overlay);
+    opacity: var(--bg-dim, 0.55);
+    pointer-events: none;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    backdrop-filter: blur(var(--bg-blur, 90px));
+    pointer-events: none;
+  }
+}
+
+// gradient
+.rnp-background-gradient {
+  background-size: 400% 400%;
+  background-position: 50% 50%;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--rnp-accent-color-overlay);
+    opacity: var(--bg-dim-for-gradient-bg, 0.45);
+    pointer-events: none;
+  }
+}
+
+.gradient-bg-dynamic {
+  animation: rnp-bg-gradient-animation-919d3135 120s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+}
+
+@keyframes rnp-bg-gradient-animation-919d3135 {
+  0% {
+    background-position: 0% 0%;
+  }
+
+  25% {
+    background-position: 100% 0%;
+  }
+
+  50% {
+    background-position: 100% 100%;
+  }
+
+  75% {
+    background-position: 0% 100%;
+  }
+
+  100% {
+    background-position: 0% 0%;
+  }
+}
+
+// fluid
+// 流体背景容器需用专辑图填底（canvas 仅覆盖四角）
+.rnp-background-fluid {
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  width: calc(100% + 150px);
+  height: calc(100% + 150px);
+  left: -150px;
+  top: -150px;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    backdrop-filter: blur(var(--fluid-blur, 64px));
+  }
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--rnp-accent-color-overlay);
+    opacity: var(--bg-dim-for-fluid-bg, 0.3);
+    z-index: 1;
+    pointer-events: none;
+  }
+}
+
+.rnp-background-fluid-rect {
+  position: relative;
+  width: max(100vw, 100vh);
+  height: max(100vw, 100vh);
+  top: calc(50% - 50vh);
+  left: calc(50% - 50vw);
+  filter: saturate(1.5) brightness(0.8) url(#rnp-fluid-filter);
+  animation: rnp-fluid-container-rotate-919d3135 150s linear infinite;
+
+  &.rnp-fluid-max-framerate-5 {
+    animation-timing-function: steps(750);
+  }
+
+  &.rnp-fluid-max-framerate-10 {
+    animation-timing-function: steps(1500);
+  }
+
+  &.rnp-fluid-max-framerate-30 {
+    animation-timing-function: steps(4500);
+  }
+
+  &.rnp-fluid-max-framerate-60 {
+    animation-timing-function: steps(9000);
+  }
+
+  &.paused,
+  &.paused .rnp-background-fluid-canvas {
+    animation-play-state: paused;
+  }
+}
+
+.rnp-background-fluid-canvas {
+  position: absolute;
+  animation: rnp-fluid-block-rotate-919d3135 60s linear infinite;
+  opacity: 1;
+
+  &[canvas-id='1'] {
+    animation-delay: 0s;
+  }
+
+  &[canvas-id='2'] {
+    animation-delay: -5s;
+  }
+
+  &[canvas-id='3'] {
+    animation-delay: -10s;
+  }
+
+  &[canvas-id='4'] {
+    animation-delay: -15s;
+  }
+}
+
+@keyframes rnp-fluid-block-rotate-919d3135 {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes rnp-fluid-container-rotate-919d3135 {
+  0% {
+    transform: scale(1.2) rotate(0deg);
+  }
+
+  100% {
+    transform: scale(1.2) rotate(-360deg);
+  }
+}
+
+
+// solid
+.rnp-background-solid {
+  background-color: var(--rnp-accent-color-bg);
+  transition: background-color 1s ease;
+}
+
+// none
+.rnp-background-none {
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    backdrop-filter: blur(var(--bg-blur-for-none-bg-mask, 0px));
+  }
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--rnp-accent-color-overlay);
+    opacity: var(--bg-dim-for-none-bg-mask, 0);
+    z-index: 1;
+    pointer-events: none;
+  }
+}
+
+// 流体帧率节流（steps() 机制）：帧率 class 打在 .rnp-background-fluid-rect 自身时，
+// rect 规则须写同元素选择器（后代选择器不命中）；canvas 是 rect 子元素，保持后代选择器即可
+.rnp-fluid-max-framerate-5 {
+  .rnp-background-fluid-canvas {
+    animation-timing-function: steps(300);
+  }
+}
+
+.rnp-fluid-max-framerate-10 {
+  .rnp-background-fluid-canvas {
+    animation-timing-function: steps(600);
+  }
+}
+
+.rnp-fluid-max-framerate-30 {
+  .rnp-background-fluid-canvas {
+    animation-timing-function: steps(1800);
+  }
+}
+
+.rnp-fluid-max-framerate-60 {
+  .rnp-background-fluid-canvas {
+    animation-timing-function: steps(3600);
+  }
+}

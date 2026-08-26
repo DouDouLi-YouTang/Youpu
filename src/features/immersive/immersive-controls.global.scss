@@ -1,0 +1,151 @@
+// .rnp-cover* / .rectangle-cover / .song-info-center 由兄弟组件 ImmersiveCover.vue 渲染
+// （该组件自身无样式块，元素不带 ImmersiveControls 的 data-v），scoped 选不中，必须保持全局。
+// @keyframes rnp-cover-rotate-197e7601 带 hash 后缀，避免与其他全局样式文件中的同名
+// @keyframes 冲突。
+
+.rnp-cover {
+  --rnp-cover-size: min(400px, 20vw, 42vh);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  // 对齐参考项目 .g-singlec-ct .n-single .sd：固定边长 + margin-left:50px。
+  // 垂直/水平对齐由父级 .immersive-cover-slot 的 cover-valign 与 cover-halign
+  // class 控制(对齐参考项目把 vertical-align 作用于全高容器),此处不再设置。
+  width: var(--rnp-cover-size);
+  margin-left: 50px;
+  // 绝不被封面槽 flex 压缩:一旦被压,宽高不再相等 → 正圆变椭圆、封面图拉伸。
+  flex: 0 0 auto;
+  min-width: var(--rnp-cover-size);
+  &:not(.rectangle-cover) {
+    .rnp-cover-shadow {
+      border-radius: 50%;
+    }
+  }
+  &.song-info-center {
+    .rnp-cover-meta {
+      text-align: center;
+    }
+  }
+}
+
+// 弥散阴影：放大模糊的封面副本，位于 CD 后方
+.rnp-cover-shadow {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--rnp-cover-size);
+  height: var(--rnp-cover-size);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  filter: saturate(1.3) brightness(1.2) blur(25px);
+  opacity: 0.6;
+  pointer-events: none;
+  z-index: 0;
+}
+.rectangle-cover {
+  .rnp-cover-shadow {
+    border-radius: 16px;
+    transform: translateY(4%);
+  }
+  .rnp-cover-cd {
+    border-radius: 16px;
+  }
+}
+
+// CD 容器：宽高同值 → 圆形模式一定是正圆;旋转动画
+.rnp-cover-cd {
+  position: relative;
+  box-sizing: border-box;
+  width: var(--rnp-cover-size);
+  height: var(--rnp-cover-size);
+  // 同时锁死 flex 基线,避免列布局在空间不足时只压高度
+  flex: 0 0 var(--rnp-cover-size);
+  overflow: hidden;
+  border-radius: 50%;
+  z-index: 1;
+  animation: rnp-cover-rotate-197e7601 30s linear infinite;
+  &.paused {
+    animation-play-state: paused;
+  }
+}
+
+@keyframes rnp-cover-rotate-197e7601 {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+.rnp-cover-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  // cover:裁切填满正方/正圆,绝不拉伸变形
+  object-fit: cover;
+  object-position: center;
+  user-select: none;
+  pointer-events: none;
+}
+.rnp-cover-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-bg-elevated);
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+.rnp-cover-meta {
+  position: relative;
+  z-index: 1;
+  max-width: var(--rnp-cover-size);
+}
+// 歌曲信息文字居中(songInfoAlign=center):text-align 继承到标题/歌手/专辑行。
+// 独立于封面块水平对齐(coverHAlign),只影响文字本身。
+
+.rnp-cover-title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--rnp-accent-color-shade-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rnp-cover-alias {
+  font-size: 0.9rem;
+  opacity: 0.72;
+  margin: 0.25rem 0 0;
+  overflow: hidden;
+  color: var(--rnp-accent-color-shade-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rnp-cover-artist {
+  font-size: 0.95rem;
+  opacity: 0.7;
+  margin: 0.25rem 0 0;
+  overflow: hidden;
+  color: var(--rnp-accent-color-shade-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// 专辑名:对齐参考项目主信息列第 3 行 li:nth-of-type(3) 的低透明度样式
+.rnp-cover-album {
+  font-size: 0.9rem;
+  opacity: 0.55;
+  margin: 0.25rem 0 0;
+  overflow: hidden;
+  color: var(--rnp-accent-color-shade-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+

@@ -1,0 +1,338 @@
+// chrome-bar.scss - TitleBar 顶栏 scoped 样式，追加在 TitleBar.vue 已有 style 块之后；
+// 同名类同特异性时按源码序生效，勿调整两个 style 块的先后顺序。
+// antd 内部类（如 .ant-select-*）不带宿主 data-v，需 :deep() 才能命中；
+// 搜索下拉挂载在 body 上的骨架样式见 chrome-bar.global.scss（非 scoped）。
+
+.chrome-bar {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(300px, 520px) minmax(180px, 1fr);
+  align-items: center;
+  height: 60px;
+  padding-left: 12px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  user-select: none;
+  -webkit-app-region: drag;
+
+  &__left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  &__brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  &__logo {
+    display: block;
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    border-radius: 8px;
+    object-fit: cover;
+    // 拖拽区内的图片默认可被拖出,禁掉以保持整个顶栏行为一致
+    pointer-events: none;
+  }
+
+  &__name {
+    color: var(--color-text-primary);
+    font-size: 13px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+
+  &__center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+  }
+
+  &__back-slot {
+    position: absolute;
+    top: 50%;
+    right: calc(100% + 8px);
+    z-index: 1;
+    display: grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    transform: translateY(-50%);
+  }
+
+  &__back {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border: 0;
+    border-radius: 10px;
+    background: var(--color-control);
+    color: var(--color-text-primary);
+    font-size: 12px;
+    cursor: pointer;
+
+    &:hover {
+      color: var(--color-primary);
+    }
+  }
+
+  &__right {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 0;
+    height: 100%;
+  }
+
+  &__drag-spacer {
+    flex: 1 1 auto;
+    min-width: 24px;
+    height: 100%;
+    -webkit-app-region: drag;
+  }
+
+  &__user {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-right: 8px;
+  }
+
+  // 死代码：模板未使用 .chrome-bar__icon-btn，保留待清理
+  &__icon-btn {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: 15px;
+    cursor: pointer;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease;
+
+    &:hover {
+      background: var(--color-control);
+      color: var(--color-text-primary);
+    }
+  }
+
+  &__avatar {
+    cursor: pointer;
+  }
+
+  &__win {
+    display: flex;
+    height: 60px;
+    align-items: stretch;
+  }
+}
+
+// 搜索框固定在中栏中心；返回键停在左侧绝对定位层内，不影响搜索框位置或宽度
+.chrome-search-shell {
+  position: relative;
+  width: min(100%, 480px);
+}
+
+.chrome-search-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 480px;
+}
+
+.chrome-search {
+  width: 100%;
+
+  :deep(.ant-select-selector) {
+    display: flex !important;
+    align-items: center !important;
+    min-height: 36px !important;
+    height: 36px !important;
+    padding: 0 56px 0 14px !important;
+    border: 1px solid transparent !important;
+    border-radius: 999px !important;
+    background: var(--color-control) !important;
+    box-shadow: none !important;
+  }
+
+  :deep(.ant-select-selection-search) {
+    inset-inline-start: 14px !important;
+    inset-inline-end: 56px !important;
+  }
+
+  :deep(.ant-select-selection-placeholder) {
+    inset-inline-start: 14px !important;
+    inset-inline-end: 56px !important;
+    color: var(--color-text-muted);
+    opacity: 1;
+    line-height: 34px !important;
+  }
+
+  :deep(.ant-select-selection-search-input) {
+    height: 34px !important;
+  }
+
+  :deep(.ant-select-clear) {
+    top: 50% !important;
+    right: 36px !important;
+    inset-inline-end: 36px !important;
+    left: auto !important;
+    inset-inline-start: auto !important;
+    z-index: 2;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 22px !important;
+    height: 22px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 50%;
+    color: var(--color-text-muted);
+    font-size: 12px;
+    line-height: 1;
+    opacity: 1 !important;
+    background: transparent !important;
+    transform: translateY(-50%) !important;
+  }
+
+  :deep(.ant-select-clear:hover) {
+    color: var(--color-text-primary);
+  }
+
+  &__submit {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    z-index: 2;
+    display: grid;
+    width: 22px;
+    height: 22px;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    transform: translateY(-50%);
+    transition: color 0.15s ease;
+  }
+
+  &__submit:hover {
+    color: var(--color-primary);
+  }
+
+  &.ant-select-focused :deep(.ant-select-selector),
+  &:hover :deep(.ant-select-selector) {
+    border-color: color-mix(in srgb, var(--color-primary) 45%, transparent) !important;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary) 18%, transparent) !important;
+  }
+
+  :deep(.ant-select-selection-search),
+  :deep(.ant-select-selection-search-input),
+  :deep(.ant-select-selection-placeholder),
+  :deep(.ant-select-selection-item) {
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-size: 13px;
+    line-height: 34px !important;
+  }
+}
+
+// 胶囊外壳：AutoComplete 只剩一层 .ant-select-selector；右侧预留 56px = 清空 22 + 间距 6 + 搜索 22 + 右内边距 6
+// 清空与搜索共用 22×22 居中盒子：top 50% + translateY(-50%) 覆盖 AntD 默认定位；搜索贴右 8px，清空在其左 8+22+6=36px
+
+.chrome-win-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+
+  &:hover {
+    background: rgba(128, 128, 128, 0.18);
+  }
+
+  &--close {
+    &:hover {
+      background: #e81123;
+      color: $color-white;
+    }
+  }
+}
+
+// 死代码：全仓未见 <Transition name="back-fade">，返回键当前仅 v-if 无过渡包裹
+.back-fade-enter-active {
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+
+.back-fade-leave-active {
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+
+.back-fade-enter-from {
+  opacity: 0;
+  transform: translateX(-4px);
+}
+
+.back-fade-leave-to {
+  opacity: 0;
+  transform: translateX(-4px);
+}
+
+// .topbar-search-dropdown 包装层挂 body、无宿主 data-v，其骨架规则（.ant-select-item）在 chrome-bar.global.scss；
+// 下面的 .suggest-line* 是 TitleBar #option slot 自有内容，元素本身带宿主 data-v，scoped 选择器可直接命中
+.topbar-search-dropdown {
+  .suggest-line {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+
+    &__idx {
+      width: 18px;
+      flex-shrink: 0;
+      color: var(--color-text-muted, #6f7a73);
+      font-size: 12px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+
+      &--top {
+        color: $color-hot;
+      }
+    }
+
+    &__text {
+      overflow: hidden;
+      color: var(--color-text-primary, #f4f7f5);
+      font-size: 13px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+}

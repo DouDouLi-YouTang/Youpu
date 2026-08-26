@@ -1,0 +1,335 @@
+// settings-page.scss - SettingsPage 页面样式，由 SettingsPage.vue <style scoped lang="scss" src> 引入，不再经 barrel。
+// package-vars 的 $ 变量已由 electron.vite.config.ts 的 scss additionalData 全局注入，本文件无需再 @use。
+// 页内 antd 控件（a-select / a-segmented / a-alert）根元素继承宿主 data-v 可直接选中；
+// antd 内部元素需 :deep() 穿透；a-select 下拉挂 body，但本文件无下拉规则，无需 global 拆分。
+
+.settings-page {
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 20px 24px 40px;
+
+  &__header {
+    width: 100%;
+    max-width: 760px;
+    margin: 0 auto 16px;
+  }
+
+  &__title {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  &__desc {
+    margin: 6px 0 0;
+    color: var(--color-text-secondary);
+    font-size: 13px;
+  }
+
+  &__body {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+    max-width: 760px;
+    margin: 0 auto;
+  }
+}
+
+.settings-card {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-bg-secondary);
+
+  &__head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  &__icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+    color: var(--color-primary);
+    font-size: 16px;
+  }
+
+  &__title {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  &__sub {
+    margin: 2px 0 0;
+    color: var(--color-text-muted);
+    font-size: 12px;
+  }
+
+  &__rows {
+    padding: 8px 10px 12px;
+  }
+}
+
+.settings-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  padding: 12px;
+  border-radius: 12px;
+
+  + .settings-row {
+    margin-top: 2px;
+  }
+
+  &__meta {
+    /* 不要用 flex-basis: 200px：纵向 stack 时会变成 200px 高空白 */
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  &__label {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+
+  &__hint {
+    margin: 3px 0 0;
+    color: var(--color-text-muted);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  &__control {
+    flex: 0 1 240px;
+    width: 240px;
+    max-width: 100%;
+
+    /* 疑似死代码：模板里 settings-row__control 全部直接挂在 a-select 根元素上（无包装层），
+       该「后代 .ant-select」原本就选不中任何节点；按约定保留并 :deep 穿透，不改语义。 */
+    :deep(.ant-select) {
+      width: 100%;
+    }
+  }
+
+  &__segmented {
+    width: 100%;
+  }
+
+  &__inline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  &--stack {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  &--compact {
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+}
+
+.accent-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.accent-swatch {
+  width: 28px;
+  height: 28px;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-border) 60%, transparent);
+
+  &:hover {
+    transform: scale(1.06);
+  }
+
+  &--on {
+    box-shadow:
+      0 0 0 2px var(--color-bg-secondary),
+      0 0 0 4px var(--color-text-primary);
+  }
+}
+
+.settings-alert {
+  margin: 8px 12px 4px;
+}
+
+.settings-path-box {
+  margin: 8px 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--color-control);
+
+  &__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  &__label {
+    color: var(--color-text-secondary);
+    font-size: 12px;
+  }
+
+  &__path {
+    margin: 8px 0 0;
+    color: var(--color-text-primary);
+    font-size: 13px;
+    line-height: 1.5;
+    word-break: break-all;
+  }
+
+  &__hint {
+    margin: 6px 0 0;
+    color: var(--color-text-muted);
+    font-size: 12px;
+  }
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px 4px;
+}
+
+.settings-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 8px 12px;
+
+  &--backend {
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  }
+}
+
+.settings-stat {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--color-control);
+
+  &__label {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: 11.5px;
+  }
+
+  &__value {
+    margin: 6px 0 0;
+    color: var(--color-text-primary);
+    font-size: 18px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__value--sm {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.35;
+    word-break: break-all;
+  }
+}
+
+.settings-account {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin: 8px 12px;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--color-control);
+
+  &--empty {
+    justify-content: center;
+    min-height: 100px;
+  }
+}
+
+.settings-link {
+  display: inline-block;
+  margin-top: 6px;
+  color: var(--color-primary);
+  font-size: 13px;
+  line-height: 1.45;
+  text-decoration: none;
+  word-break: break-all;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.settings-about {
+  padding: 14px 18px 18px;
+
+  &__brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  &__logo {
+    display: block;
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+    border-radius: 12px;
+    object-fit: cover;
+  }
+
+  &__name {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-size: 15px;
+    font-weight: 700;
+  }
+
+  &__ver {
+    margin: 2px 0 0;
+    color: var(--color-text-secondary);
+    font-size: 12px;
+  }
+
+  &__note {
+    margin: 12px 0 0;
+    color: var(--color-text-muted);
+    font-size: 12.5px;
+  }
+}
+
+.settings-cache-detail {
+  padding-bottom: 4px;
+}

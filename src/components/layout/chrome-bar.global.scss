@@ -1,0 +1,12 @@
+// chrome-bar.global.scss - TitleBar 搜索下拉（body 挂载）全局样式
+// .topbar-search-dropdown 是 a-auto-complete 的 popup-class-name，下拉包装层挂 body、无宿主 data-v，
+// 其下 antd 骨架（.ant-select-item）scoped 选不中，因此放在这个非 scoped 全局文件里。
+// slot 自有内容 .suggest-line* 带宿主 data-v，样式在 chrome-bar.scss（scoped）里，不在本文件。
+
+#app .topbar-search-dropdown,
+.topbar-search-dropdown {
+  .ant-select-item {
+    padding: 6px 10px !important;
+  }
+}
+

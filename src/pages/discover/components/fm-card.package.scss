@@ -1,0 +1,82 @@
+// FmCard 组件样式，由 FmCard.vue 末尾 `<style scoped src="./fm-card.package.scss">` 引入。
+// .fm-card/.fm-cover/.fm-play-btn/.fm-play-svg/.fm-content/.fm-title 均由本组件模板自身
+// 渲染，带 data-v，直接 scoped，无需 :deep()。本文件追加在 FmCard.vue 内联 <style scoped>
+// 块之后，同名类同特异性下按源码序由本文件覆盖，不要调整两个 style 块的先后顺序。
+// keyframes 命名为 fm-cover-spin，故意不与旧内联块的 fm-spin 同名：两个 <style scoped>
+// 块共享同一个 data-v 后缀，同名 @keyframes 会被编译成完全相同的名字而互相覆盖。
+
+.fm-card {
+  transition:
+    transform 0.2s ease,
+    width 0.3s ease,
+    height 0.3s ease;
+}
+
+.fm-cover {
+  transition:
+    width 0.3s ease,
+    height 0.3s ease;
+
+  &--spin {
+    animation: fm-cover-spin 20s linear infinite;
+
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+    }
+  }
+
+  &--paused {
+    animation: fm-cover-spin 20s linear infinite;
+    animation-play-state: paused;
+
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+    }
+  }
+}
+
+.fm-play-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  padding: 0;
+  background: transparent;
+  transition:
+    transform 0.1s,
+    filter 0.2s;
+
+  &:hover:not(:disabled) {
+    filter: brightness(0.95);
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.92);
+  }
+}
+
+.fm-play-svg {
+  width: 100%;
+  height: 100%;
+}
+
+.fm-content {
+  transition: padding 0.3s ease;
+}
+
+.fm-title {
+  transition: font-size 0.3s ease;
+}
+
+
+@keyframes fm-cover-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+

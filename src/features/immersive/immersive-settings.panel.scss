@@ -1,0 +1,444 @@
+// ImmersiveSettings 组件的 scoped 样式，由 ImmersiveSettings.vue 用 <style scoped lang="scss" src> 引入；
+// 不要改成脚本 import，那样会丢失 scoped 隔离（[data-v-*] 不再生效）。
+// .ant-segmented-* / .ant-checkbox-* / .ant-slider-* / .ant-input* / .ant-select-selector 是 antd 组件内部节点，
+// 没有本组件的 data-v，因此在 .settings-body 下用 :deep() 穿透命中。
+
+/* 悬浮圆角小窗(对齐参考 .rnp-settings-menu:fixed right:30 top:100,圆角 10px,
+   毛玻璃 + 阴影;display:flex 横向 = 左纵向 tab 列 + 右内容区;height:min(500px,60vh))。 */
+.immersive-settings {
+  position: fixed;
+  top: 100px;
+  right: 30px;
+  bottom: auto;
+  z-index: 7;
+  display: flex;
+  flex-direction: row;
+  gap: 20px;
+  width: 360px;
+  max-width: 90vw;
+  height: min(500px, 60vh);
+  max-height: calc(100vh - 140px);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  border-radius: 10px;
+  overflow: hidden;
+  color: var(--color-text-primary);
+  font-size: 12px;
+  -webkit-app-region: no-drag;
+}
+.settings-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.6;
+  transition:
+    opacity 0.2s ease,
+    background 0.2s ease;
+  &:hover {
+    opacity: 1;
+    background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.1);
+  }
+}
+
+/* 纵向 tab 列(对齐参考 .rnp-settings-menu-tabs:左侧列,width:max-content) */
+.settings-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: max-content;
+  padding: 16px 10px 16px 20px;
+  border-right: 1px solid var(--color-border);
+}
+.settings-tab {
+  padding: 10px 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 0.875rem;
+  opacity: 0.6;
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    color 0.2s ease,
+    opacity 0.2s ease;
+  white-space: nowrap;
+  text-align: left;
+  &:hover {
+    opacity: 0.9;
+  }
+  &.active {
+    background: transparent;
+    color: var(--color-primary);
+    font-weight: bold;
+    transform: scale(1.1);
+    opacity: 1;
+  }
+}
+
+.settings-body {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 20px 20px 10px;
+  :deep(.ant-segmented) {
+    background: rgba(223, 225, 228, 0.2);
+    color: inherit;
+    padding: 0;
+    border-radius: 6px;
+  }
+  :deep(.ant-segmented-item) {
+    border-radius: 0;
+    padding: 4px 0;
+    text-align: center;
+    color: inherit;
+    transition: background-color 0.3s ease;
+  }
+  :deep(.ant-segmented-item-label) {
+    padding: 0 4px;
+    font-size: 0.82rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+  }
+  :deep(.ant-segmented-item:first-child) {
+    border-radius: 6px 0 0 6px;
+  }
+  :deep(.ant-segmented-item:last-child) {
+    border-radius: 0 6px 6px 0;
+  }
+  :deep(.ant-segmented-item:hover:not(.ant-segmented-item-selected)) {
+    background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.1) !important;
+    color: inherit !important;
+  }
+  :deep(.ant-segmented-thumb) {
+    display: none;
+  }
+  :deep(.ant-segmented-item-selected) {
+    background: var(--rnp-accent-color, var(--color-primary));
+    color: var(--rnp-accent-color-on-primary, $color-white);
+    font-weight: bold;
+  }
+  :deep(.ant-checkbox-wrapper) {
+    color: inherit;
+    align-items: center;
+  }
+  :deep(.ant-checkbox) {
+    width: 30px;
+    height: 20px;
+    border: 0;
+    border-radius: 72px;
+    /* unchecked 槽用 shade-2-rgb:暗色模式=白半透明(深底上可见),亮色模式=黑半透明
+       (白底上可见)。此前固定 rgba(223,225,228,0.2) 在亮色白底上几乎透明,开关看不出在哪。 */
+    background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.2);
+    position: relative;
+    transition: background 100ms ease-out;
+    flex-shrink: 0;
+  }
+  :deep(.ant-checkbox-inner) {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 14px;
+    height: 14px;
+    border: 0;
+    border-radius: 50%;
+    background: $color-white;
+    /* thumb 在亮色白底上需细边框衬托,否则白圆融入白背景;暗色底本就深,边框低透明度无害 */
+    box-shadow: 0 0 0 1px rgba(var(--rnp-accent-color-shade-2-rgb, 0, 0, 0), 0.12);
+    transition: left 100ms ease-out;
+  }
+  :deep(.ant-checkbox-inner::after) {
+    display: none;
+  }
+  :deep(.ant-checkbox:hover) {
+    background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.3);
+  }
+  :deep(.ant-checkbox-checked) {
+    background: var(--rnp-accent-color, var(--color-primary));
+  }
+  :deep(.ant-checkbox-checked .ant-checkbox-inner) {
+    left: 13px;
+  }
+  :deep(.ant-checkbox-checked:hover) {
+    background: var(--rnp-accent-color, var(--color-primary));
+  }
+  :deep(.ant-slider) {
+    margin: 4px 0 18px;
+  }
+  :deep(.ant-slider-rail) {
+    background: rgba(223, 225, 228, 0.13);
+  }
+  :deep(.ant-slider-handle) {
+    top: 50%;
+    margin-top: -5px;
+    width: 10px;
+    height: 10px;
+    border: 0;
+    background: $color-white;
+    border-radius: 50%;
+  }
+  :deep(.ant-slider-mark-text) {
+    color: inherit;
+    opacity: 0.5;
+    font-size: 0.7rem;
+  }
+  :deep(.ant-checkbox-checked::after) {
+    display: none !important;
+    animation: none !important;
+  }
+  :deep(.ant-slider-rail),
+  :deep(.ant-slider-track),
+  :deep(.ant-slider:hover .ant-slider-track) {
+    top: 50%;
+    height: 8px;
+    margin-top: -4px;
+    border-radius: 20px;
+  }
+  :deep(.ant-slider-track),
+  :deep(.ant-slider:hover .ant-slider-track) {
+    background: var(--rnp-accent-color, var(--color-primary));
+  }
+  :deep(.ant-slider-handle),
+  :deep(.ant-slider-handle:hover),
+  :deep(.ant-slider-handle:focus),
+  :deep(.ant-slider-handle:active),
+  :deep(.ant-slider-handle-dragging) {
+    border: 0 !important;
+    background: $color-white !important;
+  }
+  :deep(.ant-slider-handle::after),
+  :deep(.ant-slider-handle:hover::after),
+  :deep(.ant-slider-handle:focus::after),
+  :deep(.ant-slider-handle:active::after),
+  :deep(.ant-slider-handle-dragging::after) {
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+  :deep(.ant-checkbox:hover .ant-checkbox-inner),
+  :deep(.ant-checkbox-wrapper:hover .ant-checkbox-inner) {
+    border-color: transparent !important;
+    background: $color-white !important;
+  }
+  :deep(.ant-input:hover),
+  :deep(.ant-input:focus),
+  :deep(.ant-input-affix-wrapper:hover),
+  :deep(.ant-input-affix-wrapper:focus),
+  :deep(.ant-input-affix-wrapper-focused) {
+    border-color: var(--rnp-accent-color, var(--color-primary)) !important;
+    box-shadow: 0 0 0 2px rgba(var(--rnp-accent-color-rgb, 170, 170, 170), 0.2) !important;
+  }
+  :deep(.ant-select:hover .ant-select-selector),
+  :deep(.ant-select-focused .ant-select-selector) {
+    border-color: var(--rnp-accent-color, var(--color-primary)) !important;
+    box-shadow: 0 0 0 2px rgba(var(--rnp-accent-color-rgb, 170, 170, 170), 0.2) !important;
+  }
+}
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  padding-top: 10px;
+}
+/* 分组大标题(对齐参考 .rnp-group-title,缩小至 20px 适配 360px 面板) */
+.settings-group-title {
+  margin-bottom: 20px;
+  font-size: 20px;
+  opacity: 0.6;
+  font-weight: bold;
+  line-height: 1.2;
+}
+.setting-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  > label {
+    font-size: 0.82rem;
+    opacity: 0.85;
+  }
+}
+
+.setting-label-with-reset {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+/* reset 小圆点(对齐参考 .rnp-slider-reset:8×8 白圆,hover accent;未改动隐藏) */
+.reset-btn {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: $color-white;
+  opacity: 0.3;
+  cursor: pointer;
+  transition:
+    opacity 0.2s ease,
+    background-color 0.2s ease;
+  &:hover {
+    background: var(--rnp-accent-color, var(--color-primary));
+  }
+  &:not(.changed) {
+    opacity: 0;
+    pointer-events: none;
+  }
+  &:hover,
+  &.changed {
+    opacity: 1;
+  }
+}
+
+/* 未改动时隐藏(对齐参考 .rnp-slider-wrapper:not(.changed) .rnp-slider-reset) */
+
+.setting-note {
+  font-size: 0.72rem;
+  opacity: 0.5;
+  line-height: 1.4;
+  &.banner {
+    margin: 0 0 0.25rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 8px;
+    background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.06);
+  }
+}
+/* 歌词全局偏移 ±100ms 步进 + 状态提示(对齐参考 settings-menu.html:235-250) */
+.lyric-offset-stepper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  .step-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: 0;
+    border-radius: 9999px;
+    background: transparent;
+    color: inherit;
+    font-size: 1rem;
+    line-height: 1;
+    opacity: 0.6;
+    cursor: pointer;
+    transition:
+      opacity 0.2s ease,
+      background 0.2s ease;
+    &:hover {
+      opacity: 1;
+      background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.1);
+    }
+  }
+  .setting-note {
+    flex: 1;
+    text-align: center;
+  }
+}
+
+.about-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.06);
+}
+.about-title {
+  opacity: 0.6;
+  font-size: 0.82rem;
+}
+.about-content {
+  font-size: 0.82rem;
+  &.link {
+    color: var(--rnp-accent-color, var(--color-primary));
+  }
+}
+
+.about-tribute {
+  margin-top: 1rem;
+  font-size: 0.75rem;
+  opacity: 0.5;
+  line-height: 1.6;
+}
+
+/* 拼接按钮条(对齐参考 .rnp-select-group:首尾圆角,选中 accent + bold;隐藏 thumb) */
+
+/* AntD 的 item-label 自带 padding:0 11px + text-overflow:ellipsis,360px 窄面板下
+   选项多时(背景类型 5 项)每项内容区不足 2 字宽 → 触发省略号。
+   缩小 label 左右内边距 + 略缩字号 + 禁止省略,确保文字完整可见。 */
+
+/* iOS 拨动开关(对齐参考 .rnp-checkbox:30×20 圆角槽 + 14×14 圆 thumb,checked 左移)。
+   用真实元素 .ant-checkbox-inner 作 thumb(改为圆 + 隐藏勾),不用 ::after ——
+   antd 的 .ant-checkbox-checked::after 是选中波纹伪元素,会顶掉自定义 thumb 导致 checked 时手柄消失。 */
+
+/* 隐藏 antd 方框内的勾(.ant-checkbox-inner::after) */
+
+/* slider(对齐参考 .rnp-slider:8px 圆角轨道 + 10×10 白圆 thumb) */
+
+/* slider 手柄:hover/active/dragging 强制白底无边框,隐藏 antd 拖动圈(::after) */
+
+/* antd 全局 colorPrimary 是网易绿,开关 hover 与字体输入框 focus 强制跟随沉浸色 */
+
+/* 隐藏 antd 选中波纹(.ant-checkbox-checked::after 是 colorPrimary 绿边 + antCheckboxEffect 动画) */
+
+/* a-select(字体多选)hover/focus 边框跟随沉浸色 */
+
+/* 字体预设行(对齐参考 .rnp-font-preset) */
+.font-preset {
+  display: flex;
+  align-items: center;
+  margin-top: 10px;
+  font-size: 90%;
+}
+.font-preset-label {
+  opacity: 0.6;
+}
+.font-preset-btn {
+  margin-left: 10px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.27);
+  color: inherit;
+  font-size: 90%;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  &:hover {
+    background: var(--rnp-accent-color, var(--color-primary));
+  }
+}
+
+/* 淡入下移(对齐参考 .rnp-settings-menu:translateY(-10px)+opacity:0 ↔ none+1,
+   transition all .3s ease)。Transition 在本组件模板内包根元素 aside,
+   enter/leave 类落在带 data-v 的宿主元素上,scoped 可命中。 */
+.settings-slide-enter-active {
+  transition:
+    transform 0.3s ease,
+    opacity 0.3s ease;
+}
+.settings-slide-leave-active {
+  transition:
+    transform 0.3s ease,
+    opacity 0.3s ease;
+}
+.settings-slide-enter-from {
+  transform: translateY(-10px);
+  opacity: 0;
+}
+.settings-slide-leave-to {
+  transform: translateY(-10px);
+  opacity: 0;
+}
+

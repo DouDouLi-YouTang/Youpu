@@ -1,0 +1,14 @@
+// song-row.global.scss - SongRow 加歌单二级菜单（body 挂载）全局样式（package-0.1.21 拆分族：song-row，非 scoped 部分）
+// 由 SongRow.vue 非 scoped <style lang="scss" src="./song-row.global.scss"> 引入，不再经 barrel。
+// .song-row-playlist-submenu 是 a-sub-menu 的 popup-class-name，弹层包装层挂 body、无宿主 data-v，
+// 其下 .ant-menu* 均为 antd 弹层骨架内部类，scoped 选不中 → 保留原样双前缀语义。
+
+#app .song-row-playlist-submenu,
+.song-row-playlist-submenu {
+  &.ant-menu-submenu-popup > .ant-menu,
+  .ant-menu {
+    max-height: 320px;
+    overflow-y: auto;
+  }
+}
+

@@ -1,0 +1,16 @@
+// cmt-drawer.global.scss - CommentsDrawer 抽屉壳体的全局样式（非 scoped，body 挂载部分）
+// .comment-drawer-root 是 a-drawer 的 root-class-name（挂载于 body 的 portal 包装层，无 data-v）；
+// 其下 .ant-drawer-* 为 antd 弹层骨架内部类，scoped 选择器无法命中，必须保持全局。
+
+.comment-drawer-root {
+  .ant-drawer-header {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg-secondary);
+  }
+
+  .ant-drawer-content,
+  .ant-drawer-body {
+    background: var(--color-bg-primary);
+  }
+}

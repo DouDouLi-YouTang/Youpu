@@ -1,0 +1,138 @@
+// song-row.scss - SongRow 组件 scoped 样式（package-0.1.21 拆分族：song-row）
+// 由 SongRow.vue <style scoped lang="scss" src="./song-row.scss"> 引入，不再经 barrel。
+// 原双前缀 `#app SEL, SEL` 已去除（scoped 由 [data-v-*] 限定）。
+// .song-row* 元素全部由 SongRow.vue 模板自身渲染（含 __eq 下的 <i>），带 data-v，直接 scoped；
+// __index-slot 下的 .anticon 是 antd 图标组件内部节点（无宿主 data-v 保证），用 :deep() 穿透。
+// @keyframes song-row-in / song-row-grid-in / song-eq 无 hash 后缀：已 rg 全仓核查
+// （.vue/.ts/.scss/.css/.html），定义与引用仅在本文件，随 scoped 自动改名后仍自洽。
+// 挂 body 无 data-v 的 .song-row-playlist-submenu（a-sub-menu 的 popup-class-name 弹层）
+// 已移至 song-row.global.scss（非 scoped）。
+
+/* SongRow 行内样式(序号等分/入场/均衡器),从 SongRow.vue 拆出以控行数 */
+.song-row {
+  &__grid {
+    background: transparent;
+  }
+
+  &:hover {
+    .song-row__grid {
+      background: color-mix(in srgb, var(--color-control) 88%, transparent);
+    }
+  }
+
+  &__index-slot {
+    /* Ant icon 默认 inline 会有 baseline 空隙，强制 flex 居中 */
+    :deep(.anticon) {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      vertical-align: middle;
+    }
+  }
+
+  /* 播放三角光学偏左，微移 1px */
+  &__play-icon {
+    transform: translateX(1px);
+  }
+
+  &__eq {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 2px;
+    height: 12px;
+    width: 14px;
+
+    i {
+      display: block;
+      width: 2.5px;
+      border-radius: 1px;
+      background: var(--color-primary);
+      animation: song-eq 0.9s ease-in-out infinite;
+      transform-origin: bottom center;
+    }
+
+    i:nth-child(1) {
+      height: 40%;
+      animation-delay: 0s;
+    }
+
+    i:nth-child(2) {
+      height: 100%;
+      animation-delay: 0.15s;
+    }
+
+    i:nth-child(3) {
+      height: 60%;
+      animation-delay: 0.3s;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    &__eq i {
+      animation: none;
+      transform: none;
+    }
+  }
+
+  &--active {
+    .song-row__grid {
+      background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+    }
+
+    &:hover {
+      .song-row__grid {
+        background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+      }
+    }
+  }
+
+  /* 单行入场:只动 opacity,避免与虚拟列表父级 transform 冲突 */
+  &--enter {
+    animation: song-row-in 0.42s ease-out both;
+    animation-delay: var(--song-enter-delay, 0ms);
+
+    .song-row__grid {
+      animation: song-row-grid-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+      animation-delay: var(--song-enter-delay, 0ms);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      &,
+      .song-row__grid {
+        animation: none;
+      }
+    }
+  }
+}
+
+@keyframes song-row-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes song-row-grid-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes song-eq {
+  0%,
+  100% {
+    transform: scaleY(0.45);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}

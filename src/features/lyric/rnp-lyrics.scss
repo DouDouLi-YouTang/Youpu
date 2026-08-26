@@ -1,0 +1,266 @@
+// 全部类均由 LyricLines.vue 模板渲染（含嵌套行/词元素，尾部复合选择器都带宿主 data-v），无需 :deep()。
+// @keyframes 名带 hash 后缀仍全局唯一，定义与引用同文件，scoped 编译不改写动画名。
+
+.rnp-lyrics {
+  /* 主色 / 动画曲线 / 阴影变量均直接继承父级（沉浸页 .immersive-root 注入），
+     不在此重声明——自引用 var(--x, fallback) 会被 CSS 视为循环而永远取 fallback，
+     截断父级注入值。独立使用时各使用点就地写 fallback。 */
+  position: relative;
+  width: calc(100% - 10px);
+  height: 100%;
+  flex: 1;
+  overflow: hidden;
+  box-sizing: border-box;
+  margin-left: -25px;
+  padding-right: 30px;
+  padding-left: 30px;
+  color: var(--rnp-accent-color-shade-2, var(--color-text-primary));
+  font-size: var(--lyric-font-size, 32px);
+  text-align: left;
+  -webkit-mask-image: linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 1) 3%,
+    rgba(0, 0, 0, 1) 97%,
+    rgba(0, 0, 0, 0) 100%
+  );
+  mask-image: linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 1) 3%,
+    rgba(0, 0, 0, 1) 97%,
+    rgba(0, 0, 0, 0) 100%
+  );
+
+  &.playback-paused {
+    .rnp-karaoke-word.rnp-karaoke-long-tone {
+      animation-play-state: paused;
+    }
+  }
+}
+
+.rnp-lyrics-line {
+  position: absolute;
+  display: block;
+  width: max-content;
+  max-width: calc(100% - 60px);
+  /* 父级 .immersive-content 设 pointer-events:none 后,歌词行需显式 auto 才能接收 @click 跳转 */
+  pointer-events: auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+  transform-origin: left center;
+  transition:
+    transform 0.5s var(--lyric-timing-function, cubic-bezier(0.18, 0.77, 0.58, 0.99)),
+    filter 0.5s ease,
+    opacity 0.5s ease;
+  will-change: transform, filter, opacity;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: -15px;
+    z-index: 0;
+    display: block;
+    border-radius: 10px;
+    background-color: var(--rnp-accent-color-shade-2, var(--color-text-primary));
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(1.05);
+    transition:
+      opacity 0.2s ease,
+      inset 0.15s ease,
+      transform 0.2s ease;
+  }
+
+  &:active::before {
+    inset: -10px -10px -8px -8px;
+    opacity: 0.16;
+    transform: scale(1);
+  }
+
+  > div {
+    position: relative;
+    z-index: 1;
+    transition: opacity 0.5s ease;
+  }
+
+  > div:not(:last-child) {
+    margin-bottom: 0.3em;
+  }
+
+  &[offset='0'] {
+    > div {
+      opacity: 0.8;
+    }
+
+    > .rnp-lyrics-line-original {
+      opacity: 1;
+    }
+
+    .rnp-karaoke-word.rnp-karaoke-long-tone {
+      animation: rnp-long-tone-glow-e07d961b var(--rnp-long-tone-duration, 1500ms) linear
+        var(--rnp-long-tone-delay, 0ms) both;
+    }
+  }
+
+  &:not([offset='0']) {
+    > div {
+      opacity: 0.4;
+    }
+  }
+
+  &:hover::before,
+  &:focus-visible::before {
+    opacity: 0.08;
+    transform: scale(1);
+  }
+
+  &[offset='0'] > .rnp-lyrics-line-karaoke,
+  &:not([offset='0']) > .rnp-lyrics-line-karaoke {
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: opacity 0.1s ease !important;
+    filter: none !important;
+
+    &[offset='0'] .rnp-karaoke-word.rnp-karaoke-long-tone {
+      animation: none !important;
+      text-shadow: 0 0 8px rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.35);
+    }
+  }
+}
+
+/* 逐字容器不继承上面的行级 opacity:.rnp-karaoke-word 自身的 0.4/1 已是完整明暗,
+   再叠加会让当前行字最亮仅 0.8(纯文本是 1)、非当前行字仅 0.16(纯文本是 0.4),
+   与纯文本模式不一致、且让逐字效果发暗。故容器恒为 1,明暗完全交给 per-word。 */
+
+/* 字重对齐参考项目 lyrics.scss:88-94 —— karaoke 与 original 必须读同一个
+   --rnp-lyric-original-weight,否则当前行(逐字)与非当前行(行级文本)字重脱节,
+   表现为「歌词一开始粗体、开始播放后当前行变细」。参考项目把两者放同一规则统一控制。 */
+.rnp-lyrics-line-karaoke {
+  display: inline;
+  font-weight: var(--rnp-lyric-original-weight, 700);
+
+  &.force-refresh {
+    > .rnp-karaoke-word {
+      animation: none !important;
+    }
+  }
+}
+
+.rnp-lyrics-line-original {
+  /* --rnp-lyric-original-weight 由 ImmersivePlayer rootStyleVars 注入(lyricFontWeight 字重滑块)；
+     独立使用(非沉浸层)时回退到 700（加粗），符合单行歌词默认加粗的直觉 */
+  font-weight: var(--rnp-lyric-original-weight, 700);
+}
+
+.rnp-lyrics-line-romaji {
+  font-size: var(--lyric-romaji-size-em, 0.6em);
+  font-weight: 500;
+  /* 保留词间空格(英文翻译/罗马音);避免父级 white-space 继承或窄容器把空格挤没 */
+  white-space: pre-wrap;
+}
+
+.rnp-lyrics-line-translated {
+  font-size: var(--lyric-translation-size-em, 1em);
+  font-weight: 500;
+  /* 同 romaji:英文翻译词间空格必须可见 */
+  white-space: pre-wrap;
+}
+
+.pre-play {
+  .rnp-lyrics-line {
+    transition-duration: 0ms;
+  }
+}
+
+/* 逐字卡拉OK动画(对齐参考 lyrics.scss rnp-karaoke-animation-float/slide):
+   word 默认 opacity:0.4 + 静止;当前行[offset='0'] opacity:1 + 上浮/滑入。
+   per-word 的 transitionDelay/Duration 由 inline style 注入(word.timeMs - currentTime),
+   使各词按时间逐个亮起。float=上浮,slide=左滑入。 */
+
+.rnp-karaoke-word {
+  display: inline-block;
+  /* pre-wrap 保留 w.word 的首尾空格(英文单词间隙)。inline-block 内部自成 line box,
+     默认 normal 会移除 line box 尾空白 → 英文单词尾空格被吞、单词揉一起。
+     中文逐字 w.word 无空格,不受影响。 */
+  white-space: pre-wrap;
+  opacity: 0.4;
+  transform: translateY(0);
+  transition-property: opacity, transform;
+  transition-timing-function: linear, ease;
+  will-change: opacity, transform;
+}
+
+/* float:当前行逐词上浮亮起 */
+.karaoke-float {
+  .rnp-lyrics-line[offset='0'] {
+    .rnp-karaoke-word {
+      opacity: 1;
+      transform: translateY(-2px);
+    }
+  }
+
+  .rnp-lyrics-line-karaoke.force-refresh {
+    > .rnp-karaoke-word {
+      opacity: 0.4 !important;
+      transform: translateY(0) !important;
+      transition: all 0s !important;
+    }
+  }
+}
+
+/* slide:当前行逐词从左滑入亮起 */
+.karaoke-slide {
+  .rnp-karaoke-word {
+    transform: translateX(-8px);
+  }
+
+  .rnp-lyrics-line[offset='0'] {
+    .rnp-karaoke-word {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .rnp-lyrics-line-karaoke.force-refresh {
+    > .rnp-karaoke-word {
+      opacity: 0.4 !important;
+      transform: translateX(-8px) !important;
+      transition: all 0s !important;
+    }
+  }
+}
+
+/* force-refresh 同时重置长音发光动画的时钟:animation:none 一拍销毁动画,类移除后按
+   新 --rnp-long-tone-delay 重建(负 delay 直接进入发光中段;暂停态则冻结在对应帧)。
+   没有这一拍,同行内 seek/重同步只改 delay 变量属于 retiming —— 动画已累计的时钟
+   不会归零,发光会提前「已累计时长」触发甚至整段跳过。 */
+
+/* 长音发光动画：ImmersivePlayer 通过 enableLyricGlow prop 控制是否打上
+   rnp-karaoke-long-tone class。只绑定当前行 trailing 词；启动时间由
+   --rnp-long-tone-delay 同步到 word.timeMs，避免还没唱到该字就提前发光。 */
+
+@keyframes rnp-long-tone-glow-e07d961b {
+  0% {
+    text-shadow: 0 0 0 rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0);
+  }
+
+  60%,
+  82% {
+    text-shadow:
+      0 0 8px rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.85),
+      0 0 18px rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.45);
+  }
+
+  100% {
+    text-shadow: 0 0 0 rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0);
+  }
+}

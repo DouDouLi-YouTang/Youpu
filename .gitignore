@@ -1,0 +1,84 @@
+# Dependencies
+node_modules/
+server/node_modules/
+
+# Build / package outputs
+dist/
+out/
+release/
+dist-ssr/
+build/server-node-modules.zip
+build/forge-resources/
+
+# Env / secrets (keep *.example tracked)
+.env
+.env.*
+!.env.example
+!.env.*.example
+server/.env
+server/.env.local
+*.local
+.env.local
+.env.*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+.d.log
+.dev.log
+
+# Local probe / one-off scripts
+server/.probe-nenv.cjs
+
+# Local MCP (per-machine paths / vendored servers)
+.mcp.json
+.mcp-servers/
+
+# Playwright / test artifacts
+.playwright-mcp/
+test-results/
+
+# Playback cache (dev creates under project root)
+cache/
+
+# Auto-generated
+components.d.ts
+
+# AI assistant / agent tooling — personal dev workflow, not published
+.agents/
+.claude/
+.codex/
+.trellis/
+.qoder/
+AGENTS.md
+skills-lock.json
+
+# Debug screenshots dropped at repo root during UI iteration
+/comment-*.png
+/window-*.png
+/*-runtime.png
+/*-hot.png
+
+# Internal / local-only docs (canonical API docs live under server/public/docs/)
+/接口文档.md
+/TEST_REPORT.md
+
+# Soft-delete staging (local review before permanent delete)
+_待删除_请检查/
+
+# One-off recovery dumps (package/source map extracts during UI restore)
+_recovery/
+
+# Temporary git worktree baselines (agent/CI scratch worktrees at repo root)
+.head-baseline-wt/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo

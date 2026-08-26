@@ -1,0 +1,311 @@
+// mini-player.scss - MiniPlayerBar 组件 scoped 样式
+// antd 内部类（.ant-slider-*）用 :deep() 穿透；@keyframes 名带 hash 后缀，定义与引用同文件保持自洽。
+
+.mini-root {
+  -webkit-app-region: drag;
+}
+
+.mini-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.25);
+  filter: blur(22px);
+  pointer-events: none;
+}
+
+.mini-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.52);
+  pointer-events: none;
+}
+
+.mini-cover {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 50%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+
+  &__img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  &__placeholder {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.08));
+  }
+
+  &--spin {
+    animation: mini-spin-0c90bc18 20s linear infinite;
+
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+    }
+  }
+
+  &--paused {
+    animation: mini-spin-0c90bc18 20s linear infinite;
+    animation-play-state: paused;
+
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+    }
+  }
+}
+
+.mini-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.88);
+  cursor: pointer;
+  padding: 0;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+
+  &:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.16);
+    color: $color-white;
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  &--play {
+    width: 32px;
+    height: 32px;
+    background: rgba(255, 255, 255, 0.18);
+  }
+}
+
+.mini-seek {
+  &__slider {
+    width: 100%;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  :deep(.ant-slider) {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 14px;
+  }
+
+  :deep(.ant-slider-step) {
+    display: none;
+  }
+
+  :deep(.ant-slider-rail) {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  :deep(.ant-slider-track) {
+    /* 已播放部分仍保留蓝色；只去掉亮核右侧的泛光。 */
+    background: var(--color-primary);
+    box-shadow: none;
+  }
+
+  :deep(.ant-slider-handle) {
+    width: 7px !important;
+    height: 7px !important;
+    inset-block-start: 3.5px !important;
+    inset-block-end: auto !important;
+    top: 3.5px !important;
+    bottom: auto !important;
+    margin: 0 !important;
+    overflow: visible;
+    border: 0 !important;
+    border-radius: 50%;
+    background: radial-gradient(
+      circle at 36% 32%,
+      $color-white 0 18%,
+      color-mix(in srgb, $color-white 76%, var(--color-primary)) 32%,
+      var(--color-primary) 70%
+    ) !important;
+    opacity: 1;
+    /* 光晕整体向左偏移，右侧保持干净，视觉上只留下向后的尾迹。 */
+    box-shadow:
+      -3px 0 6px 2px color-mix(in srgb, var(--color-primary) 90%, transparent),
+      -8px 0 14px 3px color-mix(in srgb, var(--color-primary) 42%, transparent);
+    transition:
+      box-shadow 0.15s ease,
+      transform 0.15s ease;
+  }
+
+  :deep(.ant-slider-handle::before) {
+    content: '';
+    position: absolute;
+    top: 50%;
+    /* 显式钉在亮核左侧；覆盖 Ant Design 伪元素的默认 left，杜绝尾焰跑到右边。 */
+    right: auto !important;
+    left: -32px !important;
+    width: 34px;
+    height: 5px;
+    border-radius: 999px 0 0 999px;
+    clip-path: polygon(0 38%, 76% 10%, 100% 50%, 76% 90%, 0 62%);
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in srgb, var(--color-primary) 16%, transparent) 20%,
+      color-mix(in srgb, var(--color-primary) 58%, transparent) 63%,
+      color-mix(in srgb, var(--color-primary) 100%, transparent) 100%
+    );
+    filter: blur(0.45px);
+    pointer-events: none;
+    transform: translateY(-50%);
+  }
+
+  :deep(.ant-slider-handle::after) {
+    display: none !important;
+    content: '';
+    position: absolute;
+    top: 50%;
+    /* 火花同样强制从亮核左侧发射，不能继承 Ant Design 的右向伪元素定位。 */
+    right: auto !important;
+    left: -11px !important;
+    width: 3px;
+    height: 3px;
+    border: 0 !important;
+    border-radius: 50%;
+    background: color-mix(in srgb, $color-white 78%, var(--color-primary));
+    box-shadow:
+      -6px 5px 0 -0.65px color-mix(in srgb, var(--color-primary) 82%, transparent),
+      -12px -4px 0 -0.75px color-mix(in srgb, var(--color-primary) 76%, transparent),
+      -19px 6px 0 -0.85px color-mix(in srgb, var(--color-primary) 70%, transparent),
+      -27px -3px 0 -1px color-mix(in srgb, var(--color-primary) 62%, transparent),
+      -35px 5px 0 -1.1px color-mix(in srgb, var(--color-primary) 54%, transparent),
+      -44px -5px 0 -1.2px color-mix(in srgb, var(--color-primary) 46%, transparent),
+      -53px 3px 0 -1.35px color-mix(in srgb, var(--color-primary) 37%, transparent),
+      -62px -2px 0 -1.45px color-mix(in srgb, var(--color-primary) 28%, transparent);
+    filter: blur(0.15px);
+    pointer-events: none;
+    transform: translateY(-50%);
+    animation: mini-comet-sparks-0c90bc18 1.45s linear infinite;
+  }
+
+  &.is-dragging {
+    :deep(.ant-slider-handle::before) {
+      opacity: 0;
+    }
+
+    :deep(.ant-slider-handle) {
+      box-shadow: 0 0 4px 1px color-mix(in srgb, var(--color-primary) 72%, transparent);
+    }
+  }
+
+  &__comet-stream {
+    position: absolute;
+    inset: 0;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  &__comet-particle {
+    position: absolute;
+    left: var(--comet-progress);
+    top: 50%;
+    bottom: auto;
+    width: var(--comet-size);
+    height: var(--comet-size);
+    border-radius: 50%;
+    background: color-mix(in srgb, $color-white 72%, var(--color-primary));
+    box-shadow: 0 0 4px color-mix(in srgb, var(--color-primary) 72%, transparent);
+    opacity: 0;
+    animation: mini-comet-particle-0c90bc18 1.4s linear infinite;
+    animation-delay: var(--comet-delay);
+    will-change: transform, opacity;
+  }
+
+  :deep(.ant-slider-rail),
+  :deep(.ant-slider-track) {
+    inset-block-start: 6px !important;
+    inset-block-end: auto !important;
+    top: 6px !important;
+    bottom: auto !important;
+    height: 2px !important;
+    border-radius: 0;
+    transform: none !important;
+  }
+
+  &:hover :deep(.ant-slider-handle),
+  :deep(.ant-slider-handle:focus),
+  :deep(.ant-slider-handle-dragging) {
+    /* 拖动仅增强左向光晕，不放大亮核或改变进度条视觉高度。 */
+    transform: none;
+    box-shadow:
+      -4px 0 8px 2px color-mix(in srgb, var(--color-primary) 94%, transparent),
+      -9px 0 16px 4px color-mix(in srgb, var(--color-primary) 48%, transparent);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :deep(.ant-slider-handle::before),
+    :deep(.ant-slider-handle::after) {
+      animation: none;
+    }
+  }
+}
+
+/* 迷你模式沿用主播放器的流星式进度：轨道干净，光只在播放终点出现。 */
+
+/* 同一套流星语言缩小到迷你条：亮核、尾焰、零星火花，且没有整条泛光。 */
+
+/* 关闭 Ant Design 的默认 ::after；连续粒子由独立 DOM 逐颗错峰渲染。 */
+
+@keyframes mini-comet-particle-0c90bc18 {
+  0% {
+    opacity: 0;
+    transform: translate(0, -50%) scale(0.55);
+  }
+  12% {
+    opacity: var(--comet-opacity);
+  }
+  72% {
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--comet-travel), calc(-50% + var(--comet-drift))) scale(0.2);
+  }
+}
+
+@keyframes mini-comet-sparks-0c90bc18 {
+  0% {
+    opacity: 0.7;
+    transform: translate(0, -50%) scale(0.78);
+  }
+  55% {
+    opacity: 0.9;
+    transform: translate(-7px, calc(-50% + 1px)) scale(1);
+  }
+  100% {
+    opacity: 0.2;
+    transform: translate(-18px, calc(-50% - 2px)) scale(0.48);
+  }
+}
+
+@keyframes mini-spin-0c90bc18 {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

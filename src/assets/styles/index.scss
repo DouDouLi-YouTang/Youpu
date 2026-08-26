@@ -1,0 +1,471 @@
+// index.scss - 全局样式（原 index.scss 与 package-global.scss 合并后的唯一全局入口）
+// 加载顺序(main.ts): tokens.scss → tailwind.css → 本文件。package-0.1.21.scss 桶文件已删除。
+// 真全局规则(antd 覆盖/主题/过渡/滚动条)保留历史双前缀 `#app SEL, SEL`(压过 SFC scoped 与 teleport/弹层)。
+// 编译期 $ 变量由 electron.vite.config.ts 的 scss additionalData 注入,本文件不写 @use。
+
+// 编译期共享色板（唯一归属地）。electron.vite.config.ts 的 scss additionalData 内联同一份
+// 变量供各组件 <style lang="scss"> 使用 —— 改值时两处必须同步。
+$color-danger: #ef4444;
+$color-hot: #ff5a36;
+$color-success: #22c55e;
+$color-spotify: #1db954;
+$color-white: #fff;
+$color-black: #000;
+
+// 主题主色 fallback（--color-primary 未写入时的兜底）
+$primary-fallback-green: #22c55e;
+$primary-fallback-spotify: #1db954;
+$radius-pill: 999px;
+
+// 主色透明度叠加：编译期展开为 color-mix，运行时仍读 --color-primary
+@function primary-tint(
+  $pct,
+  $fallback: $primary-fallback-green,
+  $base: transparent
+) {
+  @return color-mix(in srgb, var(--color-primary, $fallback) $pct, $base);
+}
+
+// 评论排序：复用动态主题主色，并在亮暗主题中保持文字对比。
+.comments-sort {
+  &.ant-segmented {
+    padding: 2px !important;
+    border: 1px solid var(--color-border);
+    border-radius: $radius-pill;
+    background: var(--color-control);
+  }
+
+  .ant-segmented-thumb {
+    background: primary-tint(35%, $primary-fallback-spotify, var(--color-control)) !important;
+    border-radius: $radius-pill;
+    box-shadow: none !important;
+  }
+
+  .ant-segmented-item {
+    min-width: 42px;
+    border-radius: $radius-pill;
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    text-align: center;
+    transition: color 0.18s ease;
+
+    &-selected {
+      background: primary-tint(35%, $primary-fallback-spotify, var(--color-control)) !important;
+      color: var(--color-text-primary) !important;
+      font-weight: 600;
+    }
+  }
+}
+
+#app .no-drag,
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* 菜单项选中/hover 背景色与文字色过渡 */
+#app .ant-menu-item,
+.ant-menu-item {
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
+  cursor: pointer;
+}
+
+/* 二级菜单去掉 ant 默认的浅灰背景,与一级菜单融为一体 */
+#app .ant-menu-inline,
+.ant-menu-inline {
+  &.ant-menu-sub {
+    background: transparent !important;
+  }
+}
+
+/* /library 全部歌单页时"我的音乐"标题高亮(子菜单标题非 a-menu-item,selectedKeys 管不到,需手动) */
+#app .nav-submenu-active,
+.nav-submenu-active {
+  > .ant-menu-submenu-title {
+    color: var(--color-primary) !important;
+  }
+}
+
+#app .page-fade-enter-active,
+.page-fade-enter-active {
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+#app .page-fade-leave-active,
+.page-fade-leave-active {
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+#app .page-fade-enter-from,
+.page-fade-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+#app .page-fade-leave-to,
+.page-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+/* message 默认顶部;改为靠近底部(避开播放栏),水平仍居中 */
+#app .ant-message,
+.ant-message {
+  top: auto !important;
+  bottom: 108px !important;
+  left: 50% !important;
+  right: auto !important;
+  transform: translateX(-50%) !important;
+  width: auto !important;
+  max-width: min(90vw, 480px);
+}
+
+/* Modal.confirm 等方法:确保垂直居中(与 centered 选项双保险) */
+#app .ant-modal-centered,
+.ant-modal-centered {
+  .ant-modal {
+    top: 0;
+  }
+}
+
+:root {
+  color-scheme: dark;
+  --color-bg-primary: #101113;
+  --color-bg-secondary: #15171a;
+  --color-bg-elevated: #1b1e22;
+  --color-bg-overlay: #22262b;
+  --color-text-primary: #f4f7f5;
+  --color-text-secondary: #a7b0aa;
+  --color-text-muted: #6f7a73;
+  --color-border: #2a2f35;
+  --color-control: #23272d;
+  --color-control-hover: #2b3037;
+}
+
+:root.light {
+  color-scheme: light;
+  --color-bg-primary: #f5f7f6;
+  --color-bg-secondary: #fff;
+  --color-bg-elevated: #fff;
+  --color-bg-overlay: #fff;
+  --color-text-primary: #1a1d1b;
+  --color-text-secondary: #5a635e;
+  --color-text-muted: #8a948e;
+  --color-border: #e0e4e1;
+  --color-control: #f0f2f1;
+  --color-control-hover: #e8ebea;
+}
+
+#app .dark,
+.dark {
+  color-scheme: dark;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+#app {
+  flex-direction: column;
+  display: flex;
+}
+
+body {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  text-rendering: geometricprecision;
+  margin: 0;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;
+}
+
+#app ::selection,
+::selection {
+  background: var(--color-primary, $color-success);
+}
+
+@supports (color: color-mix(in lab, red, red)) {
+  #app ::selection,
+  ::selection {
+    background: color-mix(in srgb, var(--color-primary, $color-success) 32%, transparent);
+  }
+}
+
+#app ::selection,
+::selection {
+  color: var(--color-text-primary);
+}
+
+#app .ant-select,
+.ant-select {
+  -webkit-app-region: no-drag;
+}
+#app .ant-slider,
+.ant-slider {
+  -webkit-app-region: no-drag;
+}
+#app .ant-avatar,
+.ant-avatar {
+  -webkit-app-region: no-drag;
+}
+#app button,
+button,
+#app a,
+a,
+#app input,
+input,
+#app textarea,
+textarea,
+#app select,
+select {
+  -webkit-app-region: no-drag;
+}
+
+#app .ant-segmented-item,
+.ant-segmented-item {
+  cursor: pointer;
+}
+#app .ant-tabs-tab,
+.ant-tabs-tab {
+  cursor: pointer;
+}
+#app .ant-dropdown-menu-item,
+.ant-dropdown-menu-item {
+  cursor: pointer;
+}
+#app .ant-pagination-item,
+.ant-pagination-item {
+  cursor: pointer;
+}
+#app .ant-switch,
+.ant-switch {
+  cursor: pointer;
+}
+#app button:not(:disabled),
+button:not(:disabled),
+#app [role="button"]:not([aria-disabled="true"]),
+[role="button"]:not([aria-disabled="true"]),
+#app a[href],
+a[href],
+#app summary,
+summary,
+#app label[for],
+label[for],
+#app .ant-btn:not(:disabled),
+.ant-btn:not(:disabled) {
+  cursor: pointer;
+}
+
+#app button:disabled,
+button:disabled,
+#app [aria-disabled="true"],
+[aria-disabled="true"],
+#app .ant-btn:disabled,
+.ant-btn:disabled {
+  cursor: not-allowed;
+}
+
+#app .ant-layout,
+.ant-layout {
+  background: var(--color-bg-primary) !important;
+}
+#app .ant-layout-content,
+.ant-layout-content {
+  background: var(--color-bg-primary) !important;
+}
+
+#app .ant-layout-header,
+.ant-layout-header {
+  background: var(--color-bg-secondary) !important;
+}
+#app .ant-layout-footer,
+.ant-layout-footer {
+  background: var(--color-bg-secondary) !important;
+}
+
+#app .ant-card,
+.ant-card {
+  box-shadow: none;
+  border-color: var(--color-border) !important;
+  background: var(--color-bg-secondary) !important;
+}
+
+#app .ant-card-hoverable,
+.ant-card-hoverable {
+  &:hover {
+    border-color: var(--color-primary, $color-success) !important;
+    box-shadow: 0 16px 40px #00000038;
+  }
+}
+
+@supports (color: color-mix(in lab, red, red)) {
+  #app .ant-card-hoverable:hover,
+  .ant-card-hoverable:hover {
+    border-color: color-mix(in srgb, var(--color-primary, $color-success) 28%, transparent) !important;
+  }
+}
+
+#app .ant-input-search,
+.ant-input-search {
+  .ant-input-group-addon {
+    .ant-btn {
+      background: var(--color-bg-elevated) !important;
+      border-color: var(--color-border) !important;
+    }
+  }
+}
+
+#app .ant-input-affix-wrapper,
+.ant-input-affix-wrapper {
+  background: var(--color-bg-elevated) !important;
+  border-color: var(--color-border) !important;
+  &:hover {
+    border-color: var(--color-primary, $color-success) !important;
+    box-shadow: 0 0 0 2px var(--color-primary, $color-success) !important;
+  }
+}
+#app .ant-input,
+.ant-input {
+  -webkit-app-region: no-drag;
+  background: var(--color-bg-elevated) !important;
+  border-color: var(--color-border) !important;
+  &::placeholder {
+    color: var(--color-text-muted) !important;
+  }
+  &:hover,
+  &:focus {
+    border-color: var(--color-primary, $color-success) !important;
+  }
+  &:hover,
+  &:focus {
+    box-shadow: 0 0 0 2px var(--color-primary, $color-success) !important;
+  }
+}
+#app .ant-input-affix-wrapper-focused,
+.ant-input-affix-wrapper-focused {
+  border-color: var(--color-primary, $color-success) !important;
+  box-shadow: 0 0 0 2px var(--color-primary, $color-success) !important;
+}
+
+@supports (color: color-mix(in lab, red, red)) {
+  #app .ant-input-affix-wrapper:hover,
+  .ant-input-affix-wrapper:hover,
+  #app .ant-input:hover,
+  .ant-input:hover,
+  #app .ant-input-affix-wrapper-focused,
+  .ant-input-affix-wrapper-focused,
+  #app .ant-input:focus,
+  .ant-input:focus {
+    border-color: color-mix(in srgb, var(--color-primary, $color-success) 55%, transparent) !important;
+  }
+}
+
+@supports (color: color-mix(in lab, red, red)) {
+  #app .ant-input-affix-wrapper:hover,
+  .ant-input-affix-wrapper:hover,
+  #app .ant-input:hover,
+  .ant-input:hover,
+  #app .ant-input-affix-wrapper-focused,
+  .ant-input-affix-wrapper-focused,
+  #app .ant-input:focus,
+  .ant-input:focus {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary, $color-success) 8%, transparent) !important;
+  }
+}
+
+#app .ant-list-item,
+.ant-list-item {
+  border-block-end: none !important;
+}
+
+@supports (color: color-mix(in lab, red, red)) {
+  #app .comments-sort,
+  .comments-sort {
+    .ant-segmented-thumb {
+      background: color-mix(in srgb, var(--color-primary, $color-spotify) 35%, var(--color-control)) !important;
+    }
+  }
+}
+
+@supports (color: color-mix(in lab, red, red)) {
+  #app .comments-sort,
+  .comments-sort {
+    .ant-segmented-item-selected {
+      background: color-mix(in srgb, var(--color-primary, $color-spotify) 35%, var(--color-control)) !important;
+    }
+  }
+}
+
+#app .ant-empty-description,
+.ant-empty-description {
+  color: var(--color-text-secondary) !important;
+}
+
+#app .ant-btn,
+.ant-btn {
+  justify-content: center;
+  align-items: center;
+  display: inline-flex !important;
+  -webkit-app-region: no-drag;
+  .anticon {
+    justify-content: center;
+    align-items: center;
+    line-height: 0;
+    display: inline-flex;
+  }
+}
+
+#app ::-webkit-scrollbar,
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+#app ::-webkit-scrollbar-track,
+::-webkit-scrollbar-track {
+  background: none;
+}
+
+#app ::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-thumb {
+  background: #80808059;
+  border-radius: 4px;
+}
+
+#app ::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:hover {
+  background: #8080808c;
+}
+
+*:focus:not(:focus-visible),
+#app :focus:not(:focus-visible),
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after,
+  #app :before,
+  :before,
+  #app :after,
+  :after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
