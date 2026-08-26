@@ -40,6 +40,10 @@ jobs:
 
       - name: Build app
         run: npm run build
+        # 51.la 统计 id/ck 通过 Actions secrets 注入(VITE_* 由 Vite 打进渲染层)。
+        env:
+          VITE_LA_51_ID: ${{ secrets.LA_51_ID }}
+          VITE_LA_51_CK: ${{ secrets.LA_51_CK }}
 
       - name: Pack server modules
         run: npm run pack:modules

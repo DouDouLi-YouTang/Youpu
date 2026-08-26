@@ -7,6 +7,7 @@ import { installThemeProvider } from './providers/theme-provider'
 import { router } from './router'
 import { usePlayerStore } from '@/stores/player.store'
 import { useAuthStore } from '@/stores/auth.store'
+import { initLa51Analytics } from '@/services/la51-analytics'
 import '@/assets/styles/tokens.scss'
 import '@/assets/styles/tailwind.css'
 import '@/assets/styles/index.scss'
@@ -14,6 +15,7 @@ import '@/assets/styles/index.scss'
 
 installThemeProvider()
 initPlayerProvider()
+initLa51Analytics()
 
 const app = createApp(App)
 app.use(pinia)
