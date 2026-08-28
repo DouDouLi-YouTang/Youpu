@@ -10,7 +10,11 @@ export default {
     repo: 'Youpu',
     // 默认发布为正式 Release(非草稿)。beta tag 由 CI 用 EP_PRE_RELEASE=true 覆盖为
     // pre-release，优先级高于这里的 releaseType。
-    releaseType: 'release'
+    releaseType: 'release',
+    // GitHub 发布不会自动从版本号推断更新通道(issue #8589)，必须显式指定。
+    // CI 打包时用 PUBLISH_CHANNEL 环境变量注入 beta/latest，决定生成 beta.yml
+    // 还是 latest.yml；本地/未设置时默认为 latest。
+    channel: process.env.PUBLISH_CHANNEL || undefined
   },
   // ${version} 是 electron-builder 运行时宏（expandMacro 展开），非 TS 模板字符串。
   // 按版本号分子目录：同版本打包覆盖该目录，新版本则新建，互不干扰。

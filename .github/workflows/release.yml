@@ -52,6 +52,8 @@ jobs:
       # 产物各触发一次 GitHub release 创建，导致同一 tag 重复建 release、资产被拆开。
       # --publish never 仍会照常生成 latest.yml / beta.yml(供自动更新用)。
       - name: Build installer
+        env:
+          PUBLISH_CHANNEL: ${{ contains(github.ref, '-') && 'beta' || 'latest' }}
         run: npx electron-builder --win --x64 --publish never
 
       # 统一用 softprops 创建「单个」release 并上传全部资产，避免重复 release。
