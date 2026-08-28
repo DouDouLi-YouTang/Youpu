@@ -80,6 +80,8 @@ let statusListeners: StatusListener[] = []
 let progressListeners: ProgressListener[] = []
 /** 最近一次 checkForUpdates 得到的新版本信息，下载完成后用它上报版本号。 */
 let pendingUpdate: { version: string; notes: string | null; channel: UpdateChannel } | null = null
+/** 是否已下载完成、等待安装。防止未下载时点击"重启并安装"变成静默空操作。 */
+let updateDownloaded = false
 
 function emitStatus(status: UpdateStatus): void {
   for (const listener of statusListeners) {
@@ -111,6 +113,7 @@ function applyChannel(channel: UpdateChannel): void {
   autoUpdater.allowPrerelease = channel === 'beta'
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
+  updateDownloaded = false
 }
 
 export function initAutoUpdater(): void {
@@ -168,6 +171,7 @@ export async function downloadAppUpdate(): Promise<{ ok: boolean; error?: string
   }
   try {
     await autoUpdater.downloadUpdate()
+    updateDownloaded = true
     return { ok: true }
   } catch (error) {
     return { ok: false, error: toMessage(error) }
@@ -181,6 +185,9 @@ export function quitAndInstallUpdate(): { ok: boolean; error?: string } {
   }
   if (!isInstalledBuild()) {
     return { ok: false, error: '便携版不支持应用内自动安装，请手动下载新版本替换' }
+  }
+  if (!updateDownloaded) {
+    return { ok: false, error: '更新尚未下载完成，请先点击「下载」' }
   }
   try {
     autoUpdater.quitAndInstall(false, true)
@@ -209,6 +216,7 @@ autoUpdater.on('download-progress', (progress) => {
 })
 
 autoUpdater.on('update-downloaded', () => {
+  updateDownloaded = true
   const version = pendingUpdate?.version ?? null
   emitStatus({
     currentVersion: app.getVersion(),

@@ -374,7 +374,11 @@ function formatSpeed(bytesPerSecond: number): string {
 const appUpdateProgressText = computed(() => {
   const current = appUpdateStatus.value
   if (!current) return appUpdateStatusText.value
-  if (appUpdateDownloaded.value) return '已下载完成，可点击「重启并安装」'
+  if (appUpdateDownloaded.value) {
+    return current.installSupported
+      ? '已下载完成，可点击「重启并安装」'
+      : '已下载完成（便携版请手动下载安装包替换）'
+  }
   if (appUpdateDownloading.value && appUpdateProgressPercent.value !== null) {
     const percent = Math.round(appUpdateProgressPercent.value)
     const parts = ['正在下载 ' + percent + '%']
@@ -452,6 +456,10 @@ async function downloadAppUpdateSelf(): Promise<void> {
 }
 
 async function handleInstallAppUpdate(): Promise<void> {
+  if (!appUpdateDownloaded.value) {
+    message.warning('请先下载更新')
+    return
+  }
   const result = await installAppUpdate()
   if (!result.ok) {
     message.error(result.error || '安装更新失败')
@@ -895,6 +903,7 @@ onUnmounted(() => {
             </div>
             <div class="settings-row__inline">
               <a-button
+                v-if="!appUpdateDownloaded"
                 :loading="appUpdateDownloading"
                 :disabled="appUpdateDownloading"
                 @click="downloadAppUpdateSelf"
@@ -902,7 +911,7 @@ onUnmounted(() => {
                 下载
               </a-button>
               <a-button
-                v-if="appUpdateStatus.installSupported"
+                v-if="appUpdateDownloaded && appUpdateStatus.installSupported"
                 type="primary"
                 @click="handleInstallAppUpdate"
                 >重启并安装</a-button
