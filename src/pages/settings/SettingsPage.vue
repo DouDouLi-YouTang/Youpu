@@ -343,6 +343,9 @@ const appUpdateDownloading = ref(false)
 const appUpdateStatus = ref<AppUpdateStatus | null>(null)
 const appUpdateProgressPercent = ref<number | null>(null)
 const appUpdateLastSpeed = ref(0)
+const appUpdateReceivedBytes = ref(0)
+const appUpdateTotalBytes = ref(0)
+const appUpdateDownloaded = ref(false)
 let unsubAppUpdateProgress: (() => void) | null = null
 
 const appUpdateChannel = computed({
@@ -371,11 +374,18 @@ function formatSpeed(bytesPerSecond: number): string {
 const appUpdateProgressText = computed(() => {
   const current = appUpdateStatus.value
   if (!current) return appUpdateStatusText.value
+  if (appUpdateDownloaded.value) return '已下载完成，可点击「重启并安装」'
   if (appUpdateDownloading.value && appUpdateProgressPercent.value !== null) {
+    const percent = Math.round(appUpdateProgressPercent.value)
+    const parts = ['正在下载 ' + percent + '%']
+    if (appUpdateTotalBytes.value > 0) {
+      parts.push(
+        formatBytes(appUpdateReceivedBytes.value) + ' / ' + formatBytes(appUpdateTotalBytes.value)
+      )
+    }
     const speed = formatSpeed(appUpdateLastSpeed.value)
-    return speed
-      ? '正在下载 ' + Math.round(appUpdateProgressPercent.value) + '% (' + speed + ')'
-      : '正在下载 ' + Math.round(appUpdateProgressPercent.value) + '%'
+    if (speed) parts.push(speed)
+    return parts.join(' · ')
   }
   return appUpdateStatusText.value
 })
@@ -388,6 +398,7 @@ async function handleAppUpdateCheck(target?: AppUpdateChannelMode): Promise<void
   }
   appUpdateChecking.value = true
   appUpdateProgressPercent.value = null
+  appUpdateDownloaded.value = false
   try {
     const result = await checkAppUpdate(mode === 'beta' ? 'beta' : 'latest')
     appUpdateStatus.value = result
@@ -419,11 +430,17 @@ function confirmAppUpdateDownload(result: AppUpdateStatus): void {
 
 async function downloadAppUpdateSelf(): Promise<void> {
   appUpdateDownloading.value = true
+  appUpdateDownloaded.value = false
   appUpdateProgressPercent.value = 0
+  appUpdateReceivedBytes.value = 0
+  appUpdateTotalBytes.value = 0
+  appUpdateLastSpeed.value = 0
   try {
     const result = await downloadAppUpdate()
     if (!result.ok) {
       message.error(result.error || '下载更新失败')
+    } else {
+      appUpdateDownloaded.value = true
     }
   } catch (error) {
     logger.error('下载应用更新失败', error)
@@ -456,6 +473,8 @@ onMounted(() => {
   unsubAppUpdateProgress = onAppUpdateProgress((p) => {
     appUpdateProgressPercent.value = p.percent
     appUpdateLastSpeed.value = p.bytesPerSecond
+    appUpdateReceivedBytes.value = p.receivedBytes
+    appUpdateTotalBytes.value = p.totalBytes
   })
   if (settingsStore.appUpdateChannel !== 'off') void handleAppUpdateCheck()
 })
@@ -870,6 +889,9 @@ onUnmounted(() => {
                   查看更新说明
                 </a>
               </p>
+            </div>
+            <div v-if="appUpdateStatus.releaseNotes" class="app-update__notes">
+              {{ appUpdateStatus.releaseNotes }}
             </div>
             <div class="settings-row__inline">
               <a-button

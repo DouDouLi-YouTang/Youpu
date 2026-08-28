@@ -60,6 +60,9 @@ jobs:
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
+          # release-notes.md 作为 Release 正文；electron-builder 同时把它写进
+          # latest.yml/beta.yml 的 releaseNotes 字段，供客户端「更新说明」展示。
+          body_path: build/release-notes.md
           files: |
             dist/*/youpu-*.exe
             dist/*/youpu-*.exe.blockmap
