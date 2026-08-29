@@ -108,8 +108,9 @@ export function onDownloadProgress(listener: ProgressListener): () => void {
 }
 
 function applyChannel(channel: UpdateChannel): void {
-  // GitHub provider：allowPrerelease 决定是否接受 pre-release Release；
-  // 更新元数据文件名由 provider 按 tag 的 prerelease 段自动推导(latest.yml/beta.yml)。
+  // 打包时 publish.channel 会被 electron-builder 写进 app-update.yml，导致 autoUpdater.channel
+  // 被固定成 beta；这里必须在运行时用用户选择的通道覆盖，否则「正式版」通道也会去拉 beta.yml。
+  autoUpdater.channel = channel
   autoUpdater.allowPrerelease = channel === 'beta'
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
