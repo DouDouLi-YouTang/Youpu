@@ -1159,7 +1159,9 @@ function registerIpcHandlers(): void {
   ipcMain.handle('api-server:restart', () => restartApiServer())
 
   // 应用自身更新(electron-updater/GitHub Releases)。channel: latest 正式 / beta 预发布
-  ipcMain.handle('app-update:check', (_event, channel: UpdateChannel) => checkForAppUpdate(channel))
+  ipcMain.handle('app-update:check', (_event, channel: UpdateChannel, allowDowngrade?: boolean) =>
+    checkForAppUpdate(channel, allowDowngrade === true)
+  )
   ipcMain.handle('app-update:download', () => downloadAppUpdate())
   ipcMain.handle('app-update:install', () => quitAndInstallUpdate())
 

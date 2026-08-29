@@ -1,6 +1,6 @@
 {
   "name": "youpu",
-  "version": "0.2.1-beta.6",
+  "version": "0.2.1-beta.7",
   "description": "基于 Electron 的桌面音乐播放器",
   "author": "兜兜里有糖",
   "private": false,

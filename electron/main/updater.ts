@@ -127,6 +127,10 @@ function applyChannel(channel: UpdateChannel): void {
     autoUpdater.setFeedURL({ provider: 'generic', url: localFeedUrl })
   }
   autoUpdater.channel = channel
+  // electron-updater 的 channel setter 会自动把 allowDowngrade 置 true（为「从 beta 退回正式」设计），
+  // 这会让同一通道内的旧版本也被当成可用更新（如 beta.7 提示降级到 beta.6）。这里显式关掉，
+  // 只有用户主动切换通道时才在 checkForAppUpdate 里临时放开。
+  autoUpdater.allowDowngrade = false
   autoUpdater.allowPrerelease = channel === 'beta'
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
@@ -139,7 +143,10 @@ export function initAutoUpdater(): void {
   autoUpdater.logger = console
 }
 
-export async function checkForAppUpdate(channel: UpdateChannel): Promise<UpdateStatus> {
+export async function checkForAppUpdate(
+  channel: UpdateChannel,
+  allowDowngrade = false
+): Promise<UpdateStatus> {
   const base = {
     currentVersion: app.getVersion(),
     channel,
@@ -153,6 +160,9 @@ export async function checkForAppUpdate(channel: UpdateChannel): Promise<UpdateS
     return { ...base, error: '开发环境不支持应用内更新，请安装打包版本' }
   }
   applyChannel(channel)
+  // 用户主动切换通道（如 beta -> latest）时允许降级到目标通道的最新版；
+  // 常规检查（进页面/手动点「检查更新」）不允许降级，避免 beta.7 反被提示更新到 beta.6。
+  if (allowDowngrade) autoUpdater.allowDowngrade = true
   try {
     const result = await autoUpdater.checkForUpdates()
     const info = result?.updateInfo

@@ -405,7 +405,8 @@ async function handleAppUpdateCheck(target?: AppUpdateChannelMode): Promise<void
   appUpdateProgressPercent.value = null
   appUpdateDownloaded.value = false
   try {
-    const result = await checkAppUpdate(mode === 'beta' ? 'beta' : 'latest')
+    // 用户主动切换通道时允许降级(如 beta 退回正式);进页面/手动点检查不允许,避免 beta.7 反被提示降级到 beta.6
+    const result = await checkAppUpdate(mode === 'beta' ? 'beta' : 'latest', target !== undefined)
     appUpdateStatus.value = result
     if (result.error) {
       message.warning(result.error)

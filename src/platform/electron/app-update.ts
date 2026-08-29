@@ -38,11 +38,14 @@ const NOT_AVAILABLE: AppUpdateStatus = {
   error: '当前环境不支持应用内更新'
 }
 
-export async function checkAppUpdate(channel: AppUpdateChannel): Promise<AppUpdateStatus> {
+export async function checkAppUpdate(
+  channel: AppUpdateChannel,
+  allowDowngrade = false
+): Promise<AppUpdateStatus> {
   const api = window.muiceDesktop
   if (!api) return NOT_AVAILABLE
   try {
-    return await api.appUpdate.check(channel)
+    return await api.appUpdate.check(channel, allowDowngrade)
   } catch (error) {
     return { ...NOT_AVAILABLE, error: error instanceof Error ? error.message : String(error) }
   }

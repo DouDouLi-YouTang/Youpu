@@ -362,8 +362,12 @@ const desktopApi = {
     }
   },
   appUpdate: {
-    check(channel: AppUpdateChannel): Promise<AppUpdateStatus> {
-      return ipcRenderer.invoke('app-update:check', channel) as Promise<AppUpdateStatus>
+    check(channel: AppUpdateChannel, allowDowngrade?: boolean): Promise<AppUpdateStatus> {
+      return ipcRenderer.invoke(
+        'app-update:check',
+        channel,
+        allowDowngrade
+      ) as Promise<AppUpdateStatus>
     },
     download(): Promise<AppUpdateActionResult> {
       return ipcRenderer.invoke('app-update:download') as Promise<AppUpdateActionResult>

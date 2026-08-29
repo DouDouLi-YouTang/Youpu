@@ -225,7 +225,7 @@ declare global {
       setSource(mode: 'light' | 'dark' | 'system'): Promise<void>
     }
     appUpdate: {
-      check(channel: 'latest' | 'beta'): Promise<AppUpdateStatus>
+      check(channel: 'latest' | 'beta', allowDowngrade?: boolean): Promise<AppUpdateStatus>
       download(): Promise<AppUpdateActionResult>
       install(): Promise<AppUpdateActionResult>
       onProgress(callback: (progress: AppUpdateProgress) => void): () => void
