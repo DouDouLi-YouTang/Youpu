@@ -1,3 +1,7 @@
+## v0.2.1-beta.6
+
+- 修复更新时「Failed to uninstall old application files: 2」：安装前更彻底地停掉后端同名进程，并清掉残留的同名进程，避免文件句柄锁住安装目录导致旧版卸载失败
+
 ## v0.2.1-beta.5
 
 - 修复切换更新通道后返回首页、按 Ctrl+R 刷新页面白屏的问题（路由改用 hash 模式，适配 file:// 加载）

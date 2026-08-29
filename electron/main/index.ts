@@ -3,7 +3,7 @@ import { execFile, fork, spawn, type ChildProcess } from 'node:child_process'
 import { createReadStream, createWriteStream, mkdirSync, statSync, truncateSync } from 'node:fs'
 import { cp, mkdir, open, readFile, readdir, rm, stat } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { extname, isAbsolute, join, resolve } from 'node:path'
+import { basename, extname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createConnection } from 'node:net'
 import { Readable } from 'node:stream'
@@ -524,15 +524,49 @@ function killProcessTree(child: ChildProcess): void {
   child.kill()
 }
 
+/** 兜底杀掉除主进程外的所有同名进程(后端 fork 与主进程同名 Youpu.exe)。
+ *  NSIS 的 CHECK_APP_RUNNING 也是同一思路(taskkill /IM <name> /FI "PID ne <pid>")。
+ *  若 stopTrackedApiServer 因跟踪丢失/超时而残留后端,其仍持有 $INSTDIR 内文件句柄,
+ *  会令卸载旧版本时报 "Failed to uninstall old application files: 2"。 */
+function killSameNameProcessesExceptSelf(): Promise<void> {
+  if (process.platform !== 'win32' || typeof process.pid !== 'number') return Promise.resolve()
+  const exeName = basename(process.execPath)
+  return new Promise((resolve) => {
+    let settled = false
+    const done = (): void => {
+      if (settled) return
+      settled = true
+      resolve()
+    }
+    try {
+      const killer = spawn(
+        'taskkill',
+        ['/IM', exeName, '/T', '/F', '/FI', `PID ne ${process.pid}`],
+        { windowsHide: true }
+      )
+      killer.once('exit', done)
+      killer.once('error', done)
+    } catch {
+      done()
+    }
+    setTimeout(done, 8000)
+  })
+}
+
 async function stopTrackedApiServer(): Promise<boolean> {
   const child = apiServerProcess
   if (!child || child.killed) return true
 
   killProcessTree(child)
-  const exited = await waitForChildExit(child)
+  let exited = await waitForChildExit(child)
+  // 第一次没退干净就补杀一次,避免 taskkill 偶发漏杀,后端仍持有安装目录文件句柄
+  if (!exited) {
+    killProcessTree(child)
+    exited = await waitForChildExit(child, 5000)
+  }
   if (apiServerProcess === child) apiServerProcess = null
 
-  const portClosed = await waitForPortState(false, 3000)
+  const portClosed = await waitForPortState(false, 5000)
   if (!exited || !portClosed) {
     console.warn('[api-server] 停止后端未完全完成', { exited, portClosed })
   }
@@ -1325,6 +1359,11 @@ if (!gotSingleInstanceLock) {
     // 若不等它退出,NSIS 会把它当成"应用还在运行"而误报「无法关闭」。
     setBeforeInstallHook(async () => {
       await stopTrackedApiServer()
+      // 兜底:清掉除主进程外的同名进程(后端 fork 与主进程同名),避免残留进程
+      // 锁住安装目录文件导致 NSIS 卸载旧版本报 "Failed to uninstall old application files: 2"
+      await killSameNameProcessesExceptSelf()
+      // 留一点时间让系统释放文件句柄,再拉起安装器
+      await new Promise((resolve) => setTimeout(resolve, 500))
     })
     // enumerateDevices 的音频输出设备名(label)需 media permission granted,主动授予,
     // 让设置页输出设备列表显示真实设备名(应用不录音,仅枚举设备用于 setSinkId 切换输出)。
