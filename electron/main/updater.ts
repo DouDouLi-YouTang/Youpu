@@ -83,6 +83,15 @@ let pendingUpdate: { version: string; notes: string | null; channel: UpdateChann
 /** 是否已下载完成、等待安装。防止未下载时点击"重启并安装"变成静默空操作。 */
 let updateDownloaded = false
 
+/** 拉起安装器前的清理钩子:主进程注册用于在 quitAndInstall 前停掉子进程(后端 API 服务)
+ *  并等待其退出,避免同名进程仍持有安装目录文件句柄,被 NSIS 误判为「应用还在运行」。 */
+type BeforeInstallHook = () => void | Promise<void>
+let beforeInstallHook: BeforeInstallHook | null = null
+
+export function setBeforeInstallHook(hook: BeforeInstallHook): void {
+  beforeInstallHook = hook
+}
+
 function emitStatus(status: UpdateStatus): void {
   for (const listener of statusListeners) {
     try {
@@ -179,8 +188,8 @@ export async function downloadAppUpdate(): Promise<{ ok: boolean; error?: string
   }
 }
 
-/** 退出并安装已下载的更新。isSilent=false 时由 NSIS 安装器自行展示界面。 */
-export function quitAndInstallUpdate(): { ok: boolean; error?: string } {
+/** 退出并静默安装已下载的更新(isSilent=true:NSIS 走 /S 无界面,装完自动重启应用)。 */
+export async function quitAndInstallUpdate(): Promise<{ ok: boolean; error?: string }> {
   if (!isPackaged()) {
     return { ok: false, error: '开发环境不支持应用内更新' }
   }
@@ -191,7 +200,9 @@ export function quitAndInstallUpdate(): { ok: boolean; error?: string } {
     return { ok: false, error: '更新尚未下载完成，请先点击「下载」' }
   }
   try {
-    autoUpdater.quitAndInstall(false, true)
+    // 先停掉子进程(后端 API 服务等)并等待退出,再拉起安装器,避免 NSIS 误报应用还在运行
+    if (beforeInstallHook) await beforeInstallHook()
+    autoUpdater.quitAndInstall(true, true)
     return { ok: true }
   } catch (error) {
     return { ok: false, error: toMessage(error) }

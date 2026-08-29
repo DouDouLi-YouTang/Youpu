@@ -170,6 +170,31 @@
   word-break: break-word;
 }
 
+.app-update-modal__ver {
+  margin: 0 0 10px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.app-update-modal__progress {
+  margin-top: 12px;
+}
+
+.app-update-modal__hint {
+  margin: 8px 0 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.app-update-modal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
 .accent-swatches {
   display: flex;
   flex-wrap: wrap;

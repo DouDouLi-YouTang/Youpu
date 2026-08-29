@@ -30,6 +30,7 @@ import {
   initAutoUpdater,
   onDownloadProgress,
   quitAndInstallUpdate,
+  setBeforeInstallHook,
   type UpdateChannel
 } from './updater'
 import {
@@ -1320,6 +1321,11 @@ if (!gotSingleInstanceLock) {
   app.whenReady().then(async () => {
     registerImageCors()
     initAutoUpdater()
+    // 更新安装前先停掉后端 API 服务并等待退出:后端是 fork 出来的同名进程(Youpu.exe),
+    // 若不等它退出,NSIS 会把它当成"应用还在运行"而误报「无法关闭」。
+    setBeforeInstallHook(async () => {
+      await stopTrackedApiServer()
+    })
     // enumerateDevices 的音频输出设备名(label)需 media permission granted,主动授予,
     // 让设置页输出设备列表显示真实设备名(应用不录音,仅枚举设备用于 setSinkId 切换输出)。
     session.defaultSession.setPermissionCheckHandler(() => {

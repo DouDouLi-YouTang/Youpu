@@ -1,6 +1,10 @@
 export default {
   appId: 'com.youpu.desktop',
   productName: '有谱',
+  // 可执行文件名用 ASCII(Youpu.exe):electron-builder NSIS 更新时按
+  // `IMAGENAME eq <exe名>` 用 tasklist/taskkill 检测并结束进程,中文 exe 名(有谱.exe)
+  // 在命令行里编码易错,会误报「有谱无法关闭,请手动关闭它」。显示名仍由 productName(有谱)决定。
+  executableName: 'Youpu',
   // 自动更新源：GitHub Releases。detectUpdateChannel 默认开启--版本号带
   // prerelease 段(如 0.2.0-beta.1)时生成 beta.yml，正式版本生成 latest.yml，
   // 客户端按通道(latest/beta)各自取到对应元数据，实现 beta/正式双通道更新。

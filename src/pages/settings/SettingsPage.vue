@@ -346,6 +346,7 @@ const appUpdateLastSpeed = ref(0)
 const appUpdateReceivedBytes = ref(0)
 const appUpdateTotalBytes = ref(0)
 const appUpdateDownloaded = ref(false)
+const appUpdateModalVisible = ref(false)
 let unsubAppUpdateProgress: (() => void) | null = null
 
 const appUpdateChannel = computed({
@@ -376,7 +377,7 @@ const appUpdateProgressText = computed(() => {
   if (!current) return appUpdateStatusText.value
   if (appUpdateDownloaded.value) {
     return current.installSupported
-      ? '已下载完成，可点击「重启并安装」'
+      ? '已下载完成，可点击「更新并重启」'
       : '已下载完成（便携版请手动下载安装包替换）'
   }
   if (appUpdateDownloading.value && appUpdateProgressPercent.value !== null) {
@@ -409,7 +410,7 @@ async function handleAppUpdateCheck(target?: AppUpdateChannelMode): Promise<void
     if (result.error) {
       message.warning(result.error)
     } else if (result.available) {
-      confirmAppUpdateDownload(result)
+      appUpdateModalVisible.value = true
     } else {
       message.success('当前已是最新版本 (' + result.currentVersion + ')')
     }
@@ -419,17 +420,6 @@ async function handleAppUpdateCheck(target?: AppUpdateChannelMode): Promise<void
   } finally {
     appUpdateChecking.value = false
   }
-}
-
-function confirmAppUpdateDownload(result: AppUpdateStatus): void {
-  Modal.confirm({
-    title: '发现应用新版本',
-    content: '当前 ' + result.currentVersion + '，最新 ' + result.version + '，是否下载更新？',
-    okText: '下载更新',
-    cancelText: '稍后',
-    centered: true,
-    onOk: () => downloadAppUpdateSelf()
-  })
 }
 
 async function downloadAppUpdateSelf(): Promise<void> {
@@ -883,39 +873,14 @@ onUnmounted(() => {
 
           <div
             v-if="appUpdateStatus && !appUpdateStatus.error && appUpdateStatus.available"
-            class="settings-row settings-row--stack"
+            class="settings-row"
           >
             <div class="settings-row__meta">
-              <p class="settings-row__label">新版本</p>
-              <p class="settings-row__hint">
-                <a
-                  :href="appUpdateStatus.releaseUrl || undefined"
-                  target="_blank"
-                  rel="noreferrer"
-                  class="settings-link"
-                >
-                  查看更新说明
-                </a>
-              </p>
-            </div>
-            <div v-if="appUpdateStatus.releaseNotes" class="app-update__notes">
-              {{ appUpdateStatus.releaseNotes }}
+              <p class="settings-row__label">新版本 {{ appUpdateStatus.version }}</p>
+              <p class="settings-row__hint">点击「查看更新」了解更新内容并下载</p>
             </div>
             <div class="settings-row__inline">
-              <a-button
-                v-if="!appUpdateDownloaded"
-                :loading="appUpdateDownloading"
-                :disabled="appUpdateDownloading"
-                @click="downloadAppUpdateSelf"
-              >
-                下载
-              </a-button>
-              <a-button
-                v-if="appUpdateDownloaded && appUpdateStatus.installSupported"
-                type="primary"
-                @click="handleInstallAppUpdate"
-                >重启并安装</a-button
-              >
+              <a-button @click="appUpdateModalVisible = true">查看更新</a-button>
             </div>
           </div>
 
@@ -925,14 +890,6 @@ onUnmounted(() => {
               <p class="settings-row__hint">{{ appUpdateProgressText }}</p>
             </div>
           </div>
-
-          <a-progress
-            v-if="appUpdateProgressPercent !== null"
-            :percent="Math.round(appUpdateProgressPercent)"
-            size="small"
-            status="active"
-            class="!mb-0"
-          />
 
           <div class="settings-actions">
             <a-button
@@ -948,6 +905,61 @@ onUnmounted(() => {
       </section>
     </div>
   </section>
+
+  <a-modal
+    v-model:open="appUpdateModalVisible"
+    :title="'发现新版本 ' + (appUpdateStatus?.version ?? '')"
+    :closable="!appUpdateDownloading"
+    :mask-closable="!appUpdateDownloading"
+    :footer="null"
+    centered
+    width="520px"
+  >
+    <div v-if="appUpdateStatus" class="app-update-modal">
+      <p class="app-update-modal__ver">
+        当前 {{ appUpdateStatus.currentVersion }} → 最新 {{ appUpdateStatus.version }}
+      </p>
+
+      <div v-if="appUpdateStatus.releaseNotes" class="app-update__notes">
+        {{ appUpdateStatus.releaseNotes }}
+      </div>
+
+      <div v-if="appUpdateDownloading || appUpdateDownloaded" class="app-update-modal__progress">
+        <a-progress
+          v-if="appUpdateProgressPercent !== null"
+          :percent="Math.round(appUpdateProgressPercent)"
+          size="small"
+          status="active"
+        />
+        <p class="app-update-modal__hint">{{ appUpdateProgressText }}</p>
+      </div>
+
+      <div class="app-update-modal__actions">
+        <template v-if="!appUpdateDownloaded">
+          <a-button v-if="!appUpdateDownloading" @click="appUpdateModalVisible = false">
+            稍后
+          </a-button>
+          <a-button v-if="!appUpdateDownloading" type="primary" @click="downloadAppUpdateSelf">
+            下载更新
+          </a-button>
+          <a-button v-if="appUpdateDownloading" @click="appUpdateModalVisible = false">
+            后台下载
+          </a-button>
+        </template>
+        <template v-else>
+          <a-button @click="appUpdateModalVisible = false">稍后</a-button>
+          <a-button
+            v-if="appUpdateStatus.installSupported"
+            type="primary"
+            @click="handleInstallAppUpdate"
+          >
+            更新并重启
+          </a-button>
+          <a-button v-else @click="appUpdateModalVisible = false">知道了</a-button>
+        </template>
+      </div>
+    </div>
+  </a-modal>
 </template>
 
 <!-- package-0.1.21 拆分样式（家族: settings-page）：原 #app 双前缀已改为 scoped，特异性不降且位于末位，赢家不变 -->
