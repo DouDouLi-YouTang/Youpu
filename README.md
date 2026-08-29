@@ -85,6 +85,39 @@ npm run dist
 
 产物会输出到 `dist/<版本号>/` 目录。
 
+## 本地更新测试（不发线上）
+
+改自动更新/安装流程时，先在本地验证，不要每次发到 GitHub Releases。
+
+```bash
+# 1. 本地构建安装包（--publish never，只产出 dist/<版本>/，不发布）
+npm run dist:local
+
+# 2. 起本地更新源（默认托管 dist/<当前版本>/，端口 8080）
+npm run serve:updates
+```
+
+然后启动已安装的打包应用，让它指向本地源：
+
+```bash
+# Windows（cmd）
+set YOUPU_UPDATE_FEED_URL=http://127.0.0.1:8080 && "%LOCALAPPDATA%\Programs\youpu\Youpu.exe"
+
+# Windows（PowerShell）
+$env:YOUPU_UPDATE_FEED_URL="http://127.0.0.1:8080"; & "$env:LOCALAPPDATA\Programs\youpu\Youpu.exe"
+```
+
+原理：`electron/main/updater.ts` 的 `applyChannel` 检测到环境变量 `YOUPU_UPDATE_FEED_URL` 时，
+改用 generic provider 从本地服务器拉 `<通道>.yml`（`beta.yml`/`latest.yml`），
+安装包按 yml 里的相对路径从本地下载。
+
+完整验证一条链：
+
+1. 把旧版本装到机器上（包含本地源切换代码的那版）；
+2. 改版本号 → `npm run dist:local` 构建新版本；
+3. `npm run serve:updates` 起服务；
+4. 带 `YOUPU_UPDATE_FEED_URL` 启动旧版 → 检查更新 → 下载 → 更新并重启；
+5. 验证无误后再走「发布新版本」发线上。
 ## 发布新版本（维护者）
 
 ### 方式一：一键脚本（推荐）

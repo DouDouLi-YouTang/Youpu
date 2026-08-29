@@ -119,6 +119,13 @@ export function onDownloadProgress(listener: ProgressListener): () => void {
 function applyChannel(channel: UpdateChannel): void {
   // 打包时 publish.channel 会被 electron-builder 写进 app-update.yml，导致 autoUpdater.channel
   // 被固定成 beta；这里必须在运行时用用户选择的通道覆盖，否则「正式版」通道也会去拉 beta.yml。
+  // 本地测试：设置 YOUPU_UPDATE_FEED_URL 后改用 generic provider 指向本地静态服务器
+  // （例如 dist/0.2.1-beta.6/ 由 scripts/serve-updates.mjs 托管），离线验证更新流程，
+  // 无需每次发到 GitHub Releases。
+  const localFeedUrl = process.env.YOUPU_UPDATE_FEED_URL
+  if (localFeedUrl) {
+    autoUpdater.setFeedURL({ provider: 'generic', url: localFeedUrl })
+  }
   autoUpdater.channel = channel
   autoUpdater.allowPrerelease = channel === 'beta'
   autoUpdater.autoDownload = false
