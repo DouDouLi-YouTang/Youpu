@@ -1,5 +1,5 @@
 /**
- * 51.la 网站统计(V6)集成。
+ * 站点统计 SDK 集成。
  *
  * 真实 id/ck 不写入本仓库 —— 由 CI 打包时通过环境变量 VITE_LA_51_ID /
  * VITE_LA_51_CK 注入(源码与公开仓库均不出现明文),防止统计 id 被他人冒用。
@@ -39,10 +39,10 @@ export function initLa51Analytics(): void {
       window.LA?.init({ id, ck })
     }
     script.onerror = () => {
-      console.warn('[analytics] 51.la SDK 加载失败,已跳过统计上报')
+      console.warn('[analytics] 统计 SDK 加载失败,已跳过统计上报')
     }
     document.head.appendChild(script)
   } catch (error) {
-    console.warn('[analytics] 51.la 初始化失败:', error)
+    console.warn('[analytics] 统计 SDK 初始化失败:', error)
   }
 }
