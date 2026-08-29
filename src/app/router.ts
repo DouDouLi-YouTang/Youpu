@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-router'
 
 import { routes } from '@/constants/routes'
 import { useAuthStore } from '@/stores/auth.store'
@@ -59,13 +59,15 @@ const routeRecords: RouteRecordRaw[] = [
     component: () => import('@/pages/personal-center/PersonalCenterPage.vue'),
     meta: { requiresAuth: true }
   },
-  // 兜底:未匹配的路由重定向到发现页,避免 app 打开时右侧空白
-  // (dev hot reload 保留旧路径 / 打包 file:// 下 createWebHistory 取到文件路径时触发)
+  // 兜底:未匹配的路由重定向到发现页(404 → 首页)
   { path: '/:pathMatch(.*)*', redirect: routes.discover }
 ]
 
+// 用 hash 模式:打包后窗口以 loadFile(file://) 加载,history 模式会把 URL 推到
+// file:/// 等不存在的路径,导航回来或 Ctrl+R 刷新就白屏;hash 模式路由在 # 后,
+// 刷新永远重新加载 index.html,不受影响。
 export const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHashHistory(),
   routes: routeRecords
 })
 
