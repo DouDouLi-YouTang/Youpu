@@ -18,6 +18,16 @@
 - 🖥️ **桌面体验**：迷你模式、系统托盘、倍速播放、多档音质
 - 🔄 **自动更新**：内置更新器，正式版 / Beta 版双通道
 
+## 截图
+
+### 主页
+
+<img src="screenshots/home.png" alt="主页" width="720" />
+
+### 歌词面板
+
+<img src="screenshots/lyrics.png" alt="歌词面板" width="720" />
+
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=DouDouLi-YouTang/Youpu&type=Date)](https://star-history.com/#DouDouLi-YouTang/Youpu&Date)
