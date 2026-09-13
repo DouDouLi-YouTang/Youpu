@@ -906,62 +906,61 @@ onUnmounted(() => {
         </div>
       </section>
     </div>
+    <a-modal
+      v-model:open="appUpdateModalVisible"
+      :title="'发现新版本 ' + (appUpdateStatus?.version ?? '')"
+      :closable="!appUpdateDownloading"
+      :mask-closable="!appUpdateDownloading"
+      :footer="null"
+      centered
+      width="520px"
+    >
+      <div v-if="appUpdateStatus" class="app-update-modal">
+        <p class="app-update-modal__ver">
+          当前 {{ appUpdateStatus.currentVersion }} → 最新 {{ appUpdateStatus.version }}
+        </p>
+
+        <div v-if="appUpdateStatus.releaseNotes" class="app-update__notes">
+          {{ appUpdateStatus.releaseNotes }}
+        </div>
+
+        <div v-if="appUpdateDownloading || appUpdateDownloaded" class="app-update-modal__progress">
+          <a-progress
+            v-if="appUpdateProgressPercent !== null"
+            :percent="Math.round(appUpdateProgressPercent)"
+            size="small"
+            status="active"
+          />
+          <p class="app-update-modal__hint">{{ appUpdateProgressText }}</p>
+        </div>
+
+        <div class="app-update-modal__actions">
+          <template v-if="!appUpdateDownloaded">
+            <a-button v-if="!appUpdateDownloading" @click="appUpdateModalVisible = false">
+              稍后
+            </a-button>
+            <a-button v-if="!appUpdateDownloading" type="primary" @click="downloadAppUpdateSelf">
+              下载更新
+            </a-button>
+            <a-button v-if="appUpdateDownloading" @click="appUpdateModalVisible = false">
+              后台下载
+            </a-button>
+          </template>
+          <template v-else>
+            <a-button @click="appUpdateModalVisible = false">稍后</a-button>
+            <a-button
+              v-if="appUpdateStatus.installSupported"
+              type="primary"
+              @click="handleInstallAppUpdate"
+            >
+              更新并重启
+            </a-button>
+            <a-button v-else @click="appUpdateModalVisible = false">知道了</a-button>
+          </template>
+        </div>
+      </div>
+    </a-modal>
   </section>
-
-  <a-modal
-    v-model:open="appUpdateModalVisible"
-    :title="'发现新版本 ' + (appUpdateStatus?.version ?? '')"
-    :closable="!appUpdateDownloading"
-    :mask-closable="!appUpdateDownloading"
-    :footer="null"
-    centered
-    width="520px"
-  >
-    <div v-if="appUpdateStatus" class="app-update-modal">
-      <p class="app-update-modal__ver">
-        当前 {{ appUpdateStatus.currentVersion }} → 最新 {{ appUpdateStatus.version }}
-      </p>
-
-      <div v-if="appUpdateStatus.releaseNotes" class="app-update__notes">
-        {{ appUpdateStatus.releaseNotes }}
-      </div>
-
-      <div v-if="appUpdateDownloading || appUpdateDownloaded" class="app-update-modal__progress">
-        <a-progress
-          v-if="appUpdateProgressPercent !== null"
-          :percent="Math.round(appUpdateProgressPercent)"
-          size="small"
-          status="active"
-        />
-        <p class="app-update-modal__hint">{{ appUpdateProgressText }}</p>
-      </div>
-
-      <div class="app-update-modal__actions">
-        <template v-if="!appUpdateDownloaded">
-          <a-button v-if="!appUpdateDownloading" @click="appUpdateModalVisible = false">
-            稍后
-          </a-button>
-          <a-button v-if="!appUpdateDownloading" type="primary" @click="downloadAppUpdateSelf">
-            下载更新
-          </a-button>
-          <a-button v-if="appUpdateDownloading" @click="appUpdateModalVisible = false">
-            后台下载
-          </a-button>
-        </template>
-        <template v-else>
-          <a-button @click="appUpdateModalVisible = false">稍后</a-button>
-          <a-button
-            v-if="appUpdateStatus.installSupported"
-            type="primary"
-            @click="handleInstallAppUpdate"
-          >
-            更新并重启
-          </a-button>
-          <a-button v-else @click="appUpdateModalVisible = false">知道了</a-button>
-        </template>
-      </div>
-    </div>
-  </a-modal>
 </template>
 
 <!-- package-0.1.21 拆分样式（家族: settings-page）：原 #app 双前缀已改为 scoped，特异性不降且位于末位，赢家不变 -->
