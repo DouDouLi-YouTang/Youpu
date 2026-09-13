@@ -1,9 +1,9 @@
 import AdmZip from 'adm-zip'
 import { execFile, fork, spawn, type ChildProcess } from 'node:child_process'
 import { createReadStream, createWriteStream, mkdirSync, statSync, truncateSync } from 'node:fs'
-import { cp, mkdir, open, readFile, readdir, rm, stat } from 'node:fs/promises'
+import { cp, mkdir, open, readFile, readdir, rm, rmdir, stat, unlink } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { basename, extname, isAbsolute, join, resolve } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createConnection } from 'node:net'
 import { Readable } from 'node:stream'
@@ -570,6 +570,57 @@ async function killBackendForksExceptSelf(): Promise<void> {
     if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 1000))
   }
   console.warn('[updater] 后端同名进程未能完全退出,安装器可能提示应用仍在运行')
+}
+
+/**
+ * 清理安装目录里会让 NSIS 卸载旧版本失败的两类条目:
+ *  - 符号链接:un.atomicRMDir 要把安装目录内每个条目跨盘"改名"到 %TEMP%,符号链接
+ *    跨盘改名会失败;若链接指向上级目录,递归还会沿链接无限展开(实测旧版 npm 自链接
+ *    resources/server/node_modules/youpu -> ..\.. 会把更新卡死几十分钟后报「卸载失败」)。
+ *  - 空目录:atomicRMDir 用 `目录\*.*` 判断条目是不是目录,空目录匹配不到,会被当成
+ *    文件去跨盘改名 → 必然失败(旧版把播放缓存写进 resources/cache 就是这个坑)。
+ * 安装目录必须保持"运行期只读 + 结构规整",否则更新时卸载旧版就会卡住。
+ * 删除失败不影响主流程(尽力而为)。
+ */
+async function cleanInstallDirForUpdate(root: string, label: string): Promise<void> {
+  let links = 0
+  let emptyDirs = 0
+  const walk = async (dir: string): Promise<number> => {
+    let entries
+    try {
+      entries = await readdir(dir, { withFileTypes: true })
+    } catch {
+      return 0
+    }
+    let fileCount = 0
+    for (const entry of entries) {
+      const full = join(dir, entry.name)
+      if (entry.isSymbolicLink()) {
+        // 先 unlink(文件链接),失败再 rmdir(目录符号链接/junction),都只删链接本身
+        await unlink(full).catch(async () => {
+          await rmdir(full).catch(() => undefined)
+        })
+        links++
+        continue
+      }
+      if (entry.isDirectory()) {
+        const sub = await walk(full)
+        if (sub === 0) {
+          await rmdir(full).catch(() => undefined)
+          emptyDirs++
+          continue
+        }
+        fileCount += sub
+      } else {
+        fileCount++
+      }
+    }
+    return fileCount
+  }
+  await walk(root)
+  if (links > 0 || emptyDirs > 0) {
+    console.log(`[${label}] 清理安装目录:符号链接 ${links} 个,空目录 ${emptyDirs} 个`)
+  }
 }
 
 async function stopTrackedApiServer(): Promise<boolean> {
@@ -1290,6 +1341,9 @@ async function ensureServerNodeModules(serverDir: string): Promise<void> {
     } catch {
       new AdmZip(zipPath).extractAllTo(modulesDir, true)
     }
+    // 旧版 zip 里可能含有 npm 生成的符号链接(server/node_modules/youpu -> 上级目录),
+    // 解压后必须清掉:安装目录内存在符号链接会让更新时卸载旧版失败甚至卡死。
+    await cleanInstallDirForUpdate(modulesDir, 'server-modules')
   } catch (error) {
     // 清理半解压残留,下次启动重新解压
     await rm(modulesDir, { recursive: true, force: true }).catch(() => undefined)
@@ -1384,6 +1438,8 @@ if (!gotSingleInstanceLock) {
       // 不能用 taskkill /IM Youpu.exe:那会把主进程自己的 GPU/网络子进程也杀掉,
       // Electron 会不断重启它们,反而导致 NSIS 一直认为"应用还在运行"。
       await killBackendForksExceptSelf()
+      // 安装目录瘦身:清掉符号链接与空目录(NSIS 卸载旧版会因此失败/卡死,详见函数注释)
+      await cleanInstallDirForUpdate(dirname(process.execPath), 'updater')
       // 留一点时间让系统释放文件句柄,再拉起安装器
       await new Promise((resolve) => setTimeout(resolve, 500))
     })
