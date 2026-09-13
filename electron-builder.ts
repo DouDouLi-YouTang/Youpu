@@ -86,6 +86,10 @@ export default {
     createDesktopShortcut: true,
     createStartMenuShortcut: true,
     shortcutName: '有谱',
-    artifactName: 'youpu-${version}-setup.${ext}'
+    artifactName: 'youpu-${version}-setup.${ext}',
+    // 不生成 .blockmap,发布里也就没有差分元数据:客户端不会再去尝试增量下载,
+    // 避免「下了几十 MB → 校验失败 → 进度清零 → 重下全量」。客户端另有
+    // autoUpdater.disableDifferentialDownload = true 双保险(见 electron/main/updater.ts)。
+    differentialPackage: false
   }
 }

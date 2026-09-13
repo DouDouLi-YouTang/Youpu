@@ -143,6 +143,10 @@ function applyChannel(channel: UpdateChannel): void {
   autoUpdater.allowDowngrade = false
   autoUpdater.allowPrerelease = channel === 'beta'
   autoUpdater.autoDownload = false
+  // 关闭增量(差分)下载:electron-updater 会先按 blockmap 只下差异块,拼装后校验失败就
+  // 删掉重下全量,用户看到的是「进度涨到 27MB → 清零 → 从头下 158MB」。直接全量下载,
+  // 进度条只有一条,行为可预期(配套:electron-builder 侧不再生成 .blockmap)。
+  autoUpdater.disableDifferentialDownload = true
   // 安装一律走「两阶段更新」看门狗(见 quitAndInstallUpdate),永久关闭 electron-updater
   // 自带的 install-on-quit:它是【先】启动安装器、【后】退应用,安装器启动时主进程与
   // 后端 fork(同名 Youpu.exe)往往还活着并持有安装目录文件句柄,NSIS 卸载旧版本因此
