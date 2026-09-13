@@ -2,8 +2,8 @@
  * Electron 主进程播放缓存管理器。
  *
  * 职责：
- *  - 选择缓存目录：软件目录 `cache` 写入探针成功则使用，否则 fallback 到
- *    `userData/cache`。
+ *  - 选择缓存目录：固定 `userData/cache`(安装目录运行期只读,不参与缓存写入),
+ *    并清理旧版遗留在安装目录里的 `resources/cache`。
  *  - 维护 `index.json`：加载、创建、原子写入（临时文件 + rename）、损坏恢复。
  *  - resolve：校验索引条目、文件存在、文件非空，返回本地 `file://` source。
  *  - warm：按缓存键去重 in-flight 任务，流式 fetch 远程音频到临时文件，
@@ -66,9 +66,11 @@ const inflightWarms = new Map<string, Promise<PlaybackCacheWarmResult>>()
 
 // --- 目录选择 ---
 
-function getSoftwareCacheDir(): string {
-  // dev: 项目根/cache(app.getAppPath 指向项目根)
-  // 打包: resources/cache(process.resourcesPath 指向 extraResources 根)
+/**
+ * 安装目录内的历史缓存路径(dev 为项目根/cache,打包为 resources/cache)。
+ * 仅用于清理旧版本遗留数据,不再作为写入目标。
+ */
+function getLegacySoftwareCacheDir(): string {
   if (app.isPackaged) return resolve(process.resourcesPath, 'cache')
   return resolve(app.getAppPath(), 'cache')
 }
@@ -89,14 +91,16 @@ async function tryWriteProbe(directory: string): Promise<boolean> {
   }
 }
 
+/**
+ * 缓存目录固定为 userData/cache,**不再写入安装目录**。
+ *
+ * 历史教训:旧版优先写 `resources/cache`(安装目录内)。安装目录出现任何
+ * 运行期可写数据,升级时 NSIS 卸载器 `un.atomicRMDir` 的裸 `Rename`(无跨卷/
+ * 占用回退)就可能整目录改名失败 → 回滚 → 安装器弹出
+ * "Failed to uninstall old application files"。安装目录必须保持运行期只读。
+ */
 async function resolveCacheDirectory(): Promise<CacheDirectoryState> {
   if (directoryState) return directoryState
-
-  const softwareDir = getSoftwareCacheDir()
-  if (await tryWriteProbe(softwareDir)) {
-    directoryState = { directory: softwareDir, location: 'software' }
-    return directoryState
-  }
 
   const userDataDir = getUserDataCacheDir()
   if (await tryWriteProbe(userDataDir)) {
@@ -106,6 +110,21 @@ async function resolveCacheDirectory(): Promise<CacheDirectoryState> {
 
   directoryState = { directory: '', location: 'unavailable' }
   return directoryState
+}
+
+/**
+ * 清掉旧版本遗留在安装目录(或 dev 项目根)里的 cache 目录。
+ * 只在 userData 缓存可用时执行,避免清理后无可用缓存目录。
+ * 尽力而为:失败(如目录被占用)不影响主流程。
+ */
+async function cleanupLegacySoftwareCache(directory: string): Promise<void> {
+  const legacy = getLegacySoftwareCacheDir()
+  if (!legacy || legacy === directory) return
+  try {
+    await rm(legacy, { recursive: true, force: true })
+  } catch {
+    // 清理失败不致命:遗留数据最多继续占空间,不再被写入
+  }
 }
 
 // --- 索引 ---
@@ -147,6 +166,9 @@ async function ensureIndex(): Promise<{
   if (dir.location === 'unavailable') return null
   if (!indexCache) {
     indexCache = await loadIndex(dir.directory)
+    // 首次解析目录时清理旧版遗留在安装目录里的缓存(旧版优先写
+    // resources/cache,那是升级失败的诱因之一)。
+    await cleanupLegacySoftwareCache(dir.directory)
   }
   return { dir, index: indexCache }
 }

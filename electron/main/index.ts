@@ -524,33 +524,52 @@ function killProcessTree(child: ChildProcess): void {
   child.kill()
 }
 
-/** 兜底杀掉除主进程外的所有同名进程(后端 fork 与主进程同名 Youpu.exe)。
- *  NSIS 的 CHECK_APP_RUNNING 也是同一思路(taskkill /IM <name> /FI "PID ne <pid>")。
- *  若 stopTrackedApiServer 因跟踪丢失/超时而残留后端,其仍持有 $INSTDIR 内文件句柄,
- *  会令卸载旧版本时报 "Failed to uninstall old application files: 2"。 */
-function killSameNameProcessesExceptSelf(): Promise<void> {
-  if (process.platform !== 'win32' || typeof process.pid !== 'number') return Promise.resolve()
+/** 后端 fork 的命令行特征:主进程 fork 它时传入的入口脚本路径。
+ *  只有后端 fork 的命令行含此特征;主进程自身的 GPU/网络等 Chromium 子进程虽然
+ *  也叫 Youpu.exe,但命令行是 --type=gpu-process 之类,不会命中。 */
+const API_SERVER_FORK_MARKER = 'start-api-server.cjs'
+
+/** 用命令行特征精确杀掉后端 fork(仅杀后端,不碰主进程自己的 Chromium 子进程)。
+ *  之前用 taskkill /IM Youpu.exe 会误杀 GPU/网络子进程,Electron 会不断重启它们,
+ *  轮询永远杀不干净,这正是「进程结束不干净」的元凶之一。 */
+async function killBackendForksExceptSelf(): Promise<void> {
+  if (process.platform !== 'win32' || typeof process.pid !== 'number') return
   const exeName = basename(process.execPath)
-  return new Promise((resolve) => {
-    let settled = false
-    const done = (): void => {
-      if (settled) return
-      settled = true
-      resolve()
-    }
-    try {
-      const killer = spawn(
-        'taskkill',
-        ['/IM', exeName, '/T', '/F', '/FI', `PID ne ${process.pid}`],
-        { windowsHide: true }
+  const filter = `Name = '${exeName}'`
+  const where = `Where-Object { $_.CommandLine -like '*${API_SERVER_FORK_MARKER}*' }`
+  const killScript =
+    `Get-CimInstance Win32_Process -Filter "${filter}" | ${where} | ` +
+    `ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`
+  const countScript = `@(Get-CimInstance Win32_Process -Filter "${filter}" | ${where}).Count`
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await new Promise<void>((resolve) => {
+      execFile(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-Command', killScript],
+        { windowsHide: true, timeout: 10000 },
+        () => resolve()
       )
-      killer.once('exit', done)
-      killer.once('error', done)
-    } catch {
-      done()
-    }
-    setTimeout(done, 8000)
-  })
+    })
+    // 杀掉后轮询确认后端 fork 真正消失(Stop-Process 异步,命令退出 ≠ 进程已死)
+    const remaining = await new Promise<number>((resolve) => {
+      execFile(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-Command', countScript],
+        { windowsHide: true, timeout: 10000 },
+        (error, stdout) => {
+          if (error) {
+            resolve(-1)
+            return
+          }
+          const count = parseInt(stdout.trim(), 10)
+          resolve(Number.isNaN(count) ? -1 : count)
+        }
+      )
+    })
+    if (remaining === 0) return
+    if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 1000))
+  }
+  console.warn('[updater] 后端同名进程未能完全退出,安装器可能提示应用仍在运行')
 }
 
 async function stopTrackedApiServer(): Promise<boolean> {
@@ -1361,9 +1380,10 @@ if (!gotSingleInstanceLock) {
     // 若不等它退出,NSIS 会把它当成"应用还在运行"而误报「无法关闭」。
     setBeforeInstallHook(async () => {
       await stopTrackedApiServer()
-      // 兜底:清掉除主进程外的同名进程(后端 fork 与主进程同名),避免残留进程
-      // 锁住安装目录文件导致 NSIS 卸载旧版本报 "Failed to uninstall old application files: 2"
-      await killSameNameProcessesExceptSelf()
+      // 兜底:按命令行特征清掉残留的后端 fork(与主进程同名 Youpu.exe)。
+      // 不能用 taskkill /IM Youpu.exe:那会把主进程自己的 GPU/网络子进程也杀掉,
+      // Electron 会不断重启它们,反而导致 NSIS 一直认为"应用还在运行"。
+      await killBackendForksExceptSelf()
       // 留一点时间让系统释放文件句柄,再拉起安装器
       await new Promise((resolve) => setTimeout(resolve, 500))
     })
@@ -1393,6 +1413,32 @@ if (!gotSingleInstanceLock) {
         `[api-server] 打包后端启动异常: ${error instanceof Error ? error.stack || error.message : String(error)}\n`
       )
     }
+    // 自动化测试钩子(仅开发/联调用):设置 YOUPU_TEST_AUTO_UPDATE=1 并配合
+    // YOUPU_UPDATE_FEED_URL 指向本地更新源后,启动应用会自动走完
+    // 检查更新 → 下载 → 退出并安装(看门狗)全流程,无需在界面上手点。
+    // 放在创建窗口之前,避免渲染层启动检查(默认 beta 通道)与其抢通道。
+    // 两个环境变量必须同时设置,正式包不会走到此分支。
+    if (process.env.YOUPU_TEST_AUTO_UPDATE === '1' && process.env.YOUPU_UPDATE_FEED_URL) {
+      try {
+        console.log('[updater-test] 开始检查更新(latest)...')
+        const status = await checkForAppUpdate('latest')
+        console.log('[updater-test] 检查结果:', JSON.stringify(status))
+        if (!status.available) throw new Error('测试源无可用更新: ' + (status.error ?? ''))
+        console.log('[updater-test] 开始下载更新...')
+        const download = await downloadAppUpdate()
+        console.log('[updater-test] 下载结果:', JSON.stringify(download))
+        if (!download.ok) throw new Error(download.error ?? '下载失败')
+        console.log('[updater-test] 开始安装更新(两阶段看门狗流程)...')
+        const install = await quitAndInstallUpdate()
+        console.log('[updater-test] 安装安排结果:', JSON.stringify(install))
+        if (!install.ok) throw new Error(install.error ?? '安装失败')
+        // quitAndInstallUpdate 内部会在 300ms 后 app.exit(0),这里无需再退出
+      } catch (error) {
+        console.error('[updater-test] 测试失败:', error)
+        app.exit(1)
+      }
+    }
+
     createMainWindow()
     createTray()
 

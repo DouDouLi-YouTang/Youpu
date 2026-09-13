@@ -75,6 +75,9 @@ _recovery/
 # Temporary git worktree baselines (agent/CI scratch worktrees at repo root)
 .head-baseline-wt/
 
+# Local auto-update test harness (fake installer + fake feed + isolated app copy, ~550MB)
+.tmp-update-test/
+
 # OS / editor
 .DS_Store
 Thumbs.db

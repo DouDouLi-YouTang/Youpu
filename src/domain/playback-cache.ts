@@ -5,7 +5,11 @@
  * 这些可序列化结构。详见 backend quality-guidelines 的播放缓存场景。
  */
 
-export type PlaybackCacheLocation = 'software' | 'userData' | 'unavailable'
+/**
+ * 缓存位置。只可能是 userData(缓存固定写在 `userData/cache`,安装目录
+ * 运行期只读,不参与缓存写入)或 unavailable(连 userData 都不可写)。
+ */
+export type PlaybackCacheLocation = 'userData' | 'unavailable'
 
 export interface PlaybackCacheInfo {
   available: boolean

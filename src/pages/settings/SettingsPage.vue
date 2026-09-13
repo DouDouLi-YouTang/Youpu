@@ -112,8 +112,6 @@ const cacheLocationText = computed(() => {
   if (!cacheInfo.value) return '获取中…'
   if (!cacheInfo.value.available) return cacheInfo.value.lastError || '不可用'
   switch (cacheInfo.value.location) {
-    case 'software':
-      return '软件目录缓存'
     case 'userData':
       return '用户数据目录缓存'
     default:
@@ -454,6 +452,9 @@ async function handleInstallAppUpdate(): Promise<void> {
   const result = await installAppUpdate()
   if (!result.ok) {
     message.error(result.error || '安装更新失败')
+  } else {
+    appUpdateModalVisible.value = false
+    message.info('正在退出应用并启动安装程序，安装完成后将自动重启')
   }
 }
 

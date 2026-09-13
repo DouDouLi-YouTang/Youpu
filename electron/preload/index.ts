@@ -87,7 +87,7 @@ interface DownloadFileUrlResult {
 interface PlaybackCacheInfo {
   available: boolean
   directory: string | null
-  location: 'software' | 'userData' | 'unavailable'
+  location: 'userData' | 'unavailable'
   maxBytes: number
   usedBytes: number
   entryCount: number
