@@ -191,7 +191,6 @@ declare global {
     currentItem: import('@/domain/player').QueueItem | null
     fmMode: boolean
     sourcePlaylistId: number | null
-    level: import('@/domain/player').PlayableLevel
     volume: number
     muted: boolean
     /** 播放倍速(回收前的值)。 */

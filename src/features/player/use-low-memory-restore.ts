@@ -6,7 +6,6 @@ import { useAuthStore } from '@/stores/auth.store'
 import { usePlayerStore } from '@/stores/player.store'
 import { usePlayQueueStore } from '@/stores/play-queue.store'
 import { useSettingsStore } from '@/stores/settings.store'
-import { takeRendererRecreated } from './renderer-session'
 
 /**
  * 低内存模式的渲染层配套。音频永远在主进程引擎窗口播放(渲染层只发控制命令),
@@ -87,7 +86,7 @@ function startHandoverTracking(): void {
     pending = setTimeout(write, HANDOVER_WRITE_INTERVAL_MS)
   }
 
-  // 启动先对齐一次:本代次还没播过歌时把上一轮的残留快照清掉(见 write)。
+  // 启动先对齐一次:还没播过歌时把上一轮的残留快照清掉(见 write)。
   write()
 
   // 位置不触发写入(引擎有精确进度),只在状态/曲目/设置变化时写。
@@ -119,7 +118,6 @@ function startHandoverTracking(): void {
  * 开启快照写入与位置回写。
  */
 export function useLowMemoryRestore(): void {
-  takeRendererRecreated()
   startHandoverTracking()
 
   // 播放位置回写 store → queue.positionMs(回收时随快照留给降级会话/暂停恢复)。

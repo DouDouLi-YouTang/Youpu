@@ -109,7 +109,7 @@ export default [
         console: 'readonly'
       }
     }
-  },
+  },
   {
     // 安装界面宿主的前端脚本(tools/setup-host/ui/*.js):运行在 WebView2 里的普通浏览器
     // 脚本,不经打包器、没有注入全局,需要显式声明浏览器环境,否则整目录 no-undef。

@@ -188,7 +188,6 @@ interface LowMemoryRestorePayload {
   currentItem: unknown | null
   fmMode: boolean
   sourcePlaylistId: number | null
-  level: string
   volume: number
   muted: boolean
   playbackRate: number

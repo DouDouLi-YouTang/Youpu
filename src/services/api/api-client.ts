@@ -53,7 +53,7 @@ export interface RequestConfig {
 }
 
 function resolveBaseUrl(): string {
-  // 本模块同时被渲染进程与主进程低内存后台会话(electron/main/bg-session)复用;
+  // 本模块同时被渲染进程与主进程低内存后台会话(electron/main/audio-engine.ts、bg-player.ts)复用;
   // 主进程运行时没有 import.meta.env,防御式读取避免直接崩掉请求。
   const fromEnv = (import.meta as { env?: { VITE_API_BASE_URL?: string } }).env?.VITE_API_BASE_URL
   return (fromEnv && fromEnv.trim()) || DEFAULT_BASE_URL

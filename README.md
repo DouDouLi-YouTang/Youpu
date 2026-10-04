@@ -83,8 +83,8 @@
 
 版本号遵循 [SemVer](https://semver.org/)：
 
-- `v0.2.0` -- 正式版
-- `v0.2.0-beta.1` -- Beta 预发布版
+- `v2.0.5` -- 正式版
+- `v2.0.5-beta.1` -- Beta 预发布版
 
 应用内更新通道对应关系：
 
@@ -179,14 +179,14 @@ $env:YOUPU_UPDATE_FEED_URL="http://127.0.0.1:8080"; & "$env:LOCALAPPDATA\Program
 
 ```bash
 # 正式版
-npm version 0.2.1
+npm version 2.0.5
 git push github main
-git push github v0.2.1
+git push github v2.0.5
 
 # Beta 版（版本号必须带 -beta.n 后缀，才会被标记为 Pre-release）
-npm version 0.3.0-beta.1
+npm version 2.0.5-beta.1
 git push github main
-git push github v0.3.0-beta.1
+git push github v2.0.5-beta.1
 ```
 
 > 注意：推送目标是 `github` 远程（GitHub 仓库），不是 `origin`（指向 gitee）。

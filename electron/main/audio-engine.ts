@@ -298,7 +298,6 @@ export function getEngineRestorePayload(): LowMemoryRestorePayload | null {
     currentItem: deputy?.currentItem ?? engineItem,
     fmMode: deputy?.fmMode ?? false,
     sourcePlaylistId: deputy?.sourcePlaylistId ?? null,
-    level: deputy?.level ?? 'standard',
     volume: engineVolume,
     muted: engineMuted,
     playbackRate: deputy?.rate ?? engineRate
@@ -442,7 +441,7 @@ async function deputyPlay(item: QueueItem | null): Promise<void> {
     return
   }
   d.currentItem = item
-  d.queue.currentIndex = Math.max(0, d.queue.items.indexOf(item))
+  d.queue.currentIndex = resolveQueueItemIndex(d.queue.items, item, d.queue.currentIndex)
   d.retriedCurrent = false
   engineItem = item
   const meta = metaForItem(item)

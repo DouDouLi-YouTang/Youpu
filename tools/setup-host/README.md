@@ -67,7 +67,8 @@ node scripts/build-setup-host.mjs
 | `build/setup-host/YoupuSetupHost.exe` | 引导程序,UI 已作为内嵌资源打进 exe |
 | `build/setup-host/WebView2Loader.dll` | WebView2 原生加载器(x64,随仓库提交) |
 
-它由 `electron-builder.ts` 的 `beforePack` 钩子在打包前自动调用,再由
+它由 `npm run build` 里的 `build:setup-host` 步骤(`scripts/build-setup-host.mjs`,
+CI 见 `.github/workflows/release.yml`)在打包前自动调用,再由
 `build/installer.nsh` 的 `SETUP_HOST_DIR` 引用。单独构建用于本地调试。
 
 ## 目录结构

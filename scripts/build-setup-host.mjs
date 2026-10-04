@@ -57,7 +57,7 @@ function findCompiler() {
     '未找到 .NET Framework 编译器 csc.exe。\n' +
       '  安装界面宿主用 .NET Framework 4 编译(Win10+ 自带),请确认系统存在\n' +
       `  ${CSC_CANDIDATES[0]}\n` +
-      '  若确实要放弃自定义安装界面,可移除 electron-builder.ts 的 beforePack 钩子。'
+      '  若确实要放弃自定义安装界面,可移除 package.json 里 build 脚本的 build:setup-host 步骤。'
   )
   return ''
 }

@@ -1,7 +1,7 @@
 import type { PlaybackMode, PlayableLevel, PlaybackState, QueueItem } from './player'
 
 /**
- * 低内存模式(共享域类型:主进程 memory-mode / bg-session、preload、渲染层共用,
+ * 低内存模式(共享域类型:主进程 memory-mode / audio-engine、preload、渲染层共用,
  * 改名要三端同步)。
  *
  * 行为:开启后窗口最小化/隐藏到托盘,经短暂延迟:
@@ -67,7 +67,6 @@ export interface LowMemoryRestorePayload {
   currentItem: QueueItem | null
   fmMode: boolean
   sourcePlaylistId: number | null
-  level: PlayableLevel
   volume: number
   muted: boolean
   /** 播放倍速(回收前的值,渲染层恢复 UI 用)。 */

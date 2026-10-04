@@ -9,7 +9,7 @@ import { join } from 'node:path'
  * 低内存模式回收主渲染进程时,正在播放的音频移交给它继续播:
  * Electron 主进程没有媒体栈,音频解码只能在某个渲染进程里做 —— 这个窗口
  * 就是“最小可能的渲染进程”(无 Vue/无 UI,内存几十 MB,远小于主渲染进程的
- * 200–400MB)。窗口由主进程 bg-session 编排,自己不做任何决策。
+ * 200–400MB)。窗口由主进程音频引擎(electron/main/audio-engine.ts)编排,自己不做任何决策。
  *
  * 页面经 muice-bg:// 自定义协议提供(HTML 由主进程内存直接返回,不需要
  * 构建产物里多一个静态文件),preload 暴露 bgBridge 供页面收发 IPC。

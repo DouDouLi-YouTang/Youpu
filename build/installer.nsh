@@ -46,7 +46,7 @@
   !define /ifndef INSTALL_REGISTRY_KEY "Software\${APP_GUID}"
   !define /ifndef UNINSTALL_REGISTRY_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}"
 
-  # 安装界面宿主的产物目录(beforePack 钩子生成)。File 指令的相对路径相对项目根解析。
+  # 安装界面宿主的产物目录(由 npm run build 的 build:setup-host 步骤生成)。File 指令的相对路径相对项目根解析。
   !ifndef SETUP_HOST_DIR
     !define SETUP_HOST_DIR "${PROJECT_DIR}\build\setup-host"
   !endif

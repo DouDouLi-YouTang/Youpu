@@ -1,11 +1,11 @@
 import { getNextIndex, getPreviousIndex, type QueueTraversalState } from './playback-mode'
 
 /**
- * 后台播放器切歌决策(纯函数,主进程 bg-session 调用,镜像渲染层 player store
+ * 后台播放器切歌决策(纯函数,主进程音频引擎(electron/main/audio-engine.ts)调用,镜像渲染层 player store
  * 的 next()/previous()/handleEnded() 语义)。
  *
  * 决策只回答“接下来做什么”,不做网络请求、不碰音频 —— 具体“怎么播”由
- * electron/main/bg-session.ts 执行,便于单测覆盖全部模式分支。
+ * electron/main/audio-engine.ts 执行,便于单测覆盖全部模式分支。
  */
 
 /** ended=自然播完;next/prev=用户/托盘/媒体键手动切歌。 */

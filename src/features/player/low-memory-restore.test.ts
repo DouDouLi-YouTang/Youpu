@@ -206,7 +206,6 @@ describe('低内存模式:恢复窗口后的状态同步', () => {
       currentItem: jsonClone(items[2]),
       fmMode: false,
       sourcePlaylistId: null,
-      level: 'hires',
       volume: 0.35,
       muted: false,
       playbackRate: 1.25
@@ -263,7 +262,6 @@ describe('低内存模式:恢复窗口后的状态同步', () => {
         currentItem: jsonClone(item),
         fmMode: false,
         sourcePlaylistId: null,
-        level: 'hires',
         volume: 1,
         muted: false,
         playbackRate: 1

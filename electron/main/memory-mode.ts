@@ -21,7 +21,6 @@ import { rememberRendererSnapshot } from './audio-engine'
  * 与渲染层的约定(改名要同步):
  *   localStorage['muice:play-queue']         —— 队列(pinia 持久化,play-queue.store)
  *   localStorage['muice:playback-handover']  —— 播放状态快照(use-low-memory-restore 持续写)
- *   sessionStorage['muice:renderer-session'] —— “重建而非冷启动”的代次标记
  */
 
 /** 回收前从主渲染进程一次性抓取的运行时状态。 */
@@ -72,10 +71,6 @@ export function setLowMemoryMode(next: LowMemoryMode): void {
   if (mode === 'off') {
     cancelScheduledRelease()
   }
-}
-
-export function getLowMemoryMode(): LowMemoryMode {
-  return mode
 }
 
 /** memory-mode 自身维护的状态;backgroundPlaying 由 index.ts 合并(audio-engine 所有)。 */
@@ -236,10 +231,6 @@ async function releaseRenderer(): Promise<void> {
 }
 
 let lastBounds: Electron.Rectangle | null = null
-
-export function getLastBounds(): Electron.Rectangle | null {
-  return lastBounds
-}
 
 /** 重建主窗口并显示;返回新窗口。 */
 function recreateNow(): BrowserWindow | null {

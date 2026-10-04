@@ -25,7 +25,7 @@ export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
     resolve: {
-      // 低内存模式的后台会话(bg-session)复用 src/services 的纯 fetch API 模块,
+      // 低内存模式的后台会话(electron/main/audio-engine.ts、bg-player.ts)复用 src/services 的纯 fetch API 模块,
       // 这些模块用 @/ 别名,主进程构建也要能解析。
       alias: {
         '@': fromRoot('./src')
