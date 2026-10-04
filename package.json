@@ -10,7 +10,9 @@
     "dev": "concurrently -k -n api,electron \"npm run server:dev\" \"electron-vite dev\"",
     "dev:renderer": "vite --host 127.0.0.1 --port 1420",
     "dev:electron": "electron-vite dev",
-    "build": "npm run typecheck && electron-vite build",
+    "build": "npm run build:app && npm run pack:modules && npm run build:setup-host && cross-env ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ electron-builder --publish never",
+    "build:app": "npm run typecheck && electron-vite build",
+    "build:setup-host": "node scripts/build-setup-host.mjs",
     "build:web": "vite build",
     "preview": "electron-vite preview",
     "typecheck": "vue-tsc --noEmit && tsc --noEmit -p tsconfig.electron.json",
@@ -21,10 +23,7 @@
     "icon": "node scripts/build-icon.mjs",
     "server:install": "npm install --prefix server --ignore-scripts",
     "server:dev": "cross-env NODE_OPTIONS=\"--require ${INIT_CWD}/scripts/netease-dns-preload.cjs --dns-result-order=ipv4first\" NPM_CONFIG_FETCH_TIMEOUT=5000 NPM_CONFIG_FETCH_RETRIES=0 npm run --prefix server start",
-    "dist": "npm run build && npm run pack:modules && cross-env ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ electron-builder",
-    "dist:local": "npm run build && npm run pack:modules && cross-env PUBLISH_CHANNEL=beta ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ electron-builder --publish never",
-    "serve:updates": "node scripts/serve-updates.mjs",
-    "pack:modules": "node scripts/pack-server-modules.mjs",
+    "serve:updates": "node scripts/serve-updates.mjs",    "pack:modules": "node scripts/pack-server-modules.mjs",
     "postinstall": "npm run server:install"
   },
   "dependencies": {

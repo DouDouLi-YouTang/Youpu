@@ -12,13 +12,11 @@ export default [
       'node_modules/**',
       'server/**',
       '.mcp-servers/**',
-      // Claude Code agent worktrees 与 baseline worktree 各自携带 tsconfig.json,
+      // Claude Code agent worktree 各自携带 tsconfig.json,
       // 会导致 typescript-eslint 检测到多个 tsconfigRootDir 候选而报 parsing error。
       '.claude/**',
-      '.head-baseline-wt/**',
-      // 本地工具目录(git 未追踪,CI 上不存在):Trellis 工作区与恢复副本。
+      // 本地工具目录(git 未追踪,CI 上不存在):恢复副本。
       // 不加忽略会导致本地 eslint . 扫描上万文件而卡死。
-      '.trellis/**',
       '_recovery/**'
     ]
   },
@@ -109,6 +107,25 @@ export default [
       globals: {
         process: 'readonly',
         console: 'readonly'
+      }
+    }
+  },
+  {
+    // 安装界面宿主的前端脚本(tools/setup-host/ui/*.js):运行在 WebView2 里的普通浏览器
+    // 脚本,不经打包器、没有注入全局,需要显式声明浏览器环境,否则整目录 no-undef。
+    files: ['tools/setup-host/ui/**/*.js'],
+    languageOptions: {
+      globals: {
+        window: 'readonly',
+        document: 'readonly',
+        console: 'readonly',
+        performance: 'readonly',
+        requestAnimationFrame: 'readonly',
+        cancelAnimationFrame: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        URLSearchParams: 'readonly',
+        PointerEvent: 'readonly'
       }
     }
   }

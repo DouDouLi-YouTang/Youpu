@@ -34,6 +34,28 @@ export function createQueueItem(
 }
 
 /**
+ * 按 uid 定位 `item` 在 `items` 里的下标(低内存模式的回收快照 / 恢复载荷使用)。
+ *
+ * 不能用 indexOf/item 引用比较:主进程抓快照时,队列与播放移交快照是两份各自
+ * JSON.parse 出来的数据(localStorage 的 muice:play-queue 与 muice:playback-handover),
+ * 同一首歌在两个数组里是不同的对象 —— 引用比较永远匹配不上,currentIndex 会被
+ * 错算成 0,恢复窗口后队列高亮、下一首/上一首、降级会话自动切歌全部错位。
+ *
+ * `item` 为 null(没有当前曲目)返回 -1;uid 匹配不上时回退 `fallbackIndex`
+ * (队列自己记录的 currentIndex),仍不合法则回到 0(至少不会越界)。
+ */
+export function resolveQueueItemIndex(
+  items: QueueItem[],
+  item: QueueItem | null,
+  fallbackIndex = -1
+): number {
+  if (!item) return -1
+  const byUid = items.findIndex((entry) => entry.uid === item.uid)
+  if (byUid >= 0) return byUid
+  return fallbackIndex >= 0 && fallbackIndex < items.length ? fallbackIndex : 0
+}
+
+/**
  * Replace the entire queue with `songs`, starting playback at `startIndex`.
  * Returns the new items array and the clamped current index.
  */

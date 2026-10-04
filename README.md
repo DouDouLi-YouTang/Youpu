@@ -46,6 +46,39 @@
 
 安装后应用会通过 GitHub Releases 自动检查更新（设置 -> 应用更新 可切换通道或关闭）。
 
+### 安装界面
+
+安装包用的是自定义界面（不是 NSIS 默认的五步向导）：一个无边框窗口里用 WebView2 渲染
+品牌动画、核心功能展示与安装选项，点「开始安装」后原地切换到进度与完成态，全程单窗口。
+
+- 实现与排障见 [`tools/setup-host/README.md`](tools/setup-host/README.md)
+- 机器上没有 WebView2 运行时时会自动回退到系统原生向导，安装不会失败
+
+## 低内存模式
+
+桌面音乐播放器大部分时间挂在托盘里，而 Chromium 的渲染进程常驻 200–400MB ——
+最小化并不会释放它。低内存模式会在窗口最小化/隐藏到托盘后把渲染进程整个销毁，
+再次唤起时重建。音频始终由主进程里一个隐藏的播放引擎输出，渲染层只负责发控制命令，
+所以回收渲染进程不会打断音乐。
+
+设置 -> 低内存模式 是一个开关（默认开启）：
+
+| 模式 | 行为 |
+| --- | --- |
+| 开启（默认） | 最小化/隐藏到托盘后延迟 8 秒回收渲染进程；回收期间音乐继续播放 |
+| 关闭 | 不回收渲染进程 |
+
+迷你模式与置顶窗口不回收。回收时正在播放的话，播完会按原来的队列 / 私人 FM /
+心动模式自动续上下一首；再次唤起窗口时重建渲染进程，向引擎取回队列、当前曲目、
+进度、音量与倍速，正在播就继续显示在播，不用重新点播放。
+
+实现要点：回收前主进程会抓一份播放队列与播放状态快照，既用于渲染层不在期间的
+降级播放，也作为重建后的恢复载荷；重建后由
+`src/features/player/use-low-memory-restore.ts` 连上引擎并对齐界面（不会重新加载音频）。
+开关状态存在 `userData/low-memory.json`；回收延迟可用环境变量
+`YOUPU_LOW_MEMORY_DELAY_MS` 覆盖（调试/自动化用）。旧版的「仅在未播放时回收 /
+一直回收」统一迁移为开启。
+
 ## 版本与更新通道
 
 版本号遵循 [SemVer](https://semver.org/)：
@@ -87,21 +120,29 @@ node node_modules/electron/install.js
 
 ## 打包
 
-想生成 Windows 安装包：
-
 ```bash
-npm run dist
+npm run build
 ```
 
-产物会输出到 `dist/<版本号>/` 目录。
+一条命令完成：类型检查 → 编译渲染层/主进程 → 打包内嵌后端 → 编译安装界面宿主 → 生成安装包。
+产物输出到 `dist/<版本号>/`：
+
+| 文件 | 说明 |
+| --- | --- |
+| `youpu-x.y.z-setup.exe` | NSIS 安装包（自定义安装界面） |
+| `youpu-x.y.z-portable.zip` | 便携版 |
+| `latest.yml` / `beta.yml` | 自动更新元数据（正式版 `latest.yml`，Beta 版 `beta.yml`） |
+
+带 `--publish never`，只产出本地文件、不会发布到 GitHub Releases。发布走下面的
+「发布新版本」（推 tag 后由 CI 打包并上传）。
 
 ## 本地更新测试（不发线上）
 
 改自动更新/安装流程时，先在本地验证，不要每次发到 GitHub Releases。
 
 ```bash
-# 1. 本地构建安装包（--publish never，只产出 dist/<版本>/，不发布）
-npm run dist:local
+# 1. 本地构建安装包（只产出 dist/<版本>/，不发布）
+npm run build
 
 # 2. 起本地更新源（默认托管 dist/<当前版本>/，端口 8080）
 npm run serve:updates
@@ -124,7 +165,7 @@ $env:YOUPU_UPDATE_FEED_URL="http://127.0.0.1:8080"; & "$env:LOCALAPPDATA\Program
 完整验证一条链：
 
 1. 把旧版本装到机器上（包含本地源切换代码的那版）；
-2. 改版本号 → `npm run dist:local` 构建新版本；
+2. 改版本号 → `npm run build` 构建新版本；
 3. `npm run serve:updates` 起服务；
 4. 带 `YOUPU_UPDATE_FEED_URL` 启动旧版 → 检查更新 → 下载 → 更新并重启；
 5. 验证无误后再走「发布新版本」发线上。

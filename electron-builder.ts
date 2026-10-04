@@ -87,6 +87,15 @@ export default {
     createStartMenuShortcut: true,
     shortcutName: '有谱',
     artifactName: 'youpu-${version}-setup.${ext}',
+    // 自定义安装界面:build/installer.nsh 把安装包拆成两种身份 ——
+    //   · 用户双击时只当"启动器":.onInit 释放并使用 YoupuSetupHost.exe
+    //     (WebView2 渲染的选项页 + 进度页 + 完成页),然后立刻退出;
+    //   · 引导程序点「开始安装」后用 /S /youpu-nested 拉起同一份安装包做静默安装。
+    // 启动器必须立刻退出:electron-builder 的单实例互斥体在 .onInit 里创建并持有
+    // 到进程结束,安装包进程活着就会让静默安装被判成"已有实例"并以退出码 2 中止。
+    // WebView2 缺失或宿主起不来时,回退到 electron-builder 原生向导。
+    // 宿主产物由 `npm run build` 里的 build:setup-host 步骤生成。
+    include: 'build/installer.nsh',
     // 不生成 .blockmap,发布里也就没有差分元数据:客户端不会再去尝试增量下载,
     // 避免「下了几十 MB → 校验失败 → 进度清零 → 重下全量」。客户端另有
     // autoUpdater.disableDifferentialDownload = true 双保险(见 electron/main/updater.ts)。

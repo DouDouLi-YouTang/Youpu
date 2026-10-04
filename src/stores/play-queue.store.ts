@@ -21,7 +21,20 @@ interface PlayQueueState {
   history: string[]
   /** Shuffle traversal order (indices into `items`). */
   shuffleOrder: number[]
+  /**
+   * 当前曲目的播放位置(ms)。低内存模式回收渲染进程后,无后台会话时(回收前
+   * 未在播放)由 use-low-memory-restore 读回并恢复为暂停态;正在播放时进度来自
+   * 音频引擎的 position 事件(引擎一直持有音频),这里只是兜底。
+   * 由 use-low-memory-restore 跟随 player.currentTimeMs 节流回写。
+   */
+  positionMs: number
 }
+
+/**
+ * 持久化键必须与主进程 memory-mode.ts 的 QUEUE_STORAGE_KEY 完全一致:
+ * 回收渲染进程前主进程会 executeJavaScript 读这个键做快照。
+ */
+export const PLAY_QUEUE_PERSIST_KEY = 'muice:play-queue'
 
 export const usePlayQueueStore = defineStore('play-queue', {
   state: (): PlayQueueState => ({
@@ -29,7 +42,8 @@ export const usePlayQueueStore = defineStore('play-queue', {
     currentIndex: -1,
     mode: 'sequence',
     history: [],
-    shuffleOrder: []
+    shuffleOrder: [],
+    positionMs: 0
   }),
 
   getters: {
@@ -104,6 +118,8 @@ export const usePlayQueueStore = defineStore('play-queue', {
       this.currentIndex = -1
       this.history = []
       this.shuffleOrder = []
+      // 队列清空后旧进度没有意义,留着会让下一次恢复把新队列 seek 到旧位置
+      this.positionMs = 0
     },
 
     setMode(mode: PlaybackMode): void {
@@ -114,6 +130,11 @@ export const usePlayQueueStore = defineStore('play-queue', {
       } else {
         this.shuffleOrder = []
       }
+    },
+
+    /** 记录当前曲目的播放位置(低内存模式重建渲染进程后续播用)。 */
+    setPosition(ms: number): void {
+      this.positionMs = Math.max(0, Math.round(ms))
     },
 
     /**
@@ -177,5 +198,12 @@ export const usePlayQueueStore = defineStore('play-queue', {
       this.shuffleOrder = []
       return item
     }
+  },
+
+  // 低内存模式销毁渲染进程前,主进程会读 localStorage['muice:play-queue'] 做快照
+  // (见 electron/main/memory-mode.ts),重建后再靠它恢复队列,所以键名必须显式写死,
+  // 不能依赖 pinia-plugin-persistedstate 以 store id 推导的默认键。
+  persist: {
+    key: PLAY_QUEUE_PERSIST_KEY
   }
 })

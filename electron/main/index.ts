@@ -1,6 +1,13 @@
 import AdmZip from 'adm-zip'
 import { execFile, fork, spawn, type ChildProcess } from 'node:child_process'
-import { createReadStream, createWriteStream, mkdirSync, statSync, truncateSync } from 'node:fs'
+import {
+  createReadStream,
+  createWriteStream,
+  mkdirSync,
+  statSync,
+  truncateSync,
+  writeFileSync
+} from 'node:fs'
 import { cp, mkdir, open, readFile, readdir, rm, rmdir, stat, unlink } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path'
@@ -23,7 +30,40 @@ import {
 } from 'electron'
 
 import { getCoverPath, saveCover } from './cover-cache'
+import {
+  attachAudioEngine,
+  attachRenderer,
+  destroyAudioEngine,
+  engineLoad,
+  enginePause,
+  enginePlay,
+  engineSeek,
+  engineSetMeta,
+  engineSetRate,
+  engineSetSink,
+  engineSetVolume,
+  engineStop,
+  getEngineRestorePayload,
+  initAudioEngine,
+  isEnginePlaying,
+  onEngineStateChanged,
+  routeMediaAction,
+  setEngineEventForwarder
+} from './audio-engine'
+import { registerBgPlayerProtocol } from './bg-player'
 import { registerDownloadIpcHandlers } from './downloads'
+import {
+  attachWindow as attachLowMemoryWindow,
+  disposeLowMemoryMode,
+  ensureWindowVisible,
+  getLowMemoryStatus,
+  initLowMemoryMode,
+  loadPersistedMode,
+  normalizeLowMemoryModeValue,
+  setLowMemoryMode
+} from './memory-mode'
+import type { LowMemoryMode } from '../../src/domain/low-memory'
+import type { QueueItem } from '../../src/domain/player'
 import {
   checkForAppUpdate,
   downloadAppUpdate,
@@ -101,6 +141,17 @@ protocol.registerSchemesAsPrivileged([
       stream: true,
       corsEnabled: true,
       bypassCSP: true
+    }
+  },
+  {
+    // 低内存模式的后台播放器页面(纯 <audio> 的极小隐藏窗口):
+    // HTML 由主进程内存返回,注册成 privileged scheme 让它拥有正常 origin,
+    // mediaSession/自定义协议音源(muice-cache:// 等)都能用。
+    scheme: 'muice-bg',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true
     }
   }
 ])
@@ -370,7 +421,10 @@ function registerCoverProtocol(): void {
   })
 }
 
+/** 主窗口;低内存模式回收渲染进程后会被销毁并置空,唤起时由 createMainWindow 重建。 */
 let mainWindow: BrowserWindow | null = null
+/** 应用正在退出:置位后不再让低内存模式回收/重建窗口,避免退出过程中又拉起一个渲染进程。 */
+let quitting = false
 let apiServerProcess: ChildProcess | null = null
 let tray: Tray | null = null
 /** 迷你模式尺寸(含进度条行) */
@@ -860,27 +914,31 @@ async function stopPackagedApiServer(): Promise<void> {
 
 /** 构建托盘右键菜单,isPlaying 决定第一项文字。 */
 function buildTrayMenu(isPlaying: boolean): Electron.Menu {
+  // webContents.send 需要对已销毁的 webContents 兜底:低内存模式回收后窗口被销毁,
+  // 播放控制命令改由音频引擎的降级会话执行(audio-engine routeMediaAction)。
+  const sendCommand = (command: 'play-pause' | 'prev' | 'next'): void => {
+    const contents = mainWindow?.webContents
+    if (contents && !contents.isDestroyed()) contents.send('tray:command', command)
+    else routeMediaAction(command)
+  }
   return Menu.buildFromTemplate([
     {
       label: isPlaying ? '暂停' : '播放',
-      click: () => mainWindow?.webContents.send('tray:command', 'play-pause')
+      click: () => sendCommand('play-pause')
     },
     {
       label: '上一首',
-      click: () => mainWindow?.webContents.send('tray:command', 'prev')
+      click: () => sendCommand('prev')
     },
     {
       label: '下一首',
-      click: () => mainWindow?.webContents.send('tray:command', 'next')
+      click: () => sendCommand('next')
     },
     { type: 'separator' },
     {
       label: '显示主窗口',
       click: () => {
-        if (mainWindow) {
-          mainWindow.show()
-          mainWindow.focus()
-        }
+        ensureWindowVisible()
       }
     },
     {
@@ -903,12 +961,11 @@ function createTray(): void {
 
     // 左键单击托盘图标显示/隐藏主窗口
     tray.on('click', () => {
-      if (!mainWindow) return
-      if (mainWindow.isVisible()) {
-        mainWindow.hide()
+      const win = mainWindow
+      if (win && !win.isDestroyed() && win.isVisible()) {
+        win.hide()
       } else {
-        mainWindow.show()
-        mainWindow.focus()
+        ensureWindowVisible()
       }
     })
   } catch (err) {
@@ -964,8 +1021,13 @@ function animateWindowResize(
   tick()
 }
 
-function createMainWindow(): void {
-  mainWindow = new BrowserWindow({
+/**
+ * 创建(或重建)主窗口,并注册低内存模式的回收钩子。
+ * 低内存模式会销毁窗口对象,唤起时再次调用本函数,因此这里必须对同一个窗口的
+ * 引用做局部绑定 —— 不能依赖外部 mainWindow(重建期间它可能是 null)。
+ */
+function createMainWindow(): BrowserWindow {
+  const win = new BrowserWindow({
     width: NORMAL_SIZE.width,
     height: NORMAL_SIZE.height,
     minWidth: 960,
@@ -987,38 +1049,66 @@ function createMainWindow(): void {
       sandbox: false
     }
   })
+  mainWindow = win
 
   // 外部链接(<a target="_blank">)用系统浏览器打开,而不是在应用内开新 Electron 窗口。
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http://') || url.startsWith('https://')) {
       void shell.openExternal(url)
     }
     return { action: 'deny' }
   })
 
-  mainWindow.once('ready-to-show', () => {
-    mainWindow?.show()
+  win.once('ready-to-show', () => {
+    if (!win.isDestroyed()) win.show()
   })
 
   // 拦截关闭事件:发 IPC 给 renderer 弹确认框,由 renderer 决定是退出还是最小化到托盘。
-  mainWindow.on('close', (e) => {
+  // destroy() 不触发 close,低内存模式回收走的就是那条路,不会弹确认框。
+  win.on('close', (e) => {
     e.preventDefault()
-    mainWindow?.webContents.send('window:close-requested')
+    if (!win.webContents.isDestroyed()) win.webContents.send('window:close-requested')
   })
 
   // Bubble maximize state changes back to the renderer so the title bar can
   // swap its "最大化 ↔ 还原" icon without polling.
-  mainWindow.on('maximize', () => {
-    mainWindow?.webContents.send('window:maximize-change', true)
+  win.on('maximize', () => {
+    if (!win.webContents.isDestroyed()) win.webContents.send('window:maximize-change', true)
   })
-  mainWindow.on('unmaximize', () => {
-    mainWindow?.webContents.send('window:maximize-change', false)
+  win.on('unmaximize', () => {
+    if (!win.webContents.isDestroyed()) win.webContents.send('window:maximize-change', false)
   })
 
+  // 低内存模式:窗口每次重建都要重新挂监听(监听器随窗口对象一起销毁)。
+  // 迷你模式不回收:主进程的 isMini 开关不随窗口重建,回收后新窗口会按迷你尺寸
+  // (320×80)重建而 isMini=false,标题栏与布局再也切不回正常模式。
+  attachLowMemoryWindow(win, () => !isMini)
+
   if (process.env.ELECTRON_RENDERER_URL) {
-    void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
+    void win.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
-    void mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    void win.loadFile(join(__dirname, '../renderer/index.html'))
+  }
+  return win
+}
+
+/** 低内存模式回收渲染进程前后的兜底:清空引用,后续 show/focus 由 ensureWindowVisible 重建。 */
+function teardownMainWindowReference(): void {
+  mainWindow = null
+}
+
+/**
+ * 低内存模式的配置持久化:与 memory-mode 的 loadPersistedMode 约定同一份文件
+ * (userData/low-memory.json,`{ "mode": "on" }`),不引入额外依赖。
+ */
+const LOW_MEMORY_CONFIG_FILE = 'low-memory.json'
+
+function persistLowMemoryMode(mode: LowMemoryMode): void {
+  try {
+    const file = join(app.getPath('userData'), LOW_MEMORY_CONFIG_FILE)
+    writeFileSync(file, JSON.stringify({ mode }), 'utf8')
+  } catch (error) {
+    console.warn('[low-memory] 保存低内存模式失败:', error)
   }
 }
 
@@ -1121,10 +1211,73 @@ function registerIpcHandlers(): void {
   // 避免深色 UI 上出现浅色/白色边框线)。初始 dark,renderer 主题切换时通过 IPC 更新。
   nativeTheme.themeSource = 'dark'
 
-  // renderer 推播放状态给主进程,供托盘菜单更新
+  // renderer 推播放状态给主进程:供托盘菜单更新文字(音频引擎的播放状态由
+  // onEngineStateChanged 单独驱动托盘,两边取并集即可保持一致)。
   ipcMain.on('player:state-push', (_event, state: string) => {
     lastPlayerState = state
-    tray?.setContextMenu(buildTrayMenu(state === 'playing'))
+    tray?.setContextMenu(buildTrayMenu(state === 'playing' || isEnginePlaying()))
+  })
+
+  // ---- 音频引擎控制命令:渲染层 AudioController 的 IPC 实现,音频从不依赖渲染进程 ----
+  interface AudioLoadIpcPayload {
+    url: string
+    resumeAtMs?: number
+    autoplay: boolean
+    volume: number
+    muted: boolean
+    rate: number
+    sinkId?: string
+    item: unknown
+    meta?: { title: string; artist: string; album: string; artworkUrl: string | null }
+  }
+  ipcMain.handle('audio:load', (_event, payload: AudioLoadIpcPayload) => {
+    void engineLoad({
+      url: payload.url,
+      resumeAtMs: payload.resumeAtMs,
+      autoplay: payload.autoplay,
+      volume: payload.volume,
+      muted: payload.muted,
+      rate: payload.rate,
+      sinkId: payload.sinkId,
+      item: (payload.item ?? null) as QueueItem | null
+    })
+    if (payload.meta) void engineSetMeta(payload.meta)
+    return true
+  })
+  ipcMain.handle('audio:play', () => void enginePlay())
+  ipcMain.handle('audio:pause', () => void enginePause())
+  ipcMain.handle('audio:stop', () => void engineStop())
+  ipcMain.handle('audio:seek', (_event, ms: number) => void engineSeek(Number(ms) || 0))
+  ipcMain.handle(
+    'audio:volume',
+    (_event, payload: { value: number; muted: boolean }) =>
+      void engineSetVolume(payload.value, payload.muted)
+  )
+  ipcMain.handle('audio:rate', (_event, value: number) => void engineSetRate(Number(value) || 1))
+  ipcMain.handle('audio:sink', (_event, id: string) => void engineSetSink(String(id ?? '')))
+  ipcMain.handle(
+    'audio:set-meta',
+    (_event, meta: { title: string; artist: string; album: string; artworkUrl: string | null }) =>
+      void engineSetMeta(meta)
+  )
+  // 渲染层启动完成(接管控制权),返回当前引擎状态快照。
+  // 注意先取载荷再清降级会话:降级期间切过的歌要随载荷还给渲染层。
+  ipcMain.handle('audio:attach', () => {
+    const payload = getEngineRestorePayload()
+    attachRenderer()
+    return payload
+  })
+
+  // 低内存模式:设置页读取状态 / 切换模式(模式写盘,重启后由 loadPersistedMode 读回)。
+  // backgroundPlaying 从音频引擎合并:渲染进程已回收、音乐仍在播时设置页要能看到。
+  ipcMain.handle('low-memory:get-status', () => ({
+    ...getLowMemoryStatus(),
+    backgroundPlaying: isEnginePlaying()
+  }))
+  ipcMain.handle('low-memory:set-mode', (_event, mode: unknown) => {
+    setLowMemoryMode(normalizeLowMemoryModeValue(mode))
+    persistLowMemoryMode(getLowMemoryStatus().mode)
+    return { ...getLowMemoryStatus(), backgroundPlaying: isEnginePlaying() }
   })
 
   ipcMain.handle('api-server:start', async () => {
@@ -1421,10 +1574,9 @@ if (!gotSingleInstanceLock) {
   app.quit()
 } else {
   app.on('second-instance', () => {
-    if (!mainWindow) return
-    if (mainWindow.isMinimized()) mainWindow.restore()
-    if (!mainWindow.isVisible()) mainWindow.show()
-    mainWindow.focus()
+    // 退出过程中(updater 正在装包)不再重建渲染进程
+    if (quitting) return
+    ensureWindowVisible()
   })
 
   app.whenReady().then(async () => {
@@ -1453,8 +1605,44 @@ if (!gotSingleInstanceLock) {
     registerCacheProtocol()
     registerFileProtocol()
     registerCoverProtocol()
+    registerBgPlayerProtocol()
     registerIpcHandlers()
     registerDownloadIpcHandlers(() => mainWindow)
+    // 常驻音频引擎:音频永远在引擎窗口播放,主渲染进程只发控制命令。
+    // 引擎事件转发给活跃渲染层;渲染层被低内存回收后由降级会话接管切歌。
+    initAudioEngine()
+    attachAudioEngine({
+      isRendererAlive: () => {
+        const contents = mainWindow?.webContents
+        return Boolean(contents && !contents.isDestroyed())
+      }
+    })
+    setEngineEventForwarder((event) => {
+      const contents = mainWindow?.webContents
+      if (!contents || contents.isDestroyed()) return
+      if (event.type === 'media-action') {
+        // 系统媒体键:复用托盘命令通道,渲染层 App.vue 已有处理
+        const action =
+          event.action === 'prev' ? 'prev' : event.action === 'next' ? 'next' : 'play-pause'
+        contents.send('tray:command', action)
+        return
+      }
+      contents.send('audio:event', event)
+    })
+    // 引擎播放状态变化(切歌/暂停/停止)时刷新托盘菜单文字
+    onEngineStateChanged((playing, songName) => {
+      if (songName) tray?.setToolTip(`有谱 - ${songName}`)
+      else tray?.setToolTip('有谱')
+      tray?.setContextMenu(buildTrayMenu(playing || lastPlayerState === 'playing'))
+    })
+    // 低内存模式:先装载持久化的模式,再交出回收/重建回调。必须在首次 createMainWindow 之前,
+    // 否则窗口挂载时模式还是默认 off,回收监听装上了也不会生效。
+    setLowMemoryMode(loadPersistedMode())
+    initLowMemoryMode({
+      recreateWindow: createMainWindow,
+      getWindow: () => mainWindow,
+      onWindowTornDown: teardownMainWindowReference
+    })
     try {
       const ready = await startPackagedApiServer()
       if (!ready) {
@@ -1499,7 +1687,9 @@ if (!gotSingleInstanceLock) {
     createTray()
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createMainWindow()
+      // 被低内存模式回收后窗口已被销毁,这里不能直接 show(),要走重建路径
+      if (quitting) return
+      ensureWindowVisible()
     })
   })
 }
@@ -1513,6 +1703,10 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  quitting = true
+  // 退出后不再回收/重建:清掉待触发的回收定时器与重建回调,销毁音频引擎
+  disposeLowMemoryMode()
+  destroyAudioEngine()
   if (apiServerProcess) killProcessTree(apiServerProcess)
   apiServerProcess = null
   // before-quit 时允许 destroy mainWindow(绕过 close 拦截)

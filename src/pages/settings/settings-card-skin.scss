@@ -1,0 +1,168 @@
+// settings-card-skin.scss - 设置卡片通用皮肤(settings-card/row/stat/alert/actions)。
+// 由 SettingsPage.vue(settings-page.scss @use)与子组件 LowMemorySettings.vue
+// <style scoped src> 各自引入:两处都是 scoped,规则带各自的 data-v 属性,
+// 各自匹配自己模板内的节点,互不污染。子组件拆分后父页 scoped 样式只能
+// 作用到子组件根元素,内部节点必须由组件自己持有这份皮肤。
+
+.settings-card {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-bg-secondary);
+
+  &__head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  &__icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+    color: var(--color-primary);
+    font-size: 16px;
+  }
+
+  &__title {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  &__sub {
+    margin: 2px 0 0;
+    color: var(--color-text-muted);
+    font-size: 12px;
+  }
+
+  &__rows {
+    padding: 8px 10px 12px;
+  }
+}
+
+.settings-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  padding: 12px;
+  border-radius: 12px;
+
+  + .settings-row {
+    margin-top: 2px;
+  }
+
+  &__meta {
+    /* 不要用 flex-basis: 200px：纵向 stack 时会变成 200px 高空白 */
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  &__label {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+
+  &__hint {
+    margin: 3px 0 0;
+    color: var(--color-text-muted);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  &__control {
+    flex: 0 1 240px;
+    width: 240px;
+    max-width: 100%;
+
+    /* 疑似死代码：模板里 settings-row__control 全部直接挂在 a-select 根元素上（无包装层），
+       该「后代 .ant-select」原本就选不中任何节点；按约定保留并 :deep 穿透，不改语义。 */
+    :deep(.ant-select) {
+      width: 100%;
+    }
+  }
+
+  &__segmented {
+    width: 100%;
+  }
+
+  &__inline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  &--stack {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  &--compact {
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+}
+
+.settings-alert {
+  margin: 8px 12px 4px;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px 4px;
+}
+
+.settings-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 8px 12px;
+
+  &--backend {
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  }
+}
+
+.settings-stat {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--color-control);
+
+  &__label {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: 11.5px;
+  }
+
+  &__value {
+    margin: 6px 0 0;
+    color: var(--color-text-primary);
+    font-size: 18px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__value--sm {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.35;
+    word-break: break-all;
+  }
+}

@@ -130,6 +130,74 @@ declare global {
     error?: string
   }
 
+  /** 低内存模式:与主进程 memory-mode.ts、src/domain/low-memory.ts 保持一致(改名要同步)。 */
+  type LowMemoryMode = 'off' | 'on'
+
+  /** SMTC 媒体通知元数据(渲染层推送)。 */
+  interface AudioMeta {
+    title: string
+    artist: string
+    album: string
+    artworkUrl: string | null
+  }
+
+  /** 音频引擎推送的播放事件(与 electron/main/bg-player.ts 的 BgPlayerEvent 对应)。 */
+  type AudioEngineEvent =
+    | {
+        type: 'state'
+        state: 'ready' | 'playing' | 'paused' | 'buffering' | 'ended' | 'error'
+        positionMs: number
+        durationMs: number
+      }
+    | { type: 'position'; positionMs: number }
+
+  /** 音频引擎控制命令载荷(audio.load)。 */
+  interface AudioLoadPayload {
+    url: string
+    resumeAtMs?: number
+    autoplay: boolean
+    volume: number
+    muted: boolean
+    rate: number
+    sinkId?: string
+    item?: LowMemoryRestorePayload['currentItem']
+    meta?: AudioMeta
+  }
+
+  interface LowMemoryStatus {
+    mode: LowMemoryMode
+    /** 当前渲染进程是否已被回收。 */
+    released: boolean
+    /** 上一次回收的时间戳(ms),未回收过为 null。 */
+    releasedAt: number | null
+    /** 回收/重建次数,便于设置页展示效果。 */
+    releaseCount: number
+    /** 后台播放器是否正在播(渲染进程已回收、音乐仍在继续)。 */
+    backgroundPlaying: boolean
+  }
+
+  /** 渲染进程重建时从主进程拉取的后台播放会话恢复载荷(结构与 domain/low-memory.ts 一致)。 */
+  interface LowMemoryRestorePayload {
+    playing: boolean
+    positionMs: number
+    /** 后台播放器当前音源 URL;null 时渲染进程回退为按 currentItem 重新解析。 */
+    url: string | null
+    queue: {
+      items: import('@/domain/player').QueueItem[]
+      currentIndex: number
+      mode: import('@/domain/player').PlaybackMode
+      shuffleOrder: number[]
+    } | null
+    currentItem: import('@/domain/player').QueueItem | null
+    fmMode: boolean
+    sourcePlaylistId: number | null
+    level: import('@/domain/player').PlayableLevel
+    volume: number
+    muted: boolean
+    /** 播放倍速(回收前的值)。 */
+    playbackRate: number
+  }
+
   interface MuiceDesktopApi {
     invoke<T>(
       channel:
@@ -166,6 +234,8 @@ declare global {
         | 'playback-cache:clear'
         | 'playback-cache:remove-entry'
         | 'theme:set-source'
+        | 'low-memory:get-status'
+        | 'low-memory:set-mode'
         | 'app-update:check'
         | 'app-update:download'
         | 'app-update:install'
@@ -223,6 +293,29 @@ declare global {
     }
     theme: {
       setSource(mode: 'light' | 'dark' | 'system'): Promise<void>
+    }
+    lowMemory: {
+      getStatus(): Promise<LowMemoryStatus>
+      setMode(mode: LowMemoryMode): Promise<LowMemoryStatus>
+    }
+    /**
+     * 音频引擎控制:音频永远在主进程的引擎窗口播放,渲染层只发命令、收状态。
+     * 非 Electron 环境无此命名空间(播放走本地 HTMLAudioElement)。
+     */
+    audio: {
+      load(payload: AudioLoadPayload): Promise<boolean>
+      play(): Promise<void>
+      pause(): Promise<void>
+      stop(): Promise<void>
+      seek(ms: number): Promise<void>
+      setVolume(value: number, muted: boolean): Promise<void>
+      setRate(value: number): Promise<void>
+      setSink(id: string): Promise<void>
+      setMeta(meta: AudioMeta): Promise<void>
+      /** 渲染层启动完成:接管控制权(主进程清除降级会话),返回引擎当前状态。 */
+      attach(): Promise<LowMemoryRestorePayload | null>
+      /** 订阅引擎播放事件(状态/进度)。返回取消订阅函数。 */
+      onEvent(callback: (event: AudioEngineEvent) => void): () => void
     }
     appUpdate: {
       check(channel: 'latest' | 'beta', allowDowngrade?: boolean): Promise<AppUpdateStatus>

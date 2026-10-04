@@ -34,6 +34,8 @@ const allowedChannels = [
   'playback-cache:clear',
   'playback-cache:remove-entry',
   'theme:set-source',
+  'low-memory:get-status',
+  'low-memory:set-mode',
   'app-update:check',
   'app-update:download',
   'app-update:install'
@@ -167,6 +169,56 @@ interface AppUpdateActionResult {
   ok: boolean
   error?: string
 }
+
+/** 低内存模式:与主进程 memory-mode.ts、src/domain/low-memory.ts 及 src/types/global.d.ts 保持同步。 */
+type LowMemoryMode = 'off' | 'on'
+
+interface RestoreQueueState {
+  items: unknown[]
+  currentIndex: number
+  mode: string
+  shuffleOrder: number[]
+}
+
+interface LowMemoryRestorePayload {
+  playing: boolean
+  positionMs: number
+  url: string | null
+  queue: RestoreQueueState | null
+  currentItem: unknown | null
+  fmMode: boolean
+  sourcePlaylistId: number | null
+  level: string
+  volume: number
+  muted: boolean
+  playbackRate: number
+}
+
+interface LowMemoryStatus {
+  mode: LowMemoryMode
+  released: boolean
+  releasedAt: number | null
+  releaseCount: number
+  backgroundPlaying: boolean
+}
+
+/** SMTC 媒体通知元数据(渲染层推送/引擎降级时自行构造)。 */
+interface AudioMeta {
+  title: string
+  artist: string
+  album: string
+  artworkUrl: string | null
+}
+
+/** 引擎推送的播放事件(与 electron/main/bg-player.ts 的 BgPlayerEvent 对应)。 */
+type AudioEngineEvent =
+  | {
+      type: 'state'
+      state: 'ready' | 'playing' | 'paused' | 'buffering' | 'ended' | 'error'
+      positionMs: number
+      durationMs: number
+    }
+  | { type: 'position'; positionMs: number }
 
 function assertAllowedChannel(channel: string): asserts channel is DesktopChannel {
   if (!allowedChannels.includes(channel as DesktopChannel)) {
@@ -359,6 +411,67 @@ const desktopApi = {
   theme: {
     setSource(mode: 'light' | 'dark' | 'system'): Promise<void> {
       return ipcRenderer.invoke('theme:set-source', mode) as Promise<void>
+    }
+  },
+  lowMemory: {
+    getStatus(): Promise<LowMemoryStatus> {
+      return ipcRenderer.invoke('low-memory:get-status') as Promise<LowMemoryStatus>
+    },
+    setMode(mode: LowMemoryMode): Promise<LowMemoryStatus> {
+      return ipcRenderer.invoke('low-memory:set-mode', mode) as Promise<LowMemoryStatus>
+    }
+  },
+  /**
+   * 音频引擎控制:音频永远在主进程的引擎窗口播放,渲染层只发命令、收状态。
+   * load 携带队列项与 SMTC 元数据,渲染层不在时主进程也能知道当前曲目。
+   */
+  audio: {
+    load(payload: {
+      url: string
+      resumeAtMs?: number
+      autoplay: boolean
+      volume: number
+      muted: boolean
+      rate: number
+      sinkId?: string
+      item?: unknown
+      meta?: AudioMeta
+    }): Promise<boolean> {
+      return ipcRenderer.invoke('audio:load', payload) as Promise<boolean>
+    },
+    play(): Promise<void> {
+      return ipcRenderer.invoke('audio:play') as Promise<void>
+    },
+    pause(): Promise<void> {
+      return ipcRenderer.invoke('audio:pause') as Promise<void>
+    },
+    stop(): Promise<void> {
+      return ipcRenderer.invoke('audio:stop') as Promise<void>
+    },
+    seek(ms: number): Promise<void> {
+      return ipcRenderer.invoke('audio:seek', ms) as Promise<void>
+    },
+    setVolume(value: number, muted: boolean): Promise<void> {
+      return ipcRenderer.invoke('audio:volume', { value, muted }) as Promise<void>
+    },
+    setRate(value: number): Promise<void> {
+      return ipcRenderer.invoke('audio:rate', value) as Promise<void>
+    },
+    setSink(id: string): Promise<void> {
+      return ipcRenderer.invoke('audio:sink', id) as Promise<void>
+    },
+    setMeta(meta: AudioMeta): Promise<void> {
+      return ipcRenderer.invoke('audio:set-meta', meta) as Promise<void>
+    },
+    /** 渲染层启动完成:接管控制权(主进程清除降级会话),返回引擎当前状态。 */
+    attach(): Promise<LowMemoryRestorePayload | null> {
+      return ipcRenderer.invoke('audio:attach') as Promise<LowMemoryRestorePayload | null>
+    },
+    /** 订阅引擎播放事件(状态/进度)。返回取消订阅函数。 */
+    onEvent(callback: (event: AudioEngineEvent) => void): () => void {
+      const listener = (_event: unknown, value: AudioEngineEvent): void => callback(value)
+      ipcRenderer.on('audio:event', listener)
+      return () => ipcRenderer.removeListener('audio:event', listener)
     }
   },
   appUpdate: {

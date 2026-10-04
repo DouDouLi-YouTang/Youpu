@@ -24,6 +24,13 @@ const aliases = {
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
+    resolve: {
+      // 低内存模式的后台会话(bg-session)复用 src/services 的纯 fetch API 模块,
+      // 这些模块用 @/ 别名,主进程构建也要能解析。
+      alias: {
+        '@': fromRoot('./src')
+      }
+    },
     build: {
       emptyOutDir: true,
       rollupOptions: {
@@ -39,7 +46,10 @@ export default defineConfig({
       emptyOutDir: true,
       rollupOptions: {
         input: {
-          index: fromRoot('./electron/preload/index.ts')
+          index: fromRoot('./electron/preload/index.ts'),
+          // 低内存模式的后台播放器窗口 preload(输出 out/preload/bg-player.mjs,
+          // 由 electron/main/bg-player.ts 引用)
+          'bg-player': fromRoot('./electron/preload/bg-player.ts')
         }
       }
     }

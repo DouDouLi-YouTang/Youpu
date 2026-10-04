@@ -18,8 +18,18 @@ export interface AudioControllerCallbacks {
   onEnded?: () => void
   /** Fired when the element reports an error (src invalid / decode fail). */
   onError?: (error: MediaError | null) => void
-  /** Fired whenever the derived `state` changes or on throttled timeupdate. */
+  /** Fired whenever the derived `state` changes. 只报状态,进度走 onPosition。 */
   onStateChange?: (state: PlaybackState, snapshot: AudioSnapshot) => void
+  /**
+   * 进度快照(节流后的 timeupdate / seek 之后的进度)。
+   *
+   * 与 onStateChange 分开是必须的:远端的 position 事件只带进度、不带状态
+   * (electron/main/bg-player.ts 的 `{ type: 'position' }`)。若拿控制器本地
+   * state 冒充状态回调,渲染进程重建后(低内存模式恢复窗口)控制器 state 还是
+   * 初始 idle,引擎随后的每条进度都会把 store 的 playing 覆盖成 idle ——
+   * 音乐在播,界面却显示暂停。
+   */
+  onPosition?: (snapshot: AudioSnapshot) => void
 }
 
 export interface AudioController {
@@ -65,7 +75,7 @@ const THROTTLE_MS = 250
  *  - `pause` → `paused` (unless we are mid-load)
  *  - `ended` → `ended` + `onEnded`
  *  - `error` → `error` + `onError`
- *  - `timeupdate` (throttled) → `onStateChange` with a position snapshot
+ *  - `timeupdate` (throttled) → `onPosition` with a position snapshot
  *
  * 倍速说明:
  *  使用 HTMLMediaElement.playbackRate。
@@ -161,7 +171,7 @@ export function useAudioElement(
     const now = Date.now()
     if (now - lastEmit < THROTTLE_MS) return
     lastEmit = now
-    callbacks.onStateChange?.(state.value, snapshot())
+    callbacks.onPosition?.(snapshot())
   }
 
   function onDurationChange() {
@@ -210,7 +220,7 @@ export function useAudioElement(
       audio.currentTime = ms / 1000
       currentTimeMs.value = ms
       applyPlaybackRate()
-      callbacks.onStateChange?.(state.value, snapshot())
+      callbacks.onPosition?.(snapshot())
     }
   }
   function onPlaying() {
@@ -240,7 +250,7 @@ export function useAudioElement(
   function onVolumeChange() {
     volume.value = audio.volume
     muted.value = audio.muted
-    callbacks.onStateChange?.(state.value, snapshot())
+    callbacks.onPosition?.(snapshot())
   }
   function onRateChange() {
     // 若浏览器/扩展擅自改 rate,拉回用户设定
@@ -334,7 +344,7 @@ export function useAudioElement(
       currentTimeMs.value = ms
       // seek 后部分内核会重置 rate
       applyPlaybackRate()
-      callbacks.onStateChange?.(state.value, snapshot())
+      callbacks.onPosition?.(snapshot())
     },
     setVolume(v) {
       const clamped = Math.max(0, Math.min(1, v))

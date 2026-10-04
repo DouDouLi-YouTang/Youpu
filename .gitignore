@@ -32,6 +32,7 @@ pnpm-debug.log*
 
 # Local probe / one-off scripts
 server/.probe-nenv.cjs
+.tmp-probe/
 
 # Local MCP (per-machine paths / vendored servers)
 .mcp.json
@@ -51,10 +52,8 @@ components.d.ts
 .agents/
 .claude/
 .codex/
-.trellis/
 .qoder/
 AGENTS.md
-skills-lock.json
 
 # Debug screenshots dropped at repo root during UI iteration
 /comment-*.png
@@ -72,11 +71,10 @@ _待删除_请检查/
 # One-off recovery dumps (package/source map extracts during UI restore)
 _recovery/
 
-# Temporary git worktree baselines (agent/CI scratch worktrees at repo root)
-.head-baseline-wt/
-
-# Local auto-update test harness (fake installer + fake feed + isolated app copy, ~550MB)
-.tmp-update-test/
+# 安装界面宿主构建中间产物(HTML 内联临时文件等);成品 build/setup-host/ 由打包时生成,
+# 不入库:它在每次打包前由 scripts/build-setup-host.mjs 重新编译。
+build/setup-host-build/
+build/setup-host/
 
 # OS / editor
 .DS_Store

@@ -39,7 +39,9 @@ jobs:
         run: npm ci
 
       - name: Build app
-        run: npm run build
+        run: npm run build:app
+        # 注意:这里只编译(npm run build 会连打包一起做)。
+        # 打包由下面的 electron-builder 步骤单独执行,以便注入 secrets。
         # 51.la 统计 id/ck 通过 Actions secrets 注入(VITE_* 由 Vite 打进渲染层)。
         env:
           VITE_LA_51_ID: ${{ secrets.LA_51_ID }}
@@ -47,6 +49,9 @@ jobs:
 
       - name: Pack server modules
         run: npm run pack:modules
+
+      - name: Build setup host (安装界面宿主)
+        run: npm run build:setup-host
 
       # 只构建、不上传。electron-builder 的 --publish 会对 exe 与 blockmap 两个
       # 产物各触发一次 GitHub release 创建，导致同一 tag 重复建 release、资产被拆开。
