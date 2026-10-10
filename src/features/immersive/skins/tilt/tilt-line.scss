@@ -1,0 +1,121 @@
+// 由 TiltLine.vue <style scoped src> 引入（「倾诉」的行内渲染层）。
+//
+// ⚠️ @keyframes 必须和引用它的动画声明待在**同一个** <style> 块里：
+// Vue 的 scoped 样式会给 keyframes 名字加哈希，跨组件引用会静默失效。
+//
+// 时间轴不在这里：每个字的延迟/时长由 use-tilt-timing 算好并写成 CSS 变量。
+// 暂停定格走 animation-play-state（浏览器原生，不会像计时器那样继续走）。
+
+.tilt-line {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  text-align: center;
+  // 段与段的间距：字号很大，用 vh 夹一层，避免小窗口里挤成一坨
+  gap: clamp(6px, 1.4vh, 20px);
+  // 段之间先后浮现（笔记 §1），这是「倾诉」的节奏来源
+  pointer-events: none;
+
+  &.is-paused .tilt-char {
+    animation-play-state: paused;
+  }
+}
+
+.tilt-row {
+  display: flex;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-family: inherit;
+  font-size: calc(var(--tilt-font-size, 5.625rem) * var(--tilt-row-scale, 1));
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  line-height: 1.35;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+
+  // 倾斜段：斜体 + 更细字重 + 更宽字间距（笔记 §4）
+  &.is-tilt {
+    font-style: italic;
+    font-weight: 300;
+    letter-spacing: 0.15em;
+    line-height: 1.25;
+  }
+}
+
+.tilt-char {
+  display: block;
+  // 保留字素里的空格宽度（文本按字素切过，空格也是独立的一个 span）
+  white-space: pre;
+  animation:
+    tilt-char-in var(--tilt-fade-dur, 400ms) var(--lyric-timing-function, ease)
+      var(--tilt-fade-delay, 0ms) both,
+    tilt-char-pulse var(--tilt-pulse-dur, 900ms) linear var(--tilt-pulse-delay, 0ms) both;
+}
+
+// 逐字淡入（笔记 §7）。fill 用 both：延迟期间固定 0% 帧（opacity: 0），
+// 因此「还没轮到的字」天然不可见，不需要另外控制段的显隐。
+@keyframes tilt-char-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+// 逐字脉冲（笔记 §6 / core/char-pulse.ts）：
+//   0 → 1 → 0 的 sin 钟形，随后线性升到 0.25 并保持（「已唱」状态）。
+//   钟形占 1/(1+1.2) = 45.4545%（1.2 是余晖升起系数），钟形内按 9 点采样 sin(π·p)：
+//   0.382683 = sin(π/8)、0.707107 = sin(π/4)、0.923880 = sin(3π/8)，
+//   段内 linear 插值逼近曲线；45.4545% → 100% 是线性升段（2 点即可精确表达）。
+//   末帧 0.25 与 core 的 AFTERGLOW_FLOOR 相同；峰值倍数由 --tilt-peak 逐字给出
+//   （倾斜段 0.18 / 非倾斜段 0.15），上下交错位移由 --tilt-wave 给出（0 或 ±字号/6）。
+@keyframes tilt-char-pulse {
+  0% {
+    transform: translateY(var(--tilt-wave, 0px)) scale(calc(1 + var(--tilt-peak, 0.15) * 0));
+  }
+
+  5.6818% {
+    transform: translateY(var(--tilt-wave, 0px)) scale(calc(1 + var(--tilt-peak, 0.15) * 0.382683));
+  }
+
+  11.3636% {
+    transform: translateY(var(--tilt-wave, 0px)) scale(calc(1 + var(--tilt-peak, 0.15) * 0.707107));
+  }
+
+  17.0455% {
+    transform: translateY(var(--tilt-wave, 0px)) scale(calc(1 + var(--tilt-peak, 0.15) * 0.92388));
+  }
+
+  22.7273% {
+    transform: translateY(var(--tilt-wave, 0px)) scale(calc(1 + var(--tilt-peak, 0.15) * 1));
+  }
+
+  28.4091% {
+    transform: translateY(var(--tilt-wave, 0px)) scale(calc(1 + var(--tilt-peak, 0.15) * 0.92388));
+  }
+
+  34.0909% {
+    transform: translateY(var(--tilt-wave, 0px)) scale(calc(1 + var(--tilt-peak, 0.15) * 0.707107));
+  }
+
+  39.7727% {
+    transform: translateY(var(--tilt-wave, 0px)) scale(calc(1 + var(--tilt-peak, 0.15) * 0.382683));
+  }
+
+  45.4545% {
+    transform: translateY(var(--tilt-wave, 0px)) scale(calc(1 + var(--tilt-peak, 0.15) * 0));
+  }
+
+  100% {
+    transform: translateY(var(--tilt-wave, 0px)) scale(calc(1 + var(--tilt-peak, 0.15) * 0.25));
+  }
+}
