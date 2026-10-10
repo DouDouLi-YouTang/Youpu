@@ -1,5 +1,10 @@
 import { getCurrentInstance, onBeforeUnmount, reactive, ref } from 'vue'
 
+import {
+  ensureAudioContext,
+  resumeAudioContext,
+  setOutputDevice
+} from '@/features/player/core/audio-graph'
 import type { PlaybackState } from '@/domain/player'
 
 /**
@@ -100,8 +105,6 @@ export function useAudioElement(
   let resumeAtMs: number | null = null
   /** 用户期望的倍速;load 后浏览器可能重置为 1,需反复应用。 */
   let desiredRate = 1
-  /** Web Audio 图(惰性创建);仅用于 resume 音频时钟,不改路由以免破坏 setSinkId。 */
-  let audioCtx: AudioContext | null = null
   /** 缓冲超时计时器:waiting 时启动,playing/canplay/pause 清除。超时触发 onError,
    *  避免网络挂起时永久卡在 buffering 不报错。 */
   let bufferingTimer: ReturnType<typeof setTimeout> | null = null
@@ -150,18 +153,15 @@ export function useAudioElement(
     }
   }
 
-  /** 用户手势后确保 AudioContext 运行(避免时钟挂起导致卡顿感)。 */
+  /**
+   * 用户手势后确保 AudioContext 运行(避免时钟挂起导致卡顿感)。
+   *
+   * ctx 归 `@/features/player/core/audio-graph` 管(模块级共享单例):
+   * 建立/恢复的最大作用已不只是音频时钟,而是保住「元素→分析器→destination」整条图。
+   */
   function ensureAudioClock(): void {
-    try {
-      const Ctx =
-        window.AudioContext ||
-        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-      if (!Ctx) return
-      if (!audioCtx) audioCtx = new Ctx()
-      if (audioCtx.state === 'suspended') void audioCtx.resume()
-    } catch {
-      // AudioContext 不可用时忽略
-    }
+    if (!ensureAudioContext()) return
+    resumeAudioContext()
   }
 
   function maybeEmitTime() {
@@ -357,11 +357,10 @@ export function useAudioElement(
       applyPlaybackRate()
     },
     setSinkId(deviceId) {
-      // setSinkId 是 Chrome 扩展 API(HTMLMediaElement),TS lib.dom 未声明,用类型断言。
-      const el = audio as HTMLAudioElement & {
-        setSinkId?: (sinkId: string) => Promise<void>
-      }
-      return el.setSinkId ? el.setSinkId(deviceId) : Promise.resolve()
+      // 双路径分发(由 audio-graph 统一处理):未建 Web Audio 图 → 元素级 setSinkId;
+      // 已建图 → 输出改走 AudioContext.destination,元素级失效,必须切到 ctx.setSinkId。
+      // audio-graph 同时记住最后一次请求,建图成功后重放(见 audio-graph.ensureGraph)。
+      return setOutputDevice(deviceId)
     },
     dispose() {
       clearBufferingTimer()
@@ -377,8 +376,8 @@ export function useAudioElement(
       audio.removeEventListener('error', onError)
       audio.removeEventListener('volumechange', onVolumeChange)
       audio.removeEventListener('ratechange', onRateChange)
-      void audioCtx?.close()
-      audioCtx = null
+      // 注意:这里**不关闭** AudioContext —— 它已从本地变量升级为 audio-graph 的
+      // 模块级共享单例,频谱等其它消费者可能仍在使用;close 会让它们全部失效/静音。
     }
   }
 

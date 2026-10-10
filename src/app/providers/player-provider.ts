@@ -22,6 +22,16 @@ export function initPlayerProvider(): HTMLAudioElement {
   // The player composable drives all interaction; the element itself should
   // not start anything until we explicitly load + play.
   el.autoplay = false
+  // 无条件设置 crossOrigin='anonymous'(必须在任何 src 赋值之前,加载开始后不可再改)。
+  //
+  // 取舍(风险最高的一处改动,已逐一核实):
+  //  - 不设:元素一旦接入 Web Audio 图(沉浸式频谱)会被当作跨域资源,后果是
+  //    **输出彻底静音**(不是频谱为 0,是听不到声音);
+  //  - 设了:凡是不返回 ACAO 头的音源会**彻底加载失败**。本项目三类音源均已确认带 ACAO:
+  //    1) 网易云 CDN 直链:实测 200/206 响应带 Access-Control-Allow-Origin: *
+  //    2) muice-cache://(缓存,主播放路径):electron/main/index.ts 的 serveAudioFile 已补 ACAO
+  //    3) muice-file://(已下载):electron/main/index.ts 同函数已带 ACAO
+  el.crossOrigin = 'anonymous'
   // 绝对顺滑倍速:关闭保持音高(简单重采样,音高随速度变)
   const media = el as HTMLAudioElement & {
     preservesPitch?: boolean
