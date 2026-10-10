@@ -29,8 +29,16 @@
   padding: 0;
   border: 0;
   background: none;
+  // 「普通段 / 倾斜段」分色 —— 对齐 Folia VisualizerTilt.getColors() 的默认档：
+  //   normal: theme.primaryColor（本项目 = 外壳注入的正文色 shade-2，深色下近白）
+  //   tilt:   theme.accentColor（本项目 = 专辑主色 tone 50，即那抹蓝）
+  // 注意是**继承**而不是写死：父级 .tilt-lyric 已经把 normal 色设在 color 上，
+  // 倾斜段再覆盖成主色。
   color: inherit;
   font-family: inherit;
+  // 末段过短补偿（笔记 §2.4）：只有末段会带上 --tilt-row-scale，其余为 1。
+  // 缩放放在 font-size 上而不是 transform: scale()，因为它是**排版尺度**：
+  // 大字号占更多宽度与行高，换行与居中要按放大后的尺寸算（transform 不参与布局）。
   font-size: calc(var(--tilt-font-size, 5.625rem) * var(--tilt-row-scale, 1));
   font-weight: 400;
   letter-spacing: 0.08em;
@@ -40,12 +48,13 @@
   pointer-events: auto;
   -webkit-app-region: no-drag;
 
-  // 倾斜段：斜体 + 更细字重 + 更宽字间距（笔记 §4）
+  // 倾斜段：斜体 + 更细字重 + 更宽字间距 + 主色（笔记 §4）
   &.is-tilt {
     font-style: italic;
     font-weight: 300;
     letter-spacing: 0.15em;
     line-height: 1.25;
+    color: var(--rnp-accent-color, inherit);
   }
 }
 

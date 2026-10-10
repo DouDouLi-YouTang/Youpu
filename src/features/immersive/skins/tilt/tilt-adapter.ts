@@ -211,8 +211,10 @@ export function resolveFontScale(lyricFontSizePx: number): number {
 /**
  * 可用宽度（笔记 §3）：以 `window.innerWidth * 0.85` 为预算。
  *
- * 面板宽度（clientWidth）只用来**收紧**这个预算：封面可见时歌词区只占屏幕一部分，
- * 若仍按 85vw 排版会溢出容器。宽裕时 min 取到的就是 0.85vw，与笔记完全一致。
+ * 面板宽度（clientWidth）只用来**收紧**这个预算。本面板是全屏歌词（没有封面列），
+ * `.tilt-stage-inner` 的 `max-width: 85vw` 与这里的 0.85 同源，所以在常见窗口下
+ * `min()` 取到的恒是 0.85vw，与笔记完全一致；只有极窄窗口（左右内边距触到 px 下限）
+ * 才会由面板收紧，那时收紧到的是**真实可渲染宽度**，方向正确。
  */
 export function resolveAvailableWidth(viewportWidthPx: number, panelWidthPx: number): number {
   const panel = Number.isFinite(panelWidthPx) && panelWidthPx > 0 ? panelWidthPx : 0

@@ -8,12 +8,15 @@ import {
   useImmersiveSettingsStore
 } from './immersive-settings.store'
 import { getGradientFromPalette } from './color-utils'
+import GeometricBackground from './backgrounds/GeometricBackground.vue'
 import { getDominantRgbPalette, loadCrossOriginImage } from './image-color'
 
 /**
  * 沉浸式动态背景 —— 逐字移植参考项目 background.js + background.scss。
  *
- * 五种模式由 settings.backgroundType 切换（fluid / blur / gradient / solid / none）。
+ * 六种模式由 settings.backgroundType 切换（fluid / blur / gradient / geometric / solid / none）。
+ * geometric（几何）不同源：它是 Folia 的背景层（`backgrounds/GeometricBackground.tsx`）
+ * 的独立重写，代码在 ./backgrounds/ 下，本文件只负责把它挂进分支。
  * 流体：4 个 100×100 canvas 各取专辑图四分之一象限，CSS 旋转动画 +
  *   SVG feTurbulence+feDisplacementMap 扭曲 + backdrop-filter blur。
  *   暂停时停止旋转（.paused），静态流体用随机 animation-delay 定格到某帧。
@@ -288,6 +291,10 @@ watch(
         />
       </div>
     </div>
+
+    <!-- geometric：形状/漂移/粒子全在 background/GeometricBackground.vue 内，
+         频带缩放由它自己按歌曲种子与 AudioBands 驱动（对齐 Folia 的背景正交设计） -->
+    <GeometricBackground v-else-if="type === 'geometric'" />
 
     <!-- solid -->
     <div v-else-if="type === 'solid'" class="rnp-background-solid" />

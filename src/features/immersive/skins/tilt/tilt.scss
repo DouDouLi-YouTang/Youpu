@@ -1,16 +1,19 @@
 // 由 SkinTilt.vue <style scoped src> 引入（「倾诉」皮肤的舞台与内容层）。
 //
-// 内容层（.immersive-content / .immersive-cover-slot / .immersive-lyric）与经典皮肤同构，
-// 但**皮肤之间不能共享 scoped 样式**，所以本皮肤自持一份最小布局。class 名刻意保持一致，
-// 原因：immersive-shell.scss 里挂在 .immersive-root 上的规则是用 :deep() 命中这些名字的 ——
-//   .display-mode-cover-only   :deep(.immersive-cover-slot)  → 封面占满整屏
-//   .display-mode-lyric-only   :deep(.immersive-lyric)       → 歌词区留出四周留白
-//   .cover-halign-center .rnp-cover                          → 封面水平居中微调
-// 名字一致即可继续生效（外壳规则的优先级更高，会覆盖本文件里的同名声明）。
+// 与经典皮肤**结构不同**：Folia 的倾诉是全屏歌词（视觉以文字排版为主、没有封面列），
+// 所以歌词区是自持的 `.tilt-lyric`（满宽满高），刻意不复用 `.immersive-lyric`
+// —— 那个类名会被 immersive-shell.scss 的 `.display-mode-lyric-only` 规则套上给
+// 滚动列表用的左右内边距（clamp(72px, 9vw, 144px)），对全屏舞台是多余的留白。
 //
-// 而 .rnp-lyrics / .rnp-lyrics-line 那几处 :deep() 是 LyricLines 的内部结构，
-// 「倾诉」不用 LyricLines，故有意不复用：居中、旋转裁切、贡献者显隐都由本皮肤自己承担
-// （居中已在 .tilt-line 里实现；旋转/贡献者对本面板不适用，见报告的说明）。
+// 唯一保留同名的是 `.immersive-cover-slot`：只有「仅封面」模式会渲染它，需要外壳
+// 挂在 .immersive-root 上的这两条规则继续生效（名字一致即可命中）——
+//   .display-mode-cover-only  :deep(.immersive-cover-slot)                  → 占满整屏
+//   .cover-halign-center      :deep(... .rnp-cover)                          → 水平居中微调
+// 所以本文件里的对齐声明必须与 classic.scss 同语义（见下面 .immersive-cover-slot 注释）。
+//
+// .rnp-lyrics / .rnp-lyrics-line 那几处 :deep() 是 LyricLines 的内部结构，
+// 「倾诉」不用 LyricLines，故不复用：居中、旋转裁切、贡献者显隐都由本皮肤自己承担
+// （居中/旋转对本面板不适用；贡献者按 Folia 的做法不显示）。
 
 .immersive-content {
   position: relative;
@@ -22,40 +25,24 @@
   pointer-events: none;
 }
 
-.immersive-cover-slot {
-  display: flex;
-  flex: 0 0 45%;
-  flex-direction: column;
-  // 垂直/水平对齐由 cover-valign / cover-halign class 控制；默认 flex-end 对应 bottom。
-  // 这两条（及下面两个变体）必须与 classic.scss 的同名规则一致：设置面板的「封面
-  // 对齐」是全局设置，换皮肤不能换语义。缺了变体规则的后果不是「没反应」而是
-  // 「反应错」—— 外壳里 `.display-mode-cover-only .cover-halign-center .rnp-cover
-  // { margin-left: 0 }` 会照常生效，把封面左推到槽左边而不是居中。
-  justify-content: flex-end;
-  align-items: flex-start;
-  overflow: hidden;
-  // 与底栏留出距离（--bottombar-height 由 immersive-shell.scss 定义）
-  padding-bottom: calc(var(--bottombar-height, 90px) + 12px);
-
-  &.cover-valign-middle {
-    justify-content: center;
-  }
-
-  &.cover-halign-center {
-    align-items: center;
-  }
-}
-
-.immersive-lyric {
+// ── 全屏歌词区（本皮肤的主体）──
+// 占满内容区：左侧与顶部不留白（Folia 的舞台就是满宽的），底部让开控制条。
+.tilt-lyric {
+  position: relative;
   display: flex;
   flex: 1;
-  // 允许收缩，否则超宽的行会把封面挤出去
   min-width: 0;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   height: 100%;
-  padding: 0 3vw;
+  box-sizing: border-box;
+  // 左右/顶部留白比经典皮肤大：全屏大字需要呼吸，且窄屏幕上文字不长到贴上窗体边
+  padding: clamp(24px, 4vh, 56px) clamp(24px, 5vw, 96px);
+  // 控制条是 absolute 覆盖层，这里主动让开它的高度
+  padding-bottom: calc(var(--bottombar-height, 90px) + clamp(24px, 4vh, 56px));
   color: var(--rnp-accent-color-shade-2, var(--color-text-primary));
+  overflow: hidden;
 }
 
 .tilt-stage {
@@ -63,11 +50,13 @@
   align-items: center;
   justify-content: center;
   width: 100%;
-  height: 100%;
+  // 舞台占满歌词块的可用高度（Folia 的 h-[70vh] 等价物：减去译文行的空间）
+  flex: 1;
+  min-height: 0;
 }
 
 // 排版带：JS 用这个元素的 clientWidth 当「可用宽度」，所以 max-width 必须与
-// 笔记 §3 的 0.85 预算同源；封面可见时它会被父容器收窄（正是我们要的）
+// 笔记 §3 的 0.85 预算同源
 .tilt-stage-inner {
   display: flex;
   flex-direction: column;
@@ -83,4 +72,73 @@
   font-weight: 300;
   letter-spacing: 0.08em;
   opacity: 0.55;
+}
+
+// 底部副字幕（罗马音 / 译文）。字号 = Folia 的副字幕 clamp × 用户字号倍率 × 该行的 em 设置，
+// 三锚点与 Folia 的 resolveSubtitleFontSizes 同构（1.125rem / 2.6vw / 1.25rem）。
+//
+// **颜色必须用沉浸层的 rnp 变量，不能用全局 --color-text-secondary**：
+// 沉浸页的明暗由 colorScheme 单独控制（rnp-light/rnp-dark/rnp-auto 会把 shade-2 连同
+// overlay/bg 一起翻转，见 immersive-shell.scss:45-56），而全局 token 只跟应用主题走。
+// 两者不一致时（应用深色 + 沉浸页亮色）用全局色会得到「浅灰字压白底」。
+// 这里取 shade-2 并降透明度，等于「同色更淡一档」，任何配色下都不会失配。
+.tilt-subtitles {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 0.25em;
+  align-items: center;
+  margin-top: clamp(12px, 2vh, 28px);
+  text-align: center;
+  color: var(--rnp-accent-color-shade-2, var(--color-text-primary));
+}
+
+.tilt-subtitle {
+  margin: 0;
+  font-weight: 300;
+  letter-spacing: 0.06em;
+  opacity: 0.75;
+
+  // 罗马音在前、译文在后（与经典皮肤两行的顺序一致）；两者字号各自独立可调
+  &.is-romaji {
+    font-size: calc(
+      clamp(1.125rem, 2.6vw, 1.25rem) * var(--tilt-sub-scale, 1) * var(--tilt-sub-romaji-em, 0.6)
+    );
+    opacity: 0.6;
+  }
+
+  &.is-translation {
+    font-size: calc(
+      clamp(1.125rem, 2.6vw, 1.25rem) * var(--tilt-sub-scale, 1) *
+        var(--tilt-sub-translation-em, 1)
+    );
+  }
+}
+
+// ── 「仅封面」模式：整屏让给封面 ──
+// 外壳在 .display-mode-cover-only 下把槽改成 flex: 0 0 100%（见 immersive-shell.scss），
+// 这里的对齐声明与 classic.scss 逐条同语义 —— 设置面板的「封面对齐」是全局设置，
+// 换皮肤不能换语义。缺了变体规则的后果不是「没反应」而是「反应错」：外壳里
+// `.display-mode-cover-only .cover-halign-center .rnp-cover { margin-left: 0 }`
+// 会照常生效，把封面推到槽左边而不是居中。
+.immersive-cover-slot {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-start;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  // 与底栏留出距离（--bottombar-height 由 immersive-shell.scss 定义）
+  padding-bottom: calc(var(--bottombar-height, 90px) + 12px);
+
+  &.cover-valign-middle {
+    justify-content: center;
+  }
+
+  &.cover-halign-center {
+    align-items: center;
+  }
 }

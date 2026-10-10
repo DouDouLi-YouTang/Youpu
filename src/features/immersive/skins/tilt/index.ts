@@ -1,14 +1,14 @@
 import { defineSkin } from '../types'
 
 /**
- * 「倾诉」(tilt) 皮肤 —— C1 阶段只注册占位组件（见 SkinTilt.vue 文件头注释）。
- * 真实排版算法（分行 / 倾斜选行 / 逐字动画）在 C3 实现，替换 component 指向的组件即可，
- * 注册表与两个切换入口无需改动。
+ * 「倾诉」(tilt) 皮肤 —— Folia 式全屏歌词面板：一行切成 1–4 段，
+ * 其中一段用斜体 + 上下交错 + 专辑主色呈现，逐字脉冲带余晖。
+ * 布局算法与 Folia 源码无关（独立重写），思路来源见 docs/tilt-porting-notes.md。
  */
 export default defineSkin({
   id: 'tilt',
   name: '倾诉',
-  desc: 'Folia 风格的分行歌词，随节奏呼吸（敬请期待）',
+  desc: 'Folia 式全屏歌词：分段错落，斜体段用专辑配色',
   order: 1,
   component: () => import('./SkinTilt.vue')
 })

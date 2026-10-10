@@ -267,6 +267,13 @@ export interface AudioBands {
    注意：早期文档把这句写成「衰减到 0.25」，是错的，见 `tilt-porting-notes.md` §6 的订正说明
 6. **渲染**：非倾斜行用正常字重（400）+ `letterSpacing 0.08em` + 逐字淡入（`ci * 0.04s` 延迟）；
    倾斜行用 italic + 字重 300 + `letterSpacing 0.15em` + 奇偶行上下交错（`±yOffset`）
+7. **外壳与配色**（2026-10-10 补齐，之前漏掉导致首版与 Folia 预览图不符）：
+   - 歌词是**全屏舞台**（`w-full h-[70vh] flex items-center justify-center`），
+     没有封面列、没有左右分栏 —— 这是一个独立面板，不是在经典骨架上换色
+   - 分色取 `getColors()` 的默认档：`normal = theme.primaryColor`（本项目 = 正文色 shade-2）、
+     `tilt = theme.accentColor`（本项目 = 专辑主色 tone 50）
+   - 底部还有一条**副字幕层**（译文/罗马音），字号走 `resolveSubtitleFontSizes`：
+     `clamp(1.125rem, 2.6vw, 1.25rem) × lyricsFontScale`
 
 **Vue 重写映射**：
 
@@ -387,6 +394,47 @@ no-cors 模式改成 CORS 模式，**不带 CORS 头的音源会彻底播不出�
    新皮肤若不复用这些类名，需自己承担「居中失效」「旋转被裁切」等风险
 6. **AGPL 隔离**：只借鉴算法思路，代码全部 Vue 重写。`docs/` 保留来源说明
 
+### 4.7 「几何」背景（第 6 种背景类型）
+
+**决策**：不在皮肤里内置，而是作为 `backgroundType` 的**第 6 个选项**接进
+`ImmersiveBackground.vue` 的 `v-if` 链（与 fluid/blur/gradient/solid/none 并列）。
+理由是 Folia 的设计本就是**背景与歌词面板正交**：同一套背景要能在两款皮肤下都可用，
+做成皮肤私有物就复制了一份。
+
+**代码位置**（刻意放在 `src/features/immersive/backgrounds/`，不塞进 `skins/tilt/`）：
+
+```
+backgrounds/
+├── geometric-model.ts            纯函数：形状/粒子生成 + 频带映射（可单测，27 个用例）
+├── geometric-model.test.ts
+├── GeometricBackground.vue       渲染层（35 个节点）
+└── geometric-background.scss     keyframes + 按形状分档的频带缩放
+```
+
+`geometric-model.ts` 复用 `skins/tilt/core/seeded-random`（同一 seed + index 恒等），
+不引入第二套随机源；索引区段从 1000 起，避开 tilt 排版占用的 100+/200 段。
+
+**与 Folia 的四处刻意差异**（对照表见 `app-test-checklist.md` §6.1）：
+
+| 差异 | 原因 |
+|---|---|
+| `Math.random()` → 按 `Song.id` 的确定性种子 | 进页面/切皮肤/暂停不该让形状「跳一下」 |
+| framer-motion `useSpring` → CSS `transition: scale 0.12s` | 频带本就每帧刷新，再加 JS 弹簧只是多一层延迟 |
+| JS 逐帧写内联样式 → CSS keyframes 驱动漂移/自转 | 不与 60fps 流体背景抢性能预算 |
+| 暗角末色 `rgba(0,0,0,.6)` → `--rnp-accent-color-overlay` | 浅色主题下黑色暗角会「白底被压黑一圈」 |
+
+**两条实现要点（写错了不报错、只是静默失效，属于高危）**：
+
+1. **用 `translate` / `rotate` / `scale` 三个独立 transform 属性**，不能合成一条 `transform`：
+   keyframes 只驱动位移与自转，`scale` 由频带 CSS 变量独立控制，合成后会互相冲掉。
+2. **频带缩放绕开 Vue 的渲染管线**：`audioBands` 每帧一个新对象，在模板里读它会让整个组件
+   每帧重渲染。改为 `watch([audioBands, isPlaying])` 里把四档缩放写成容器 CSS 变量
+   （每帧 4 次 `style.setProperty`，零 VDOM）。
+
+**新依赖**：`@lucide/vue`（1.55.0，MIT）。形状里有一型是图标（≤6 个），
+用官方 Vue 包而不是 `lucide-vue-next`（后者 1.0.0 已弃用）。按图标分文件，
+实测构建后只打进来 12 个图标、38.6 kB，没有整库。
+
 ---
 
 ## 5. 执行顺序（子代理团队）
@@ -445,8 +493,21 @@ no-cors 模式改成 CORS 模式，**不带 CORS 头的音源会彻底播不出�
 - [ ] 短句（1–4 字）、长句（>40 字）、纯英文歌词均不溢出
 - [ ] 无歌词时的空状态正常
 - [ ] 6 个原设置 tab 控件无遗漏
+- [ ] 「倾诉」是全屏歌词（无封面列），任一段用**专辑主色**、其余段近白色
+- [ ] 「倾诉」底部显示罗马音 + 译文两行，缺的行不出现空占位
+- [ ] 「倾诉」在「仅封面」模式整屏显示封面、且水平/垂直对齐设置生效
+- [ ] 「仅封面」往返后歌词**不重播**（`resyncNow` 生效）
 
-### 6.4 频谱
+### 6.4 「几何」背景
+
+- [ ] 类型一行有 6 个选项，「几何」可选中且立即出画面
+- [ ] 同一首歌反复进出沉浸页，形状布局不变；换歌才换一套
+- [ ] 播放时形状按频带缩放（圆/方←低音、三角←中音、十字←高音、图标←整体）
+- [ ] 暂停时漂移继续、缩放回落；系统「减少动态效果」下整体静止
+- [ ] 明暗主题切换时形状颜色翻转（不出现「白底白形状」）
+- [ ] 与「流体」背景相比占用更低
+
+### 6.5 频谱
 
 - [ ] 播放时频谱有反应（随鼓点跳动）
 - [ ] **播放声音正常（不是静音）** ← `analyser.connect(destination)` 没漏
@@ -458,10 +519,11 @@ no-cors 模式改成 CORS 模式，**不带 CORS 头的音源会彻底播不出�
 - [ ] 沉浸页关闭后 rAF 停止（Performance 面板确认）
 - [ ] 浏览器调试模式下频谱同样工作
 
-### 6.5 打包
+### 6.6 打包
 
-- [ ] `pnpm build` 通过
+- [ ] `npm run build` 通过
 - [ ] 打包后应用能切皮肤（验证 `file://` 下 chunk 路径）
+- [ ] 打包后「几何」背景的图标能加载（`@lucide/vue` 代码分割 chunk）
 - [ ] 打包后应用音频正常
 
 ---
@@ -475,5 +537,6 @@ no-cors 模式改成 CORS 模式，**不带 CORS 头的音源会彻底播不出�
 3. `ImmersivePlayer.vue` 的 `rootClasses` 里有 6 个 class（`lyric-fade`/`lyric-zoom`/`lyric-blur`/
    `lyric-stagger`/`lyric-glow`/`lyric-timing-*`）在全部 SCSS 里**没有任何消费方**（死代码），
    实际都是通过 prop 生效的。做多皮肤时**不要**误以为可以靠这些 class 做 CSS 分支
-4. `ImmersiveBackground.vue` 534 行，5 种背景硬编码 `v-if` 链，无注册表 —
-   原文档 §4 把它列为 P3「背景注册表」，本次皮肤系统只做歌词面板，背景暂不重构
+4. `ImmersiveBackground.vue` 现在 6 种背景仍是硬编码 `v-if` 链，无注册表 —
+   原文档 §4 把它列为 P3「背景注册表」，本次只把「几何」挂进了分支（见 §4.7），
+   注册表化仍未做；皮肤系统只做歌词面板

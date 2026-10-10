@@ -13,6 +13,7 @@ const backgroundTypeOptions = [
   { label: '流体', value: 'fluid' as BackgroundType },
   { label: '模糊', value: 'blur' as BackgroundType },
   { label: '渐变', value: 'gradient' as BackgroundType },
+  { label: '几何', value: 'geometric' as BackgroundType },
   { label: '纯色', value: 'solid' as BackgroundType },
   { label: '无', value: 'none' as BackgroundType }
 ]

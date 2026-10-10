@@ -1,0 +1,186 @@
+// 几何背景（backgroundType = 'geometric'）—— 由 backgrounds/GeometricBackground.vue 引入。
+// 视觉来源见 geometric-model.ts 文件头；此处只负责把模型值变成像素。
+//
+// 三条实现约定：
+// 1. **漂移与自转走 CSS 动画**，所以时长/延迟/幅度都是 CSS 变量（JS 只在歌曲变化时
+//    写一次内联样式），频带缩放则由容器上的 --g-band-* 驱动 —— 见文件尾的说明。
+// 2. `translate` / `rotate` / `scale` 用**三个独立 transform 属性**而不是合成一条
+//    transform：只有这样，keyframes 才能只驱动位移动画，而 scale 由频带变量独立控制，
+//    两者互不覆盖（合成 transform 的话二者会互相冲掉）。
+// 3. 形状的描边/填充色取 --rnp-accent-color-shade-2（随明暗主题翻转），
+//    粒子与暗角取主色系 —— 与 Folia 的 secondaryColor / accentColor 分工一致。
+
+.rnp-background-geometric {
+  // 频带缩放的兜底：图没建起来（无音频图 / 已暂停）时保持静止档
+  --g-band-low: 0.95;
+  --g-band-mid: 0.95;
+  --g-band-high: 0.95;
+  --g-band-power: 0.95;
+  // 形状的公共颜色：次要色（Folia 的 secondaryColor）
+  --g-shape-color: var(--rnp-accent-color-shade-2, #f4f7f5);
+
+  position: absolute;
+  inset: 0;
+  // 不要背景色：Folia 的几何层也是透明的，底色由应用/皮肤自己决定
+  background: transparent;
+  overflow: hidden;
+}
+
+// ── 形状 ──
+// transform 三属性分开写；scale 吃频带变量（每个形状按类型取不同档）
+.rnp-geo-shape {
+  position: absolute;
+  // 让形状有个「中心」作为缩放/旋转的基准
+  transform-origin: center center;
+  scale: var(--g-band-power);
+  // 频带逐帧变 → 用 transition 把台阶磨平（Folia 用弹簧，等价效果）
+  transition: scale 0.12s linear;
+  will-change: translate, rotate, scale;
+  animation: rnp-geo-drift var(--g-dur, 40s) linear infinite;
+  animation-delay: var(--g-delay, 0s);
+}
+
+@keyframes rnp-geo-drift {
+  0% {
+    translate: var(--g-drift-x, 0px) var(--g-drift-y, 0px);
+    rotate: var(--g-rot, 0deg);
+  }
+
+  50% {
+    translate: calc(var(--g-drift-x, 0px) * -1) calc(var(--g-drift-y, 0px) * -1);
+    rotate: calc(var(--g-rot, 0deg) + 180deg);
+  }
+
+  100% {
+    translate: var(--g-drift-x, 0px) var(--g-drift-y, 0px);
+    rotate: calc(var(--g-rot, 0deg) + 360deg);
+  }
+}
+
+// 各形状的频带绑定（对齐 Folia 的 getShapeScaleKey：
+// 圆←低音、方←中低、三角←中音、十字←高音、图标←整体能量）。
+// 本项目只有 low/mid/high/power 四档，方与圆共用 low。
+.rnp-geo-shape.is-circle {
+  scale: var(--g-band-low);
+}
+
+.rnp-geo-shape.is-square {
+  scale: var(--g-band-low);
+}
+
+.rnp-geo-shape.is-triangle {
+  scale: var(--g-band-mid);
+}
+
+.rnp-geo-shape.is-cross {
+  scale: var(--g-band-high);
+}
+
+.rnp-geo-shape.is-icon {
+  scale: var(--g-band-power);
+}
+
+// 圆 / 方：默认 1px 描边；is-filled 时改填充（模型里约 30% 命中）
+.rnp-geo-shape.is-circle,
+.rnp-geo-shape.is-square {
+  border: 1px solid var(--g-shape-color);
+
+  &.is-filled {
+    border: none;
+    background-color: var(--g-shape-color);
+  }
+}
+
+.rnp-geo-shape.is-circle {
+  border-radius: 50%;
+}
+
+// 三角 / 十字：无描边概念，恒填充（Folia 的 clipPath 做法）
+.rnp-geo-shape.is-triangle {
+  background-color: var(--g-shape-color);
+  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+}
+
+.rnp-geo-shape.is-cross {
+  background-color: var(--g-shape-color);
+  // Folia 的十二边形十字轮廓，原样保留
+  clip-path: polygon(
+    20% 0%,
+    0% 20%,
+    30% 50%,
+    0% 80%,
+    20% 100%,
+    50% 70%,
+    80% 100%,
+    100% 80%,
+    70% 50%,
+    100% 20%,
+    80% 0%,
+    50% 30%
+  );
+}
+
+// 图标：颜色走 currentColor，由 lucide 的 stroke 继承
+.rnp-geo-shape.is-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--g-shape-color);
+
+  :deep(svg) {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+// ── 粒子 ──
+// Folia：y 从 0 上浮 100px，透明度 0 → 峰值 → 0
+.rnp-geo-particle {
+  position: absolute;
+  border-radius: 50%;
+  background-color: var(--rnp-accent-color, #aaa);
+  animation: rnp-geo-rise var(--g-dur, 20s) linear infinite;
+  animation-delay: var(--g-delay, 0s);
+  will-change: translate, opacity;
+}
+
+@keyframes rnp-geo-rise {
+  0% {
+    translate: 0 0;
+    opacity: 0;
+  }
+
+  50% {
+    translate: 0 calc(var(--g-rise, 100px) * -1);
+    opacity: 1;
+  }
+
+  100% {
+    translate: 0 calc(var(--g-rise, 100px) * -2);
+    opacity: 0;
+  }
+}
+
+// ── 径向暗角 ──
+// Folia: radial-gradient(circle, transparent 40%, rgba(0,0,0,.6) 100%)。
+// 这里把末色换成 --rnp-accent-color-overlay：深色主题是黑、浅色主题是白（外壳已翻转），
+// 所以浅色下不会出现「白底被压黑一圈」。
+.rnp-geo-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.6;
+  background: radial-gradient(
+    circle,
+    transparent 40%,
+    var(--rnp-accent-color-overlay, rgba(0, 0, 0, 1)) 100%
+  );
+}
+
+// 无障碍：跟随系统「减少动态效果」时停掉漂移与上浮（保留静态构图）
+@media (prefers-reduced-motion: reduce) {
+  .rnp-geo-shape,
+  .rnp-geo-particle {
+    animation: none;
+  }
+}
