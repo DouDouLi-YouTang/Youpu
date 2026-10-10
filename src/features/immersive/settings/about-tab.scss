@@ -1,0 +1,27 @@
+// AboutTab 独有样式（分组标题由外壳的 settings-rows.scss 提供）。
+.about-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.06);
+}
+
+.about-title {
+  opacity: 0.6;
+  font-size: 0.82rem;
+}
+
+.about-content {
+  font-size: 0.82rem;
+  &.link {
+    color: var(--rnp-accent-color, var(--color-primary));
+  }
+}
+
+.about-tribute {
+  margin-top: 1rem;
+  font-size: 0.75rem;
+  opacity: 0.5;
+  line-height: 1.6;
+}

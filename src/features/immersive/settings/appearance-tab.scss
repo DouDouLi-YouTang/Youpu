@@ -1,0 +1,3 @@
+// AppearanceTab 没有独有样式：分组标题 / 设置行 / 说明文字等通用样式由外壳的
+// settings-rows.scss 统一提供（:deep() 穿透），antd 控件覆盖由 settings-panel.scss 提供。
+// 本文件保留给该 tab 后续新增的独有样式。

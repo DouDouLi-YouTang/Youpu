@@ -69,7 +69,7 @@ export interface ImmersiveSettings {
   bgDimForNoneBgMask: number // default 0
 
   // ── 歌词 ──
-  lyricFontWeight: number // 100–900, default 700
+  lyricFontWeight: number // 100–900, default 500
   lyricFontSize: number // 16–64 px, default 32
   lyricRomajiSizeEm: number // 0.3–1.5 em, default 0.6
   lyricTranslationSizeEm: number // 0.3–1.5 em, default 1

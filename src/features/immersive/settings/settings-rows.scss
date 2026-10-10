@@ -1,0 +1,69 @@
+// 各 tab 共用的「行」样式：分组大标题 / 设置行 / 行内 label / reset 圆点 / 说明文字。
+// 挂在 shell(ImmersiveSettings.vue)上而不是各 tab 各引一份，避免同一份样式重复进 bundle。
+// 这些节点位于 tab 子组件内部，没有外壳的 data-v，因此统一在 .settings-body 下用 :deep() 穿透。
+
+.settings-body {
+  /* 分组大标题(对齐参考 .rnp-group-title,缩小至 20px 适配 360px 面板) */
+  :deep(.settings-group-title) {
+    margin-bottom: 20px;
+    font-size: 20px;
+    opacity: 0.6;
+    font-weight: bold;
+    line-height: 1.2;
+  }
+
+  :deep(.setting-row) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    > label {
+      font-size: 0.82rem;
+      opacity: 0.85;
+    }
+  }
+
+  :deep(.setting-label-with-reset) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* reset 小圆点(对齐参考 .rnp-slider-reset:8×8 白圆,hover accent;未改动隐藏) */
+  :deep(.reset-btn) {
+    width: 8px;
+    height: 8px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: $color-white;
+    opacity: 0.3;
+    cursor: pointer;
+    transition:
+      opacity 0.2s ease,
+      background-color 0.2s ease;
+    &:hover {
+      opacity: 1;
+      background: var(--rnp-accent-color, var(--color-primary));
+    }
+    &.changed {
+      opacity: 1;
+    }
+    &:not(.changed) {
+      /* 未改动时隐藏(对齐参考 .rnp-slider-wrapper:not(.changed) .rnp-slider-reset) */
+      opacity: 0;
+      pointer-events: none;
+    }
+  }
+
+  :deep(.setting-note) {
+    font-size: 0.72rem;
+    opacity: 0.5;
+    line-height: 1.4;
+    &.banner {
+      margin: 0 0 0.25rem;
+      padding: 0.5rem 0.75rem;
+      border-radius: 8px;
+      background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.06);
+    }
+  }
+}
