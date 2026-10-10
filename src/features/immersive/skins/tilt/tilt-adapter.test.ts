@@ -11,18 +11,28 @@ import {
   CHAR_FADE_DURATION_MS,
   FALLBACK_LINE_DURATION_MS,
   FONT_SCALE_BASE_PX,
+  LINE_HEIGHT_PLAIN,
+  LINE_HEIGHT_TILT,
   PLAIN_PULSE_SCALE,
+  PLAIN_SCALE_FLOOR,
   PULSE_MAX_DURATION_MS,
   PULSE_MIN_DURATION_MS,
   PULSE_TOTAL_FACTOR,
   resolveAvailableWidth,
   resolveBaseFontPx,
   resolveFontScale,
+  resolveHeightScale,
   resolveLineEndMs,
   resolveOverflowScale,
   resolvePulseAnimationMs,
+  resolveSegmentGapPx,
+  resolveSegmentGapTotalPx,
+  resolveTextHeightPx,
   SEEK_JUMP_MS,
+  SEGMENT_GAP_MAX_PX,
+  SEGMENT_GAP_MIN_PX,
   SEGMENT_LEAD_MS,
+  SHORT_LAST_SEGMENT_SCALE,
   shouldResplit,
   TILT_CHAR_FADE_DELAY_MS,
   TILT_PULSE_SCALE,
@@ -232,5 +242,135 @@ describe('溢出决策（笔记 §3）', () => {
   it('非法溢出比 → 不缩放', () => {
     expect(resolveOverflowScale(Number.NaN, true)).toBe(1)
     expect(resolveOverflowScale(Number.POSITIVE_INFINITY, false)).toBe(1)
+  })
+})
+
+describe('resolveSegmentGapPx 段间距（与 tilt-line.scss 的 gap 同源）', () => {
+  it('clamp(6px, 1.4vh, 20px)', () => {
+    // 1.4vh：720 高 = 10.08，1440 高 = 20.16 → 撞上界 20
+    expect(resolveSegmentGapPx(720)).toBeCloseTo(10.08, 10)
+    expect(resolveSegmentGapPx(1440)).toBe(SEGMENT_GAP_MAX_PX)
+    // 矮窗口撞下界 6
+    expect(resolveSegmentGapPx(300)).toBe(SEGMENT_GAP_MIN_PX)
+    expect(resolveSegmentGapPx(0)).toBe(SEGMENT_GAP_MIN_PX)
+  })
+
+  it('非法视口高度 → 取下界，绝不返回 NaN（NaN 写进 calc 会让整块歌词消失）', () => {
+    expect(resolveSegmentGapPx(Number.NaN)).toBe(SEGMENT_GAP_MIN_PX)
+    expect(resolveSegmentGapPx(-100)).toBe(SEGMENT_GAP_MIN_PX)
+  })
+})
+
+describe('resolveTextHeightPx 各段文字高度之和', () => {
+  it('单段按各自行高：普通段 1.35、倾斜段 1.25', () => {
+    expect(
+      resolveTextHeightPx({ segmentCount: 1, fontPx: 100, shortLast: false, tiltIndex: null })
+    ).toBeCloseTo(LINE_HEIGHT_PLAIN * 100, 10)
+    expect(
+      resolveTextHeightPx({ segmentCount: 1, fontPx: 100, shortLast: false, tiltIndex: 0 })
+    ).toBeCloseTo(LINE_HEIGHT_TILT * 100, 10)
+  })
+
+  it('多段相加，倾斜段只影响自己那一段', () => {
+    const height = resolveTextHeightPx({
+      segmentCount: 3,
+      fontPx: 100,
+      shortLast: false,
+      tiltIndex: 1
+    })
+    expect(height).toBeCloseTo(
+      LINE_HEIGHT_PLAIN * 100 + LINE_HEIGHT_TILT * 100 + LINE_HEIGHT_PLAIN * 100,
+      10
+    )
+  })
+
+  it('末段过短补偿让最后一段按 1.18 倍字号算高', () => {
+    const normal = resolveTextHeightPx({
+      segmentCount: 2,
+      fontPx: 100,
+      shortLast: false,
+      tiltIndex: null
+    })
+    const short = resolveTextHeightPx({
+      segmentCount: 2,
+      fontPx: 100,
+      shortLast: true,
+      tiltIndex: null
+    })
+    expect(short - normal).toBeCloseTo(LINE_HEIGHT_PLAIN * 100 * (SHORT_LAST_SEGMENT_SCALE - 1), 10)
+  })
+
+  it('退化输入返回 0（调用方据此跳过缩放，而不是算出个负数）', () => {
+    expect(
+      resolveTextHeightPx({ segmentCount: 0, fontPx: 100, shortLast: false, tiltIndex: null })
+    ).toBe(0)
+    expect(
+      resolveTextHeightPx({ segmentCount: 2, fontPx: 0, shortLast: false, tiltIndex: null })
+    ).toBe(0)
+    expect(
+      resolveTextHeightPx({
+        segmentCount: 2,
+        fontPx: Number.NaN,
+        shortLast: false,
+        tiltIndex: null
+      })
+    ).toBe(0)
+  })
+})
+
+describe('resolveSegmentGapTotalPx 段间距总和', () => {
+  it('n 段有 n-1 个间距；0/1 段没有间距', () => {
+    expect(resolveSegmentGapTotalPx(1, 720)).toBe(0)
+    expect(resolveSegmentGapTotalPx(0, 720)).toBe(0)
+    expect(resolveSegmentGapTotalPx(3, 720)).toBeCloseTo(2 * resolveSegmentGapPx(720), 10)
+  })
+})
+
+describe('resolveHeightScale 纵向溢出缩放', () => {
+  it('放得下 → 1（绝不放大）', () => {
+    expect(resolveHeightScale(400, 0, 500, 0.5)).toBe(1)
+    expect(resolveHeightScale(500, 0, 500, 0.5)).toBe(1)
+  })
+
+  it('放不下 → 按「可给文字的高度 / 文字高度」缩，而不是按总高比', () => {
+    // 文字 600 + 间距 100 vs 可用 400：可用里扣掉间距只剩 300
+    // 正确：300/600 = 0.5；错误写法（总高比）：400/700 ≈ 0.571
+    expect(resolveHeightScale(600, 100, 400, 0.5)).toBeCloseTo(0.5, 10)
+    // 刚好放得下（文字 300 + 间距 100 = 400）→ 不动
+    expect(resolveHeightScale(300, 100, 400, 0.5)).toBe(1)
+    expect(resolveHeightScale(700, 100, 400, 0.2)).toBeCloseTo(300 / 700, 10)
+  })
+
+  it('缩放下限生效（本项目传横向同款：倾斜 0.5 / 无倾斜 0.55）', () => {
+    expect(resolveHeightScale(5000, 100, 400, 0.5)).toBe(0.5)
+    expect(resolveHeightScale(5000, 100, 400, PLAIN_SCALE_FLOOR)).toBe(PLAIN_SCALE_FLOOR)
+  })
+
+  it('间距就把可用高度吃满 → 直接落到地板（不能再缩了）', () => {
+    expect(resolveHeightScale(600, 500, 400, 0.5)).toBe(0.5)
+    expect(resolveHeightScale(600, 400, 400, 0.55)).toBe(0.55)
+  })
+
+  it('非法输入 → 不缩放（宁可有点裁切，也不能让字号变 NaN）', () => {
+    expect(resolveHeightScale(Number.NaN, 0, 400, 0.5)).toBe(1)
+    expect(resolveHeightScale(600, 0, 0, 0.5)).toBe(1)
+    expect(resolveHeightScale(600, 0, Number.NaN, 0.5)).toBe(1)
+  })
+
+  it('非法 / 越界 floor 退化为 1（不缩），避免系数放大字号', () => {
+    expect(resolveHeightScale(5000, 0, 400, Number.NaN)).toBe(1)
+    expect(resolveHeightScale(5000, 0, 400, 0)).toBe(1)
+    expect(resolveHeightScale(5000, 0, 400, 2)).toBe(1)
+    expect(resolveHeightScale(5000, 0, 400, -1)).toBe(1)
+  })
+
+  it('缩放结果恒在 (0, 1] 内（不会放大）', () => {
+    for (const text of [100, 400, 900, 4000]) {
+      for (const avail of [200, 500, 1200]) {
+        const scale = resolveHeightScale(text, 12, avail, 0.5)
+        expect(scale).toBeGreaterThan(0)
+        expect(scale).toBeLessThanOrEqual(1)
+      }
+    }
   })
 })

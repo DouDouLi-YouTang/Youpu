@@ -110,7 +110,9 @@ const fontKey = computed(() =>
 )
 
 const panelRef = ref<HTMLElement | null>(null)
-const { layout } = useTiltLayout({ source, fontScale, fontKey, panel: panelRef })
+/** 舞台元素：量它的高度当「歌词可占多高」，纵向放不下时据此整体缩小字号 */
+const stageRef = ref<HTMLElement | null>(null)
+const { layout } = useTiltLayout({ source, fontScale, fontKey, panel: panelRef, stage: stageRef })
 
 // lyricOffset 变化会让 ctx.currentTime() 整体平移（滑块 step=100ms，低于 seek 判定阈值），
 // 故把它作为显式的重同步键 —— 与经典皮肤调 LyricLines.resyncKaraoke() 是同一件事。
@@ -184,7 +186,7 @@ function handleSeek(): void {
     </div>
 
     <div v-else class="tilt-lyric">
-      <div class="tilt-stage">
+      <div ref="stageRef" class="tilt-stage">
         <div ref="panelRef" class="tilt-stage-inner" :style="stageStyle">
           <p v-if="placeholder" class="tilt-placeholder">{{ placeholder }}</p>
           <TiltLine

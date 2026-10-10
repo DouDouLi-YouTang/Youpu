@@ -93,6 +93,23 @@ export const PLAIN_SCALE_FLOOR = 0.55
 /** §4 倾斜段上下交错位移量 = 字号 px / 6 */
 export const TILT_WAVE_DIVISOR = 6
 
+/**
+ * 段间距：`clamp(6px, 1.4vh, 20px)`，与 tilt-line.scss 的 `.tilt-line { gap }` 同源。
+ *
+ * 之所以要在 JS 里复刻：纵向「放不放得下」的判定必须把 (段数−1) 个间距算进去，
+ * 否则算出的缩放会偏大一点点，几段叠起来正好把末段切掉。改这里就要同步改那边。
+ */
+export const SEGMENT_GAP_MIN_PX = 6
+export const SEGMENT_GAP_VH = 1.4
+export const SEGMENT_GAP_MAX_PX = 20
+
+/** 段间距解析（视口高度 → px）。非法输入取下界，绝不返回 NaN */
+export function resolveSegmentGapPx(viewportHeightPx: number): number {
+  const scaled =
+    (SEGMENT_GAP_VH / 100) * (Number.isFinite(viewportHeightPx) ? Math.max(viewportHeightPx, 0) : 0)
+  return Math.min(Math.max(scaled, SEGMENT_GAP_MIN_PX), SEGMENT_GAP_MAX_PX)
+}
+
 /** §4 字重（固定值，不跟用户 lyricFontWeight —— 细字重是「倾诉」的排版气质） */
 export const FONT_WEIGHT_PLAIN = 400
 export const FONT_WEIGHT_TILT = 300
@@ -237,4 +254,71 @@ export function resolveOverflowScale(overflowRatio: number, hasTiltSegment: bool
   if (!Number.isFinite(overflowRatio) || overflowRatio <= 1) return 1
   const floor = hasTiltSegment ? TILT_SCALE_FLOOR : PLAIN_SCALE_FLOOR
   return Math.max(1 / overflowRatio, floor)
+}
+
+/**
+ * 各段**文字**高度之和（px，不含段间距）。
+ *
+ * 每段渲染成一行（`white-space: nowrap`，见 tilt-line.scss），所以高度 = Σ 行高 × 段字号。
+ * 倾斜段行高 1.25、其余 1.35（笔记 §4），末段命中「过短补偿」时字号还要 × 1.18。
+ *
+ * `fontPx` 是**未含纵向缩放**的字号：本函数回答「以这个字号排要多高」，
+ * 缩放多少由 resolveHeightScale 决定。
+ */
+export function resolveTextHeightPx(params: {
+  segmentCount: number
+  fontPx: number
+  /** 末段是否命中「过短补偿」（字号 × 1.18） */
+  shortLast: boolean
+  /** 倾斜段下标（null 表示没有倾斜段） */
+  tiltIndex: number | null
+}): number {
+  const { segmentCount, fontPx, shortLast, tiltIndex } = params
+  if (!Number.isFinite(fontPx) || fontPx <= 0 || segmentCount <= 0) return 0
+
+  let total = 0
+  for (let index = 0; index < segmentCount; index++) {
+    const isTilt = index === tiltIndex
+    const isShortLast = shortLast && index === segmentCount - 1
+    const px = isShortLast ? fontPx * SHORT_LAST_SEGMENT_SCALE : fontPx
+    total += px * (isTilt ? LINE_HEIGHT_TILT : LINE_HEIGHT_PLAIN)
+  }
+  return total
+}
+
+/** 段间距总和（px）。`segmentCount` 段之间共 (段数−1) 个间距 */
+export function resolveSegmentGapTotalPx(segmentCount: number, viewportHeightPx: number): number {
+  if (!Number.isFinite(segmentCount) || segmentCount <= 1) return 0
+  return (segmentCount - 1) * resolveSegmentGapPx(viewportHeightPx)
+}
+
+/**
+ * 纵向溢出缩放倍率：放得下 → 1（绝不放大）；放不下 → 按比例缩小，但不低于 `floor`。
+ *
+ * 与 resolveOverflowScale 同构，差别在于**只有文字高度能缩**：段间距是固定 px
+ * （`clamp(6px, 1.4vh, 20px)`，跟字号无关），所以要从可用高度里先扣掉它，
+ * 剩下的才是文字能占的份额。写成「(总高 / 可用高) 取倒数」就错了 ——
+ * 段数一多间距占比上来，会把缩放算得偏大，末段仍然被切。
+ */
+export function resolveHeightScale(
+  textHeightPx: number,
+  gapTotalPx: number,
+  availableHeightPx: number,
+  floor: number
+): number {
+  const safeFloor = Number.isFinite(floor) && floor > 0 && floor <= 1 ? floor : 1
+  if (
+    !Number.isFinite(textHeightPx) ||
+    !Number.isFinite(gapTotalPx) ||
+    !Number.isFinite(availableHeightPx) ||
+    textHeightPx <= 0 ||
+    availableHeightPx <= 0
+  ) {
+    return 1
+  }
+  const gaps = Math.max(gapTotalPx, 0)
+  if (textHeightPx + gaps <= availableHeightPx) return 1
+  const roomForText = availableHeightPx - gaps
+  if (roomForText <= 0) return safeFloor
+  return Math.min(Math.max(roomForText / textHeightPx, safeFloor), 1)
 }
