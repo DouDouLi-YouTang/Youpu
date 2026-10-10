@@ -26,7 +26,6 @@ import {
   warmFromRemoteUrl
 } from '@/services/playback-cache-service'
 import { removePlaybackCacheEntry } from '@/platform/electron/cache'
-import { createRemoteAudioController, shouldUseRemoteAudio } from '@/platform/electron/remote-audio'
 import type { AudioControllerCallbacks } from '@/composables/useAudioElement'
 import { getPersonalFm, trashFmSong } from '@/services/api/endpoints/fm.api'
 import { getIntelligencePlaylist } from '@/services/api/endpoints/intelligence.api'
@@ -232,9 +231,7 @@ export const usePlayerStore = defineStore('player', {
      * Initialize the audio controller. Must be called once after the player
      * provider is ready (done in `main.ts`). Idempotent.
      *
-     * Electron 下音频永远在主进程引擎窗口播放(remote-audio),渲染层只发控制
-     * 命令 —— 回收渲染进程对播放零影响;非 Electron(浏览器调试)走本地
-     * HTMLAudioElement。两个控制器接口一致,store 其余逻辑无感。
+     * 音频由渲染进程的全局 HTMLAudioElement 播放(playback 回归渲染进程)。
      */
     init(): void {
       if (controller) return
@@ -244,20 +241,11 @@ export const usePlayerStore = defineStore('player', {
         onStateChange: (state, snapshot) => this.syncState(state, snapshot),
         onPosition: (snapshot) => this.syncPosition(snapshot)
       }
-      const remote = shouldUseRemoteAudio()
-      const c = remote
-        ? createRemoteAudioController(callbacks, () => this.currentItem)
-        : useAudioElement(getAudioElement(), callbacks)
+      const c = useAudioElement(getAudioElement(), callbacks)
       controller = c
-      // 引擎里可能已经有正在播的曲目(低内存模式回收渲染进程后重建/刷新页面):
-      // 音量、静音、倍速以引擎为准,由 applyLowMemoryRestore 的恢复载荷回灌。
-      // 重建后的 store 是初始值(1/false/1),推给引擎就会把用户调好的音量冲成
-      // 100%、倍速冲回 1x —— 只对本地 <audio> 控制器做一次初始化。
-      if (!remote) {
-        c.setVolume(this.volume)
-        c.setMuted(this.muted)
-        c.setPlaybackRate(this.playbackRate)
-      }
+      c.setVolume(this.volume)
+      c.setMuted(this.muted)
+      c.setPlaybackRate(this.playbackRate)
       // 应用持久化的输出设备(空串=系统默认)
       const settings = useSettingsStore()
       if (settings.audioOutputDeviceId) {
@@ -284,17 +272,6 @@ export const usePlayerStore = defineStore('player', {
     updateMediaSessionMetadata(): void {
       if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return
       const song = this.currentItem?.song
-      // Electron 下音频在引擎窗口:SMTC 元数据由引擎设置,渲染层只负责推送。
-      // 本渲染进程没有音频活动,直接设置 navigator.mediaSession 不会生效。
-      if (shouldUseRemoteAudio()) {
-        void window.muiceDesktop?.audio.setMeta({
-          title: song?.name ?? '',
-          artist: song ? song.artists.map((a) => a.name).join(' / ') : '',
-          album: song?.album?.name ?? '',
-          artworkUrl: song?.coverUrl?.replace(/^http:/, 'https:') ?? null
-        })
-        return
-      }
       if (!song) {
         navigator.mediaSession.metadata = null
         return
@@ -312,10 +289,8 @@ export const usePlayerStore = defineStore('player', {
 
     /** 同步播放状态到系统媒体通知(playing/paused)。
      *  loading/buffering 是切歌/缓冲过渡态,跳过更新保持上一次的 playbackState,
-     *  避免 Windows SMTC 通知因短暂变 paused 而消失,等新歌 playing 再同步。
-     *  Electron 下 SMTC 归引擎窗口(页面自己同步 playbackState),这里跳过。 */
+     *  避免 Windows SMTC 通知因短暂变 paused 而消失,等新歌 playing 再同步。 */
     updateMediaSessionPlaybackState(): void {
-      if (shouldUseRemoteAudio()) return
       if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return
       if (this.state === 'loading' || this.state === 'buffering') return
       navigator.mediaSession.playbackState = this.isPlaying ? 'playing' : 'paused'
@@ -500,21 +475,15 @@ export const usePlayerStore = defineStore('player', {
 
     play(): void {
       const track = this.currentTrack
-      // 低内存模式重建渲染进程后只恢复了 currentItem(currentTrack 为空,音频没加载):
-      // 直接调 audio.play() 会因无源被拒,这里先解析 URL 并 seek 回持久化进度。
-      // 复用 pendingSeekMs/pendingPlayAfterSeek,playQueueItem 会在 canplay 后 seek 并续播。
+      // currentTrack 为空但仍有 currentItem:切歌瞬间(currentTrack 被置 null,URL 还在
+      // 解析中)也会命中 —— 直接调 audio.play() 会因无源被拒,这里重新解析 URL 并播放。
       if (!track && this.currentItem) {
-        const queue = usePlayQueueStore()
-        if (queue.positionMs > 0) {
-          this.pendingSeekMs = queue.positionMs
-          this.pendingPlayAfterSeek = true
-        }
         void this.playQueueItem(this.currentItem)
         return
       }
       // URL 已过期(或 10 秒内过期):刷新签名 URL 再恢复播放,避免 audio.play() 触发 error。
-      // 注意用 != null 判断:低内存模式恢复暂停态时 expiresAt 被显式置 0 表示"已过期",
-      // 用真值判断会漏掉这种占位(0 falsy),点播放就会拿旧签名 URL 去播。
+      // 注意用 != null 判断:expiresAt 可能被显式置 0 表示"已过期",用真值判断会漏掉
+      // 这种占位(0 falsy),点播放就会拿旧签名 URL 去播。
       if (track?.expiresAt != null && track.expiresAt <= Date.now() + 10 * 1000) {
         void this.refreshUrlAndPlay()
         return
@@ -737,11 +706,10 @@ export const usePlayerStore = defineStore('player', {
     },
 
     /**
-     * 进度快照同步(引擎的 position 事件 / 本地 timeupdate)。
+     * 进度快照同步(useAudioElement 的 onPosition 回调:节流后的 timeupdate / seek 之后)。
      *
-     * 绝不在这里改 this.state:远端引擎的 position 事件不带状态,控制器本地
-     * state 在渲染进程重建后是陈旧的 idle —— 恢复窗口后音乐在播、界面显示暂停
-     * 就是它造成的。状态只由引擎的 state 事件(syncState)与低内存恢复载荷驱动。
+     * 绝不在这里改 this.state:进度事件只带进度、不带状态,状态只由 onStateChange
+     * (syncState)驱动 —— 否则切歌/缓冲期间的一条进度回调会把状态覆盖成错误的旧值。
      */
     syncPosition(snapshot: AudioSnapshot): void {
       this.currentTimeMs = snapshot.currentTimeMs

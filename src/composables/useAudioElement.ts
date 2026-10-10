@@ -23,11 +23,8 @@ export interface AudioControllerCallbacks {
   /**
    * 进度快照(节流后的 timeupdate / seek 之后的进度)。
    *
-   * 与 onStateChange 分开是必须的:远端的 position 事件只带进度、不带状态
-   * (electron/main/bg-player.ts 的 `{ type: 'position' }`)。若拿控制器本地
-   * state 冒充状态回调,渲染进程重建后(低内存模式恢复窗口)控制器 state 还是
-   * 初始 idle,引擎随后的每条进度都会把 store 的 playing 覆盖成 idle ——
-   * 音乐在播,界面却显示暂停。
+   * 与 onStateChange 分开:进度更新高频(节流后仍远密于状态变更),混在一起会
+   * 让状态回调被无意义的重复调用淹没。
    */
   onPosition?: (snapshot: AudioSnapshot) => void
 }
