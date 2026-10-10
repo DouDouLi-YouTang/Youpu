@@ -1,8 +1,12 @@
-// 控制条 / 弹层(volume/level/rate) / 模式气泡(含 Transition 类) / 进度条 / 悬停预览均为本组件
-// 模板渲染的元素，带 data-v，直接 scoped；antd 内部节点（.ant-slider-*、.ant-avatar 内 img、
-// 图标组件内 svg）无宿主 data-v，需 :deep() 穿透。
+// 控制条覆盖层：与 ./immersive-controls.scss 特异性相同，靠源顺序覆盖（故必须排在它之后，
+// 由 ImmersiveControls.vue 的两个 <style scoped src> 顺序保证，勿调换）。
+// 控制条 / 弹层(volume/level/rate) / 模式气泡(含 Transition 类) 均为控制条内元素；
+// 凡选择器命中的节点已随子组件（controls/*.vue）拆走，用顶层 :deep() 包住 —— 编译结果
+// [data-v] .xxx 与原 .xxx[data-v] 特异性相同；留在外壳模板里的节点保持原样。
+// antd 内部节点（.ant-slider-*、.ant-avatar 内 img）无宿主 data-v，用 :deep() 穿透。
 // .rnp-cover* 族由兄弟组件 ImmersiveCover.vue 渲染，scoped 在此不可命中，样式在
 // immersive-controls.global.scss 中维护（非 scoped）。@keyframes 名带 hash 仍全局唯一。
+// 进度条与悬停预览已随 ProgressBar 组件迁到 controls/progress-bar.scss。
 
 .immersive-controls {
   position: absolute;
@@ -30,7 +34,7 @@
   &.is-idle {
     transform: translateY(calc(var(--bottombar-height, 90px) - 5px));
     pointer-events: none;
-    .rnp-time-indicator {
+    :deep(.rnp-time-indicator) {
       opacity: 0;
     }
   }
@@ -69,7 +73,7 @@
 // opacity 淡出 —— 用户反馈「直接消失」违和,改为跟随面板下滑消失更自然。
 
 // 按钮：对齐参考项目 refined-control-bar 的 36px 圆形 + 主色填充 hover
-.rnp-ctrl-btn {
+:deep(.rnp-ctrl-btn) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -88,9 +92,10 @@
     transform 0.25s ease,
     opacity 0.3s ease;
   pointer-events: auto;
-  // svg 既有宿主模板直绘(mask 图标/play-toggle,带 data-v)也有 antd 图标组件内层(无 data-v),
-  // 统一 :deep(svg) 超集覆盖两者(编译为 .rnp-ctrl-btn[data-v] svg,与原裸选择器命中一致)。
-  :deep(svg) {
+  // svg 既有宿主模板直绘(mask 图标/play-toggle)也有 antd 图标组件内层,
+  // 统一用后代选择器覆盖两者(编译为 [data-v] .rnp-ctrl-btn svg,与原 :deep(svg) 命中一致)。
+  // 注意 :deep() 内不能再嵌套 :deep()(不会被编译,会原样输出),故此处裸写 svg。
+  svg {
     width: 20px;
     height: 20px;
   }
@@ -144,11 +149,11 @@
 // currentColor 继承 .rnp-ctrl-btn 的 accent 色,图标随沉浸色变化。
 // 单曲循环 repeat-one 图标自带"1",替代 antd a-badge(参考 .type 无角标圆点)。
 
-.rnp-icon-prev {
+:deep(.rnp-icon-prev) {
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 6h2v12H6zm3.5 6 8.5 6V6z'/%3E%3C/svg%3E");
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 6h2v12H6zm3.5 6 8.5 6V6z'/%3E%3C/svg%3E");
 }
-.rnp-icon-next {
+:deep(.rnp-icon-next) {
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z'/%3E%3C/svg%3E");
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z'/%3E%3C/svg%3E");
 }
@@ -163,14 +168,13 @@
 
 // 模式按钮:切换后短暂弹出当前模式名(对齐参考 .u-result tooltip:371-383 圆角气泡 +
 // accent 配色),给点击反馈,避免用户看不出当前模式。
-.rnp-mode-btn {
+:deep(.rnp-mode-btn) {
   position: relative;
 }
 // hint 作为 fragment 顶层元素挂在 .immersive-root 下(脱离 controls 的 stacking
 // context),用 absolute 相对 root 定位(left/top 由 JS 按按钮视口坐标写入)。
 // z-index:10 高于进度条(1)与控制条(5),确保不被进度条挡住。留在 root 内继承其
 // accentVars,保留沉浸色。显隐动画由 Transition 接管,此处不设静态 opacity/transform。
-// 仍由本组件模板渲染(无 Teleport),带 data-v,可 scoped。
 .rnp-mode-hint {
   position: absolute;
   z-index: 10;
@@ -203,7 +207,7 @@
 // ::before = accent 主色圆(hover scale1.1);两个 svg 各占左右半,用 background 填 accent-on-primary
 // + clip-path polygon 切出 play(三角)/pause(两竖)形,play↔pause 间 .2s 变形;::after = 三角播放符
 // (play 态 opacity1,delay0.2s)。
-.rnp-ctrl-play {
+:deep(.rnp-ctrl-play) {
   &.play-toggle {
     position: relative;
     background: transparent;
@@ -299,7 +303,7 @@
   gap: 0.5rem;
   pointer-events: none;
 }
-.immersive-controls-buttons {
+:deep(.immersive-controls-buttons) {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -313,7 +317,7 @@
   pointer-events: none;
 }
 
-.immersive-volume {
+:deep(.immersive-volume) {
   position: relative;
   display: flex;
   align-items: center;
@@ -322,7 +326,7 @@
 // 音量悬停弹出竖向滑块(对齐参考 refined-control-bar.scss:491-548 .prg-spk):
 // 36×120 圆角弹层,blur(36px),从底部 scaleY 展开;.shown 时显示。自绘 in-tree 弹层
 // (非 antd 挂 body 浮层),带 data-v,可 scoped。
-.volume-popup {
+:deep(.volume-popup) {
   position: absolute;
   right: 0;
   bottom: calc(50% + 18px);
@@ -349,26 +353,26 @@
     pointer-events: auto;
     transform: scaleY(1);
   }
-  :deep(.ant-slider) {
+  .ant-slider {
     margin: 0;
     padding: 0;
     height: 100%;
   }
-  :deep(.ant-slider-rail) {
+  .ant-slider-rail {
     left: 50%;
     transform: translateX(-50%);
     width: 8px;
     border-radius: 100px;
     background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.18);
   }
-  :deep(.ant-slider-track) {
+  .ant-slider-track {
     left: 50%;
     transform: translateX(-50%);
     width: 8px;
     border-radius: 100px;
     background: var(--rnp-accent-color, var(--color-primary));
   }
-  :deep(.ant-slider-handle) {
+  .ant-slider-handle {
     left: 50% !important;
     margin-left: -9px !important;
     width: 18px;
@@ -378,13 +382,13 @@
     background: var(--rnp-accent-color-shade-2, #666);
     box-shadow: none;
   }
-  :deep(.ant-slider-handle::after) {
+  .ant-slider-handle::after {
     display: none !important;
   }
 }
 
 // 音质按钮 + 弹出列表(对齐参考 .brt 码率按钮,弹出风格同 .volume-popup)
-.rnp-level {
+:deep(.rnp-level) {
   position: relative;
   display: flex;
   align-items: center;
@@ -397,13 +401,14 @@
   .level-popup--center.shown {
     transform: translate(-50%, 0);
   }
-  &--left {
-    margin-left: 8px;
-    flex-shrink: 0;
-  }
+}
+// 左列倍速弹层贴着封面信息,单独留出左边距、不被 flex 压缩
+:deep(.rnp-level--left) {
+  margin-left: 8px;
+  flex-shrink: 0;
 }
 
-.rnp-level-btn {
+:deep(.rnp-level-btn) {
   // 完整音质名(标准/极高/无损/Hi-Res)放不进 36px 圆形,改为自适应宽度胶囊,
   // 高度 32 略小于图标按钮 36,与右侧按钮组中心对齐(父级 align-items:center)。
   width: auto;
@@ -415,7 +420,7 @@
   font-weight: 600;
   white-space: nowrap;
 }
-.level-popup {
+:deep(.level-popup) {
   position: absolute;
   right: 0;
   bottom: calc(50% + 18px);
@@ -441,7 +446,7 @@
   }
 }
 
-.level-popup-item {
+:deep(.level-popup-item) {
   min-width: 56px;
   padding: 4px 10px;
   border: 0;
@@ -463,34 +468,34 @@
 }
 
 // 倍速弹层：与底栏使用同一固定宽度，避免两处视觉尺寸不一致。
-.rate-popup {
+:deep(.rate-popup) {
   width: 160px;
   min-width: 160px;
   padding: 10px 10px 6px;
   gap: 6px;
-  &__value {
-    color: var(--rnp-accent-color, var(--color-primary));
-    font-size: 13px;
-    font-weight: 700;
-    text-align: center;
-    font-variant-numeric: tabular-nums;
+}
+:deep(.rate-popup__value) {
+  color: var(--rnp-accent-color, var(--color-primary));
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+:deep(.rate-popup__slider) {
+  padding: 0 4px 2px;
+  .ant-slider {
+    margin: 4px 0 8px;
   }
-  &__slider {
-    padding: 0 4px 2px;
-    :deep(.ant-slider) {
-      margin: 4px 0 8px;
-    }
-  }
-  &__presets {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 2px;
-    .level-popup-item {
-      min-width: 40px;
-      padding: 3px 6px;
-      font-size: 11px;
-    }
+}
+:deep(.rate-popup__presets) {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px;
+  .level-popup-item {
+    min-width: 40px;
+    padding: 3px 6px;
+    font-size: 11px;
   }
 }
 
@@ -505,189 +510,8 @@
 // Ant Design Slider 不会自动读取沉浸页提取出的主题色。
 // 这里统一把控制条内的进度条与音量条染成 --rnp-accent-color，避免继续显示全局绿色。
 
-// 进度条悬停预览：对齐参考 progressbar-preview 的歌词+子进度结构
-.progressbar-preview {
-  position: fixed;
-  z-index: 8;
-  width: min(360px, calc(100vw - 24px));
-  padding: 12px 14px 10px;
-  border-radius: 16px;
-  background: rgba(var(--rnp-accent-color-bg-rgb, 20, 20, 20), 0.72);
-  color: var(--rnp-accent-color-shade-2, var(--color-text-primary));
-  backdrop-filter: blur(28px) saturate(1.25);
-  -webkit-backdrop-filter: blur(28px) saturate(1.25);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
-  pointer-events: none;
-  transform: translate(-50%, -100%);
-  opacity: 0;
-  transition:
-    opacity 0.18s ease,
-    left 0.1s ease,
-    top 0.1s ease;
-  &.visible {
-    opacity: 1;
-  }
-}
-
-.progressbar-preview-number {
-  margin-bottom: 5px;
-  font-size: 12px;
-  opacity: 0.55;
-}
-.progressbar-preview-line-original {
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1.4;
-}
-.progressbar-preview-line-karaoke {
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1.4;
-}
-.progressbar-preview-line-translated {
-  margin-top: 3px;
-  font-size: 13px;
-  line-height: 1.4;
-  opacity: 0.65;
-}
-.progressbar-preview-line-karaoke-word {
-  display: inline-block;
-  color: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.45);
-  -webkit-mask-image: linear-gradient(90deg, $color-black 0 50%, rgba(0, 0, 0, 0.35) 50% 100%);
-  -webkit-mask-size: 200% 100%;
-  -webkit-mask-repeat: no-repeat;
-  &.current,
-  &:not(.upcoming) {
-    color: var(--rnp-accent-color-shade-2, var(--color-text-primary));
-  }
-}
-
-.progressbar-preview-subprogressbar {
-  height: 3px;
-  margin-top: 10px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.14);
-}
-.progressbar-preview-subprogressbar-inner {
-  height: 100%;
-  border-radius: inherit;
-  background: var(--rnp-accent-color, var(--color-primary));
-}
-.progressbar-preview-line-time {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 6px;
-  font-size: 11px;
-  opacity: 0.45;
-}
-
-// 进度条:固定贴底细条(对齐参考 refined-control-bar.scss:81-136 .m-player .prg)。
-// 默认贴控制条上方 bottom:calc(bottombar-height-6px)、track 4px/hover8px、手柄可见;
-// .at-very-bottom(bottomProgressbar 开启)贴窗口最底 0、手柄隐藏(对齐 rnp-bottom-progressbar)。
-.immersive-progressbar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: calc(var(--bottombar-height, 90px) - 6px);
-  // z-index 1:低于歌词层(2)与控制条(5)。.immersive-content 已设 pointer-events:none,
-  // 不再拦截鼠标;歌词行(.rnp-lyrics-line,pointer-events:auto)在 z-index:2 优先拦截
-  // 底部歌词行的 @click 跳转,进度条在无歌词行处可正常 hover/拖动。
-  // 仍低于控制条(5):音量/音质弹层在控制条 stacking context 内须整体高于进度条,
-  // 否则弹层与进度条重叠段被进度条截获 hover。
-  z-index: 1;
-  height: 28px;
-  padding: 2px 0;
-  transition:
-    bottom 0.2s ease,
-    transform 0.3s ease,
-    opacity 0.3s ease;
-  will-change: transform, opacity;
-  &.at-very-bottom {
-    bottom: 0;
-    padding: 0;
-    :deep(.ant-slider-handle) {
-      opacity: 0;
-      pointer-events: none;
-    }
-  }
-  &.is-idle {
-    transform: translateY(calc(var(--bottombar-height, 90px) - 5px));
-    pointer-events: none;
-  }
-  &.is-idle-fade {
-    opacity: 0;
-    pointer-events: none;
-  }
-  :deep(.ant-slider) {
-    margin: 0;
-    padding: 0;
-    height: 100%;
-  }
-  :deep(.ant-slider-rail) {
-    top: 50%;
-    transform: translateY(-50%);
-    height: 4px;
-    border-radius: 0;
-    background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.1);
-  }
-  :deep(.ant-slider-handle) {
-    top: 50% !important;
-    margin-top: 0 !important;
-    transform: translate(-50%, -50%) !important;
-    width: 20px;
-    height: 20px;
-    border: 2px solid var(--rnp-accent-color, var(--color-primary));
-    border-radius: 50%;
-    background: var(--rnp-accent-color-shade-2, #666);
-    box-shadow: none;
-  }
-  :deep(.ant-slider-handle::after) {
-    display: none !important;
-  }
-  :deep(.ant-slider-track),
-  :deep(.ant-slider:hover .ant-slider-track) {
-    top: 50%;
-    transform: translateY(-50%);
-    height: 4px;
-    border-radius: 0;
-    background: var(--rnp-accent-color, var(--color-primary));
-  }
-  &:hover :deep(.ant-slider-rail),
-  &:hover :deep(.ant-slider-track),
-  &:hover :deep(.ant-slider:hover .ant-slider-track) {
-    height: 8px;
-  }
-  &.at-very-bottom :deep(.ant-slider-rail),
-  &.at-very-bottom :deep(.ant-slider-track),
-  &.at-very-bottom :deep(.ant-slider:hover .ant-slider-track) {
-    top: auto;
-    bottom: 0;
-    transform: none;
-  }
-}
-
-// idle 随控制条一起隐藏(进度条是独立 fixed 元素,不在 .immersive-controls 内):
-// 默认(贴控制条上方)随控制条 translateY 下滑(对齐参考 .prg 在 #main-player 内随之下滑);
-// bottomProgressbar(贴窗口最底)走 opacity 淡出(对齐参考 rnp-bottom-progressbar 不下滑)。
-
-// rail/track 统一 top:50%+translateY(-50%) 居中于 slider 中线:
-// AntD 默认靠 slider 的 paddingBlock:railSize 撑出 rail 静态位置,但本进度条
-// slider padding:0 + height:100%(填满 8px 容器),故需显式居中,否则 rail 顶到 top:0、
-// handle 落在 50%,两者错位(参考 ant-design-vue 4.2.6 slider/style/index.js rail 无 top、
-// handle insetBlockStart=(railSize*3-handleSize)/2)。
-
-// hover:track 展开到 8px(对齐参考 .prg:hover track/has height:8px)
-
-// 手柄:20px 圆 + accent 描边(对齐参考 .ctrl::before 20×20 border accent)。
-// 默认可见;.at-very-bottom 隐藏(参考 rnp-bottom-progressbar 手柄隐藏)。
-// AntD handle 的可见圆点是 ::after 伪元素(默认白底),这里 display:none 去掉它,
-// 改由 handle 自身(border-radius:50% + accent 描边 + shade-2 内填)显示,避免白方块。
-
-// at-very-bottom:rail/track 贴容器底(默认 top:50% 居中于 28px 容器,会距窗口底约 16px,与"贴底"语义不符)
-
 // 时间指示器:右侧,剩余/总时长可点击切换(对齐参考 #rnp-time-indicator:143-160)
-.rnp-time-indicator {
+:deep(.rnp-time-indicator) {
   min-width: 56px;
   padding: 0;
   border: 0;
@@ -705,4 +529,3 @@
     opacity: 0.85;
   }
 }
-

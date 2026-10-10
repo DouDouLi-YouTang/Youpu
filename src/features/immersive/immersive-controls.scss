@@ -1,0 +1,450 @@
+// ImmersiveControls 外壳的 scoped 样式，由 ImmersiveControls.vue 用 <style scoped lang="scss" src> 引入；
+// 不要改成脚本 import，那样会丢失 scoped 隔离（[data-v-*] 不再生效）。
+//
+// 控制条内部各节点的样式仍统一挂在本组件（含子组件 controls/*.vue 渲染的节点，它们没有本组件的
+// data-v）：凡选择器命中的节点已随子组件拆走，就用顶层 :deep(.xxx) 包住 —— 编译结果
+// [data-v] .xxx 与原 .xxx[data-v] 特异性完全相同（各 0,2,0），源顺序不变即层叠不变；
+// 留在外壳模板里的节点（.immersive-controls / 三列容器 / 队列按钮 / 时间指示器所在列）保持原样。
+// 注意 :deep() 内不能再嵌套 :deep()（不会被编译，会原样输出成无效选择器），内部后代选择器直接裸写。
+//
+// 进度条与悬停预览随 ProgressBar 组件迁到 controls/progress-bar.scss；antd 内部节点
+// （.ant-slider-*、.ant-avatar 内 img）无宿主 data-v，仍用 :deep() 穿透。
+//
+// 本源序位置为原内联 scoped 块；./immersive-controls.package.scss 是覆盖层，
+// 与本源序相同特异性靠源顺序覆盖，故两者顺序不能调换。
+
+.immersive-controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* z-index 5:控制条在歌词层(2)与进度条(1)之上。音量/音质弹层在本控制条 stacking
+      context 内,随控制条(5)高于进度条(1),不被进度条遮挡 —— 这是进度条 z-index 须低于
+      控制条的关键原因(否则弹层重叠段被进度条截获 hover)。
+     pointer-events:auto:控制条空白挡住下层歌词,避免点击控制条区域(含模式按钮切换、
+     气泡显示位、列空白)穿透到歌词行触发 @seek 跳转;交互元素本就 auto。 */
+  z-index: 5;
+  pointer-events: auto;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(360px, 600px) minmax(220px, 1fr);
+  align-items: center;
+  gap: 1rem;
+  height: 90px;
+  padding: 0 1.5rem;
+  /* 对齐参考 material-you-compatibility.scss:51 transition: transform .3s ease, opacity .3s ease */
+  transition:
+    transform 0.3s ease,
+    opacity 0.3s ease;
+  will-change: transform, opacity;
+  &.is-idle {
+    transform: translateY(calc(var(--bottombar-height, 90px) - 5px));
+    pointer-events: none;
+    :deep(.rnp-time-indicator) {
+      opacity: 0;
+    }
+  }
+  &.is-idle-fade {
+    opacity: 0;
+    pointer-events: none;
+  }
+  // Ant Design Slider 不会自动读取沉浸页提取出的主题色。
+  // 这里统一把控制条内的进度条与音量条染成 --rnp-accent-color，避免继续显示全局绿色。
+  // （用 // 沉默注释：块内 /* */ 会被 sass 保留并被提升成一条空的 .immersive-controls 规则）
+  :deep(.ant-slider-rail) {
+    background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.18);
+  }
+  :deep(.ant-slider-track),
+  :deep(.ant-slider:hover .ant-slider-track) {
+    background: var(--rnp-accent-color, var(--color-primary));
+  }
+  :deep(.ant-slider-handle) {
+    border-color: var(--rnp-accent-color, var(--color-primary));
+  }
+  :deep(.ant-slider-handle::after),
+  :deep(.ant-slider-handle:hover::after),
+  :deep(.ant-slider-handle:focus::after) {
+    background: var(--rnp-accent-color, var(--color-primary));
+    box-shadow: 0 0 0 2px var(--rnp-accent-color, var(--color-primary));
+  }
+}
+/* 默认 idle:整条下滑出视口(对齐参考 material-you-compatibility.scss:57
+   translateY(calc(var(--bottombar-height) - 5px))——控制条高 90,下滑 85px 几乎沉出底部,
+   留 5px 余量)。控制条无背景,下滑后不可见;pointer-events:none 不挡下层。 */
+
+/* presentationMode:纯 opacity 淡出(对齐参考 experimental.scss:45-54),
+   不下滑,保留布局。 */
+
+/* idle 细粒度(对齐参考 material-you-compatibility.scss:57-74 + styles.scss:670-709):
+   非 bottom-progressbar 的 is-idle,整条下滑出视口;时间指示器跟随整条下滑并淡出
+   (不再反向上移)。右侧音量/音质/队列与播放按钮一起跟随整条下滑消失,不再单独
+   opacity 淡出 —— 用户反馈「直接消失」违和,改为跟随面板下滑消失更自然。 */
+
+/* 按钮：对齐参考项目 refined-control-bar 的 36px 圆形 + 主色填充 hover */
+:deep(.rnp-ctrl-btn) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(
+    --rnp-accent-color-shade-1,
+    var(--rnp-accent-color-shade-2, var(--color-text-primary))
+  );
+  cursor: pointer;
+  transition:
+    background 0.25s ease,
+    transform 0.25s ease,
+    opacity 0.3s ease;
+  /* AntD Outlined 图标是 fill:currentColor,设 color 即单色填充(对齐参考 svg fill accent)。
+     尺寸 20px 与 mask 图标的 mask-size:20px 图形一致,避免音量喇叭比其他图标大。
+     mask 图标容器由 .rnp-mask-icon 覆盖为 24px(图形仍 20px),此处不受影响。 */
+  svg {
+    width: 20px;
+    height: 20px;
+  }
+  /* 单色 mask 图标:空 svg + background:currentColor + -webkit-mask 切形,替换 AntD 线框,
+     对齐参考 .list/.spk 的 Material 实心 mask 风格(refined-control-bar.scss:300-337)。
+     currentColor 继承 .rnp-ctrl-btn 的 accent 色,图标随沉浸色变化。
+     单曲循环 repeat-one 图标自带"1",替代 antd a-badge(参考 .type 无角标圆点)。 */
+  .rnp-mask-icon {
+    width: 24px;
+    height: 24px;
+    background-color: currentColor;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    -webkit-mask-size: 20px 20px;
+    mask-size: 20px 20px;
+    fill: none;
+    /* 让点击穿透到父 button,避免 svg 拦截首次点击 */
+    pointer-events: none;
+  }
+  &:hover:not(:disabled) {
+    background: rgba(
+      var(--rnp-accent-color-shade-1-rgb, var(--rnp-accent-color-shade-2-rgb, 255, 255, 255)),
+      0.1
+    );
+  }
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  /* 已喜欢按钮:主色填充 */
+  &.rnp-ctrl-liked {
+    color: var(--rnp-accent-color, var(--color-primary));
+  }
+  &.rnp-ctrl-liked:hover:not(:disabled) {
+    color: var(--rnp-accent-color, var(--color-primary));
+  }
+  &:active:not(:disabled) {
+    transform: scale(0.92);
+  }
+  &.active {
+    background: rgba(
+      var(--rnp-accent-color-shade-1-rgb, var(--rnp-accent-color-shade-2-rgb, 255, 255, 255)),
+      0.15
+    );
+  }
+}
+:deep(.rnp-icon-prev) {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 6h2v12H6zm3.5 6 8.5 6V6z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 6h2v12H6zm3.5 6 8.5 6V6z'/%3E%3C/svg%3E");
+}
+:deep(.rnp-icon-next) {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z'/%3E%3C/svg%3E");
+}
+/* 播放模式图标(repeat/sequence/repeat-one/shuffle)已抽到 PlaybackModeIcon 共享组件,
+   此处仅保留 prev/next/queue 的 mask。 */
+.rnp-icon-queue {
+  -webkit-mask-image: url("data:image/svg+xml,%0A%3Csvg xmlns='http://www.w3.org/2000/svg' height='20' width='20'%3E%3Cpath d='M13 15q-1.042 0-1.771-.729-.729-.729-.729-1.771 0-1.042.729-1.771Q11.958 10 13 10q.271 0 .521.052t.479.156V4h4v1.5h-2.5v7q0 1.042-.729 1.771Q14.042 15 13 15ZM3 11.5V10h6v1.5Zm0-3V7h9v1.5Zm0-3V4h9v1.5Z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%0A%3Csvg xmlns='http://www.w3.org/2000/svg' height='20' width='20'%3E%3Cpath d='M13 15q-1.042 0-1.771-.729-.729-.729-.729-1.771 0-1.042.729-1.771Q11.958 10 13 10q.271 0 .521.052t.479.156V4h4v1.5h-2.5v7q0 1.042-.729 1.771Q14.042 15 13 15ZM3 11.5V10h6v1.5Zm0-3V7h9v1.5Zm0-3V4h9v1.5Z'/%3E%3C/svg%3E");
+  -webkit-mask-position-y: 65%;
+  mask-position-y: 65%;
+}
+
+/* 模式按钮:切换后短暂弹出当前模式名(对齐参考 .u-result tooltip:371-383 圆角气泡 +
+   accent 配色),给点击反馈,避免用户看不出当前模式。 */
+:deep(.rnp-mode-btn) {
+  position: relative;
+}
+
+/* 播放/暂停按钮:clip-path 双 svg 变形(对齐参考 refined-control-bar.scss:188-261 .btnp)。
+   ::before = accent 主色圆(hover scale1.1);两个 svg 各占左右半,用 background 填 accent-on-primary
+   + clip-path polygon 切出 play(三角)/pause(两竖)形,play↔pause 间 .2s 变形;::after = 三角播放符
+   (play 态 opacity1,delay0.2s)。 */
+:deep(.rnp-ctrl-play) {
+  &.play-toggle {
+    position: relative;
+    background: transparent;
+    color: transparent;
+    overflow: hidden;
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: var(--rnp-accent-color, var(--color-primary));
+      border-radius: 100px;
+      transition: transform 0.25s ease;
+    }
+    &:hover:not(:disabled)::before {
+      transform: scale(1.1);
+    }
+    .play-toggle-svg {
+      position: absolute;
+      top: 0;
+      width: 50%;
+      height: 100%;
+      margin: 0;
+      display: block;
+      background: var(--rnp-accent-color-on-primary, $color-white);
+      fill: transparent;
+      transition: clip-path 0.2s ease;
+      will-change: clip-path;
+    }
+    .play-toggle-svg-first {
+      left: 0;
+    }
+    .play-toggle-svg-last {
+      left: 50%;
+    }
+    &.play-toggle-pause {
+      .play-toggle-svg-first {
+        clip-path: polygon(72% 30%, 86% 30%, 86% 70%, 72% 70%);
+      }
+      .play-toggle-svg-last {
+        clip-path: polygon(14% 30%, 28% 30%, 28% 70%, 14% 70%);
+      }
+    }
+    &.play-toggle-play {
+      .play-toggle-svg-first {
+        clip-path: polygon(76% 30%, 100% 37.5%, 100% 63.75%, 76% 72%);
+      }
+      .play-toggle-svg-last {
+        clip-path: polygon(0% 37.5%, 40% 50%, 40% 50%, 0% 63.75%);
+      }
+    }
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: var(--rnp-accent-color-on-primary, $color-white);
+      clip-path: polygon(38% 30%, 70% 50%, 38% 72%);
+      opacity: 0;
+    }
+    &.play-toggle-play::after {
+      transition-property: opacity;
+      transition-duration: 0s;
+      transition-delay: 0.2s;
+      opacity: 1;
+    }
+  }
+}
+
+/* 三列 pointer-events:none:列空白穿透到父控制条(已 auto)由其接收,挡住下层歌词;
+   交互元素(按钮组/音量/时间)显式 auto 恢复可点。进度条 z-index 1 在控制条(5)之下,
+   控制条透明且 90px 以上不覆盖进度条,进度条上半段仍可点。 */
+.immersive-controls-left,
+.immersive-controls-center,
+.immersive-controls-right {
+  pointer-events: none;
+}
+.immersive-controls-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  /* 左下角封面缩略:防 flex 压缩变形(对齐 ImmersiveCover .rnp-cover flex-shrink:0);
+     img object-fit:cover 防非正方封面被拉伸。 */
+  :deep(.ant-avatar) {
+    flex-shrink: 0;
+  }
+  :deep(.ant-avatar img) {
+    object-fit: cover;
+  }
+}
+.immersive-controls-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+:deep(.immersive-controls-buttons) {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.immersive-controls-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+:deep(.immersive-controls-buttons),
+:deep(.immersive-volume),
+:deep(.rnp-level),
+:deep(.rnp-time-indicator),
+:deep(.rnp-ctrl-btn) {
+  pointer-events: auto;
+}
+:deep(.immersive-volume) {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+/* 音量悬停弹出竖向滑块(对齐参考 refined-control-bar.scss:491-548 .prg-spk):
+   36×120 圆角弹层,blur(36px),从底部 scaleY 展开;.shown 时显示。 */
+:deep(.volume-popup) {
+  position: absolute;
+  right: 0;
+  bottom: calc(50% + 18px);
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 120px;
+  padding: 10px 0;
+  border-radius: 100px;
+  background: rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(36px);
+  -webkit-backdrop-filter: blur(36px);
+  opacity: 0;
+  pointer-events: none;
+  transform: scaleY(0.3);
+  transform-origin: bottom;
+  transition:
+    opacity 0.2s ease-out,
+    transform 0.2s ease-out;
+  &.shown {
+    opacity: 1;
+    pointer-events: auto;
+    transform: scaleY(1);
+  }
+  /* 竖向滑块:8px 轨 + 18px 圆手柄 accent 描边(对齐参考 .wrap 8px / .ctrl 18px) */
+  .ant-slider {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+  }
+  /* 竖向滑块:rail/track 统一 left:50%+translateX(-50%) 居中于 slider 中线
+     (同进度条理由:slider padding:0 后需显式居中)。
+     handle 水平居中用 left:50%+margin-left:-9px,**不可**覆盖 transform——
+     AntD vertical handle 的 inline transform:translateY(+50%) 负责沿轨道垂直定位
+     (Handle.js),覆盖会让圆点脱离音量值位置。 */
+  .ant-slider-rail {
+    left: 50%;
+    transform: translateX(-50%);
+    width: 8px;
+    border-radius: 100px;
+    background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.18);
+  }
+  .ant-slider-track {
+    left: 50%;
+    transform: translateX(-50%);
+    width: 8px;
+    border-radius: 100px;
+    background: var(--rnp-accent-color, var(--color-primary));
+  }
+  .ant-slider-handle {
+    left: 50% !important;
+    margin-left: -9px !important;
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--rnp-accent-color, var(--color-primary));
+    border-radius: 50%;
+    background: var(--rnp-accent-color-shade-2, #666);
+    box-shadow: none;
+  }
+  .ant-slider-handle::after {
+    display: none !important;
+  }
+}
+
+/* 音质按钮 + 弹出列表(对齐参考 .brt 码率按钮,弹出风格同 .volume-popup) */
+:deep(.rnp-level) {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+:deep(.rnp-level-btn) {
+  /* 完整音质名(标准/极高/无损/Hi-Res)放不进 36px 圆形,改为自适应宽度胶囊,
+       高度 32 略小于图标按钮 36,与右侧按钮组中心对齐(父级 align-items:center)。 */
+  width: auto;
+  min-width: 36px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+:deep(.level-popup) {
+  position: absolute;
+  right: 0;
+  bottom: calc(50% + 18px);
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(36px);
+  -webkit-backdrop-filter: blur(36px);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+  transition:
+    opacity 0.2s ease-out,
+    transform 0.2s ease-out;
+  &.shown {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+  }
+}
+
+:deep(.level-popup-item) {
+  min-width: 56px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--rnp-accent-color-shade-2, var(--color-text-primary));
+  font-size: 12px;
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  &:hover {
+    background: rgba(var(--rnp-accent-color-rgb, 170, 170, 170), 0.1);
+  }
+  &.active {
+    color: var(--rnp-accent-color, var(--color-primary));
+    background: rgba(var(--rnp-accent-color-rgb, 170, 170, 170), 0.12);
+  }
+}
+
+/* 时间指示器:右侧,剩余/总时长可点击切换(对齐参考 #rnp-time-indicator:143-160) */
+:deep(.rnp-time-indicator) {
+  min-width: 56px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--rnp-accent-color-shade-2, var(--color-text-primary));
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.5;
+  cursor: pointer;
+  transition:
+    opacity 0.2s ease,
+    transform 0.3s ease;
+  &:hover {
+    opacity: 0.85;
+  }
+}
