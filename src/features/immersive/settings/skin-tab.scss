@@ -1,0 +1,118 @@
+// SettingsSkin（「样式」tab）独有样式。分组标题 / 设置行 / setting-note 等通用行样式
+// 由外壳的 settings-rows.scss 提供（在 .settings-body 下 :deep() 穿透），此处不重复引入。
+
+.skin-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.skin-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.04);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease;
+
+  &:hover {
+    background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.1);
+  }
+
+  &.active {
+    border-color: var(--rnp-accent-color, var(--color-primary));
+    background: rgba(var(--rnp-accent-color-rgb, 170, 170, 170), 0.16);
+  }
+}
+
+/* 缩略图：16:9 的纯 CSS 布局示意图（皮肤未提供图片资源，用色块勾勒版式） */
+.skin-card-thumb {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 52px;
+  padding: 8px;
+  border-radius: 6px;
+  background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.06);
+  overflow: hidden;
+}
+
+.skin-card-thumb-cover {
+  flex: 0 0 24px;
+  height: 24px;
+  border-radius: 4px;
+  background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.35);
+}
+
+.skin-card-thumb-lines {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 5px;
+
+  > i {
+    height: 3px;
+    border-radius: 9999px;
+    background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.3);
+
+    &:nth-child(1) {
+      width: 70%;
+    }
+
+    &:nth-child(2) {
+      width: 100%;
+    }
+
+    &:nth-child(3) {
+      width: 52%;
+    }
+  }
+}
+
+/* 「经典」：左封面 + 右歌词（与基础样式一致，这里显式写出以便后续皮肤对照） */
+.skin-card-thumb--classic {
+  justify-content: flex-start;
+}
+
+/* 「倾诉」：无封面、居中歌词，中间一行倾斜示意 */
+.skin-card-thumb--tilt {
+  justify-content: center;
+
+  .skin-card-thumb-cover {
+    display: none;
+  }
+
+  .skin-card-thumb-lines {
+    flex: 0 0 70%;
+
+    > i:nth-child(1) {
+      width: 100%;
+      transform: rotate(-3deg);
+    }
+
+    > i:nth-child(3) {
+      width: 100%;
+      transform: rotate(2.5deg);
+    }
+  }
+}
+
+.skin-card-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.skin-card-desc {
+  font-size: 0.7rem;
+  line-height: 1.35;
+  opacity: 0.55;
+}

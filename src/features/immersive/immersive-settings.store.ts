@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia'
 
+import type { SkinId } from './skins/types'
+
 /**
  * 全部沉浸式播放页设置。键名 / 写入目标对齐参考项目；默认值按本项目自定义
  * refined-now-playing-netease 的 settings-menu.html 与 main.js 绑定函数。
@@ -95,6 +97,10 @@ export interface ImmersiveSettings {
   fluidMaxFramerate: 0 | 1 | 2 | 3 | 4 // → FLUID_FPS_MAP
   fluidBlur: 5 | 6 | 7 // → FLUID_BLUR_MAP
   presentationMode: boolean
+
+  // ── 皮肤 ──
+  /** 沉浸页歌词面板皮肤(布局)。持久化随 store 末尾的 persist: true 自动完成。 */
+  skin: SkinId
 }
 
 export const useImmersiveSettingsStore = defineStore('immersive-settings', {
@@ -158,7 +164,10 @@ export const useImmersiveSettingsStore = defineStore('immersive-settings', {
     // 实验
     fluidMaxFramerate: 4,
     fluidBlur: 7,
-    presentationMode: false
+    presentationMode: false,
+
+    // 皮肤（默认「经典」= 改造前布局）
+    skin: 'classic'
   }),
   actions: {
     /**
@@ -172,6 +181,13 @@ export const useImmersiveSettingsStore = defineStore('immersive-settings', {
           ? [this.customFontFamily as unknown as string]
           : []
       }
+    },
+    /**
+     * 切换沉浸页皮肤。两个切换入口（沉浸页悬浮切换条 / 设置面板「样式」tab）都走这里，
+     * 因此状态天然同步；未注册的 id 由 registry 的 getSkin 回退到默认皮肤，不会渲染空白。
+     */
+    applySkin(id: SkinId) {
+      this.skin = id
     }
   },
   persist: true
