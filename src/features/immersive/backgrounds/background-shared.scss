@@ -1,0 +1,36 @@
+// 六种背景共用的两层「蒙版」片段 —— 由 backgrounds/*.vue 各自的 <style scoped> 引入。
+// @use 只带进 mixin 定义，不注入任何样式，所以多引无害。
+//
+// ⚠️ 宿主的定位（`.rnp-bg` 与它的 `> div`）**不在这里**：它归 ImmersiveBackground.vue。
+// scoped 会把父组件的 scope id 一并打在**子组件的单根元素**上，那条 `> div` 规则因此能命中
+// 各个背景组件、并靠更高的特异性压住背景自己的同类声明。分工是「父管定位、子管长相」，
+// 所以各背景的样式里不要再写 position / inset / left / top（写了也压不过父组件那条，
+// 见 ImmersiveBackground.vue 文件头的「定位契约」）。
+
+/// 主色遮罩：铺满宿主，颜色取专辑主色（`--rnp-accent-color-overlay`），
+/// 不透明度用各背景自己的变量与兜底值。$z-index 用于把遮罩压在毛玻璃之上
+/// （流体 / 无背景需要，毛玻璃与渐变那两处不需要）。
+@mixin dim-overlay($opacity-var, $fallback: 0, $z-index: null) {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--rnp-accent-color-overlay);
+  opacity: var(#{$opacity-var}, #{$fallback});
+  @if $z-index {
+    z-index: $z-index;
+  }
+  pointer-events: none;
+}
+
+/// 毛玻璃：对下层做 backdrop-filter 模糊，模糊量由各背景自己的变量给出。
+/// 这里**刻意不写 pointer-events**：宿主 `.rnp-bg` 已整体 none 且会继承，
+/// 各背景按自己原本的写法决定要不要再声明一次（拆分前模糊有、无背景没有）。
+@mixin frost-layer($blur-var, $fallback: 0px, $z-index: null) {
+  content: '';
+  position: absolute;
+  inset: 0;
+  @if $z-index {
+    z-index: $z-index;
+  }
+  backdrop-filter: blur(var(#{$blur-var}, #{$fallback}));
+}

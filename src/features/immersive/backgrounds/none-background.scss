@@ -1,0 +1,14 @@
+// 无背景（backgroundType = 'none'）—— 由 backgrounds/NoneBackground.vue 引入。
+// 不留任何图案，只用两层可调的蒙版（模糊 + 暗化）盖住下层内容；两者默认值都是 0。
+
+@use './background-shared.scss' as bg;
+
+.rnp-background-none {
+  &::after {
+    @include bg.frost-layer('--bg-blur-for-none-bg-mask', 0px, 1);
+  }
+
+  &::before {
+    @include bg.dim-overlay('--bg-dim-for-none-bg-mask', 0, 1);
+  }
+}
