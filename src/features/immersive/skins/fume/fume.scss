@@ -1,10 +1,13 @@
 // 「浮名」皮肤主体（由 SkinFume.vue <style scoped src> 引入）。
 //
-// 结构（F3 阶段）：
+// 结构：
 //   .fume-root               皮肤根：铺主题纯色底（Folia 的 backgroundColor 等价物）
+//                            同时承载共享组件要读的 CSS 变量（底距 / 空态色 / 加载卡配色）
 //     .fume-stage-host       FumeStage 的宿主（见 components/fume-stage.scss）
-//       canvas               背景 + 文字（文字在 F4/F5 接入）
-//       <slot>               字幕 / 提示卡（F7 接入）
+//       canvas               背景 + 文字（§12 + §10.4）
+//       .fume-empty-layer    空态层（居中 flex 容器，里面是共享的 SkinEmptyState）
+//       .fume-pending-layer  「正在排版」加载卡（见 components/fume-layout-pending.scss）
+//       .skin-subtitles      底部副字幕（共享组件，见 shared/SkinSubtitle.vue）
 //
 // ⚠️ 背景的 z-index 是 0、内容层是 2 —— 与其他皮肤一致（沉浸页的层序约定）。
 
@@ -14,4 +17,19 @@
   // 背景层：其他皮肤的内容层是 z-index: 2，这里保持一致
   z-index: 0;
   overflow: hidden;
+}
+
+// 空态层：宿主里的一个居中 flex 容器。
+// ⚠️ 这一层是**必需的**：共享的 `SkinEmptyState` 只有 `position: absolute`，
+// 没有 inset —— 它的落点靠宿主 flex 的静态位置（见 shared/skin-empty.scss 的说明）。
+// 把空态直接放进 `.fume-stage-host` 也能居中（宿主是 `inset: 0` 的绝对定位盒子），
+// 但那样"空态该放哪"就散在宿主样式里了；这一层把落点收在一处。
+.fume-empty-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  // 空态不吃事件（宿主本身也是 pointer-events: none，这里显式写一遍是为了可读）
+  pointer-events: none;
 }

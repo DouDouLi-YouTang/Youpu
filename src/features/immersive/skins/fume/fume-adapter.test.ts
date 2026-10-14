@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest'
 import type { LyricLine } from '@/domain/lyric'
 import {
   FUME_FALLBACK_LINE_DURATION_MS,
+  resolveFumeEmptyFontSize,
   resolveFumeLineEndMs,
+  resolveFumeSubtitleFontSize,
+  resolveFumeUpcomingFontSize,
   toFumeLines,
   toFumeWords
 } from './fume-adapter'
@@ -172,5 +175,24 @@ describe('整首歌转换（toFumeLines）', () => {
     )
     expect(result).toHaveLength(2)
     expect(result[0]?.fullText).toBe('  ')
+  })
+})
+
+describe('副字幕与空态字号（§14.2）', () => {
+  it('副字幕 = clamp(1.05rem, 2.2vw, 1.2rem)', () => {
+    expect(resolveFumeSubtitleFontSize()).toBe('clamp(1.050rem, 2.200vw, 1.200rem)')
+  })
+
+  it('下一句预览 = clamp(0.875rem, 1.8vw, 1rem)', () => {
+    expect(resolveFumeUpcomingFontSize()).toBe('clamp(0.875rem, 1.800vw, 1.000rem)')
+  })
+
+  it('副字幕档与「流光」不同（上游两个面板各拼各的，不要"统一"它们）', () => {
+    // 流光是 clamp(1.125rem, 2.6vw, 1.25rem)，数值刻意不同
+    expect(resolveFumeSubtitleFontSize()).not.toBe('clamp(1.125rem, 2.600vw, 1.250rem)')
+  })
+
+  it('空态字号与「流光」同值（上游的空态是外壳提供的通用层）', () => {
+    expect(resolveFumeEmptyFontSize()).toBe('clamp(1.500rem, 3.500vw, 2.250rem)')
   })
 })

@@ -21,6 +21,7 @@
 
 import type { LyricLine, LyricWord } from '@/domain/lyric'
 import { buildLineRenderHints } from '../shared/render-hints'
+import { resolveSubtitleClampSize } from '../shared/subtitle-tracks'
 import type { FumeCameraTrackingMode, FumeLine, FumeWord } from './core/fume-types'
 
 /** 浮名在本项目里的内置调参（§14.1 的默认列，全部照抄上游默认值） */
@@ -82,6 +83,66 @@ export const FUME_HERO_SCALE = 1
  * 这一项目的是让背景在前奏里也缓慢转动 —— 严格跟播放进度会让前奏期间完全静止。
  */
 export const FUME_IDLE_TIME_DRIFT = 0.00018
+
+// ─────────────────────────── §14.2 底部副字幕的字号档 ───────────────────────────
+
+/**
+ * 浮名自己的副字幕 clamp 三锚点（§14.2 的表格）。
+ *
+ * ⚠️ **不是**流光的 `subtitleFontSizes.ts` 那一套：上游 `VisualizerFume.tsx:239`
+ * 自己拼了这组数（`clamp(1.05rem, 2.2vw, 1.2rem)`），两个面板的字幕字号在 Folia 里
+ * 本来就不一样。共用的是"三项都乘倍率"这条规则（`resolveSubtitleClampSize`），
+ * 不是锚点数值 —— 合并数值必然让其中一个面板与上游对不上。
+ */
+export const FUME_SUBTITLE_CLAMP_REM_MIN = 1.05
+export const FUME_SUBTITLE_CLAMP_VW = 2.2
+export const FUME_SUBTITLE_CLAMP_REM_MAX = 1.2
+
+/** 下一句预览的三锚点：`clamp(0.875rem, 1.8vw, 1rem)`（§14.2 表格第二行） */
+export const FUME_UPCOMING_CLAMP_REM_MIN = 0.875
+export const FUME_UPCOMING_CLAMP_VW = 1.8
+export const FUME_UPCOMING_CLAMP_REM_MAX = 1
+
+/** 副字幕字号（倍率固定 1，见 `FUME_LYRICS_FONT_SCALE`） */
+export function resolveFumeSubtitleFontSize(scale = FUME_LYRICS_FONT_SCALE): string {
+  return resolveSubtitleClampSize(
+    FUME_SUBTITLE_CLAMP_REM_MIN,
+    FUME_SUBTITLE_CLAMP_VW,
+    FUME_SUBTITLE_CLAMP_REM_MAX,
+    scale
+  )
+}
+
+/** 「下一句预览」字号（倍率固定 1） */
+export function resolveFumeUpcomingFontSize(scale = FUME_LYRICS_FONT_SCALE): string {
+  return resolveSubtitleClampSize(
+    FUME_UPCOMING_CLAMP_REM_MIN,
+    FUME_UPCOMING_CLAMP_VW,
+    FUME_UPCOMING_CLAMP_REM_MAX,
+    scale
+  )
+}
+
+/**
+ * 空态字号 —— `clamp(1.5rem, 3.5vw, 2.25rem)`。
+ *
+ * 与「流光」的 `resolveGlowEmptyFontSize` 同值：上游的空态是外壳（`VisualizerShell`）
+ * 提供的通用层，不分面板。浮名自己没有空态，本项目沿用同一条口径 —— 三个面板的
+ * 空态在切换时不该突然跳一下大小。
+ */
+export const FUME_EMPTY_FONT_CLAMP_REM_MIN = 1.5
+export const FUME_EMPTY_FONT_CLAMP_VW = 3.5
+export const FUME_EMPTY_FONT_CLAMP_REM_MAX = 2.25
+
+/** 空态字号（倍率固定 1） */
+export function resolveFumeEmptyFontSize(scale = FUME_LYRICS_FONT_SCALE): string {
+  return resolveSubtitleClampSize(
+    FUME_EMPTY_FONT_CLAMP_REM_MIN,
+    FUME_EMPTY_FONT_CLAMP_VW,
+    FUME_EMPTY_FONT_CLAMP_REM_MAX,
+    scale
+  )
+}
 
 /**
  * 背景场景种子：`${seed ?? 'fume'}:${theme.name}`（§7.10）。

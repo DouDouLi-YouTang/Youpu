@@ -1,0 +1,106 @@
+// 「正在排版」加载卡（由 FumeLayoutPending.vue <style scoped src> 引入）。
+//
+// 结构（对齐上游 VisualizerFume.tsx:333-370 的 tailwind 类）：
+//   .fume-pending-layer  铺满舞台的居中层（`absolute inset-0 flex items-center justify-center`）
+//     .fume-pending-card 卡片（`min-w-40 flex-col gap-4 rounded-3xl border px-6 py-5`）
+//       .fume-pending-icon     沙漏（size 24 + animate-pulse）
+//       .fume-pending-bars     骨架条容器（`w-28 flex-col gap-2.5`）
+//         .fume-pending-bar    h-2 圆角条，三根宽度与透明度递减
+//
+// ⚠️ 三个颜色全部走 CSS 变量（`--fume-pending-bg` / `-border` / `-glow` / `-icon` /
+// `-bar-*`），由 `SkinFume.vue` 从调色板算好注入 —— 本文件是 scoped 样式，
+// 拿不到调色板对象，而"用哪个颜色"是皮肤层的决定，不该是样式层的第二处答案。
+// 变量缺省值只是兜底，不参与正常路径。
+
+.fume-pending-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  // 卡本身不吃事件（与整个宿主一致），但这一层要盖在 canvas 之上
+  pointer-events: none;
+}
+
+.fume-pending-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem; // gap-4
+  align-items: center;
+  // min-w-40 = 10rem
+  min-width: 10rem;
+  padding: 1.25rem 1.5rem; // py-5 px-6
+  background-color: var(--fume-pending-bg, #09090b);
+  border: 1px solid var(--fume-pending-border, rgb(113 113 122 / 24%));
+  border-radius: 1.5rem; // rounded-3xl
+  // 上游把卡"抬"起来的那一层投影：底色 52%，18px 下移 / 60px 模糊
+  box-shadow: 0 18px 60px var(--fume-pending-glow, rgb(9 9 11 / 52%));
+}
+
+.fume-pending-icon {
+  font-size: 24px;
+  color: var(--fume-pending-icon, rgb(244 244 245 / 78%));
+  // `animate-pulse`：2 秒一轮，中点淡到 50%
+  animation: fume-pending-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.fume-pending-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem; // gap-2.5
+  // w-28 = 7rem
+  width: 7rem;
+}
+
+.fume-pending-bar {
+  // h-2 = 0.5rem + rounded-full
+  height: 0.5rem;
+  border-radius: 9999px;
+  animation: fume-pending-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+// 三根的宽度与颜色逐条对齐上游：100% / 78% / 56%，前两根主色、最后一根次要色
+.fume-pending-bar.is-first {
+  width: 100%;
+  background-color: var(--fume-pending-bar-first, rgb(244 244 245 / 32%));
+}
+
+.fume-pending-bar.is-second {
+  width: 78%;
+  background-color: var(--fume-pending-bar-second, rgb(244 244 245 / 22%));
+}
+
+.fume-pending-bar.is-third {
+  width: 56%;
+  background-color: var(--fume-pending-bar-third, rgb(113 113 122 / 20%));
+}
+
+// 与 Tailwind 的 `pulse` 同一条曲线：0% / 100% 不透明，50% 淡到一半
+@keyframes fume-pending-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+// 尊重"减少动态效果"：骨架条的呼吸在这里不是信息载体，停掉不影响可读性
+@media (prefers-reduced-motion: reduce) {
+  .fume-pending-icon,
+  .fume-pending-bar {
+    animation: none;
+  }
+}
+
+// 进出场（由 SkinFume 的 <Transition name="fume-pending-fade"> 驱动）。
+// 上游是 framer 的 `initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}`
+// 但没有包 AnimatePresence，所以退场其实是硬切；这里补上 0.2s 的对称淡入淡出 ——
+// 排版完成的那一瞬间本该是软的，硬切会让人以为画面闪了一下。
+// 曲线用 ease-out：进场要"快到位"，退场不需要拖尾。
+.fume-pending-fade-enter-active,
+.fume-pending-fade-leave-active {
+  transition: opacity 0.2s ease-out;
+}
+
+.fume-pending-fade-enter-from,
+.fume-pending-fade-leave-to {
+  opacity: 0;
+}

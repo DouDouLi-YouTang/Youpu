@@ -8,6 +8,8 @@ import { useSmoothClock, type SkinAudioBands } from '../shared/use-smooth-clock'
 import { FOLIA_SERIF_FAMILY, useFoliaSerifReady } from '../shared/folia-font'
 import { getLineRenderEndTimeMs } from '../shared/render-hints'
 import { colorWithAlpha } from '../shared/color-mix'
+import SkinEmptyState from '../shared/SkinEmptyState.vue'
+import SkinSubtitle from '../shared/SkinSubtitle.vue'
 import { toFoliaScale } from '../../backgrounds/folia/shared/audio-bands'
 import type { SkinContext } from '../types'
 import { resolveArticleOverviewCamera } from './core/camera'
@@ -25,8 +27,10 @@ import {
 import { buildFumeBackgroundScene } from './render/background'
 import { clearSegmentMeasureCache } from './measure/text-measure'
 import { useFumeLayout } from './use-fume-layout'
+import { FUME_SUBTITLE_OVERLAY_OPACITY, useFumeOverlay } from './use-fume-overlay'
 import { useFumeStage, type FumeStageSize } from './use-fume-stage'
 import FumeStage from './components/FumeStage.vue'
+import FumeLayoutPending from './components/FumeLayoutPending.vue'
 
 /**
  * 「浮名」(fume) 皮肤 —— Folia `fume` 面板的 Vue 重写。
@@ -145,19 +149,33 @@ const fumeLines = computed(() => toFumeLines(lyric.lines, player.durationMs))
  * 也就是排版与绘制用**同一个**尺寸来源（`FumeStage` 的 resize 事件），
  * 不会出现「画布已按新尺寸画、排版还用旧尺寸」的帧。
  */
-/**
- * ⚠️ `isLayoutPending` 目前**故意不消费** —— 它驱动的是 F7 的「正在排版」加载卡
- * （§7.9 / §14.2 的上游语义）。现在先不画卡，是因为 F4 的验收标准是
- * 「已唱过的块稳定不闪」，此时多看一张卡反而会干扰对照。
- * F7 落地时在这里解构它即可，hook 已经把它准备好了。
- */
-const { article } = useFumeLayout({
+const { article, isLayoutPending } = useFumeLayout({
   lines: fumeLines,
   viewport: stageSize,
   layoutTheme,
   lyricsFontScale: computed(() => FUME_LYRICS_FONT_SCALE),
   heroScale: computed(() => FUME_HERO_SCALE),
   fontKey: fontState
+})
+
+/**
+ * 画布之外那一层（副字幕 / 空态 / 加载卡配色）全部在 `use-fume-overlay.ts` ——
+ * 那一段的输入（当前行、字号档、调色板）与画布那一段（文章 / 场景 / 相机）无关，
+ * 拆开既守住 AGENTS.md 的 400 行上限，也让"哪一段属于画布"一眼可见。
+ */
+const {
+  emptyState,
+  subtitleRows,
+  upcomingPreview,
+  secondarySubtitleFontSize,
+  upcomingFontSize,
+  emptyFontSize,
+  overlayStyleVars
+} = useFumeOverlay({
+  ctx: props.ctx,
+  clock,
+  palette,
+  isLayoutPending
 })
 
 /**
@@ -283,9 +301,16 @@ function toFumeAudioLevels(bands: SkinAudioBands): FumeAudioLevels {
 }
 
 /** 主题纯色底（`theme.backgroundColor` 的等价物） */
-const stageStyle = computed(() => ({
+/**
+ * 皮肤根的内联变量：底色 / 字体 + 共享组件要读的那几个（见 `use-fume-overlay`）。
+ *
+ * 底色与字体在**这一层**给（而不是也塞进 overlay hook）：它们是皮肤根自己的外观，
+ * 与"字幕/空态要什么变量"不是同一件事。
+ */
+const stageStyle = computed<Record<string, string>>(() => ({
   backgroundColor: palette.value.background,
-  fontFamily: `"${FOLIA_SERIF_FAMILY}", serif`
+  fontFamily: `"${FOLIA_SERIF_FAMILY}", serif`,
+  ...overlayStyleVars.value
 }))
 
 /**
@@ -309,7 +334,28 @@ defineExpose({
         }
       "
       @resize="(size) => (stageSize = size)"
-    />
+    >
+      <!-- 空态：居中一层（宿主的 flex 静态定位，见 shared/skin-empty.scss） -->
+      <div v-if="emptyState && !isLayoutPending" class="fume-empty-layer">
+        <SkinEmptyState :state="emptyState" :font-size="emptyFontSize" />
+      </div>
+
+      <!-- 正在排版：盖在空态之上（切歌瞬间两者会同时满足条件，卡优先） -->
+      <Transition name="fume-pending-fade">
+        <FumeLayoutPending v-if="isLayoutPending" />
+      </Transition>
+
+      <!-- 底部副字幕（罗马音 / 译文，或"接下来两句"预览）：不吃事件 -->
+      <SkinSubtitle
+        :rows="subtitleRows"
+        :preview="upcomingPreview"
+        :background="palette.background"
+        :color="palette.secondary"
+        :opacity="FUME_SUBTITLE_OVERLAY_OPACITY"
+        :secondary-font-size="secondarySubtitleFontSize"
+        :upcoming-font-size="upcomingFontSize"
+      />
+    </FumeStage>
   </div>
 </template>
 
