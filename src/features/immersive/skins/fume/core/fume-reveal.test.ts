@@ -315,10 +315,15 @@ describe('resolvePrintedGlyphsInRange（规格书 §5.2 的 +0.2 偏置）', () 
 })
 
 describe('resolveLinePassCutoffTime（规格书 §5.3 / §17.1 第 6 条）', () => {
-  it('取 min(渲染结束时间, 下一行起始时间)', () => {
-    expect(resolveLinePassCutoffTime(5000, 3000)).toBe(3000)
-    expect(resolveLinePassCutoffTime(5000, 6000)).toBe(5000)
-    expect(resolveLinePassCutoffTime(5000, 5000)).toBe(5000)
+  // 一行 1000→4000ms 的 normal 行（3000ms）：
+  // enter = min(420, max(220, 1020)) = 420；exit = min(320, max(180, 540)) = 320；hold = 60
+  // 拖尾起点 = 4000 + 60 = 4060 → renderEndTime = 4060 + 320 = 4380
+  const line = { startTimeMs: 1000, endTimeMs: 4000 }
+
+  it('内部用 getLineRenderEndTimeMs，再与下一行起始时间取 min', () => {
+    expect(resolveLinePassCutoffTime(line, 5000)).toBe(4380) // 下一行更晚 → 用渲染结束时间
+    expect(resolveLinePassCutoffTime(line, 4300)).toBe(4300) // 下一行更早 → 被截短
+    expect(resolveLinePassCutoffTime(line, 4380)).toBe(4380) // 相等 → 保持
   })
 
   it('下一行时间非有限（含 null / undefined）时不钳制', () => {
@@ -329,12 +334,29 @@ describe('resolveLinePassCutoffTime（规格书 §5.3 / §17.1 第 6 条）', ()
       Number.POSITIVE_INFINITY,
       Number.NEGATIVE_INFINITY
     ]) {
-      expect(resolveLinePassCutoffTime(5000, next)).toBe(5000)
+      expect(resolveLinePassCutoffTime(line, next)).toBe(4380)
     }
   })
 
-  it('无块时渲染结束时间是 -Infinity，结果保持 -Infinity', () => {
-    expect(resolveLinePassCutoffTime(Number.NEGATIVE_INFINITY, null)).toBe(Number.NEGATIVE_INFINITY)
+  it('已经烘好 renderHints 的行直接复用，不再现算', () => {
+    const baked = {
+      ...line,
+      renderHints: {
+        rawDurationMs: 3000,
+        timingClass: 'normal' as const,
+        renderEndTimeMs: 5000,
+        lineTransitionMode: 'normal' as const,
+        wordRevealMode: 'normal' as const
+      }
+    }
+    expect(resolveLinePassCutoffTime(baked, 10_000)).toBe(5000)
+    expect(resolveLinePassCutoffTime(baked, 4500)).toBe(4500)
+  })
+
+  it('最后一个词的结束时间参与拖尾起点（词尾晚于行尾）', () => {
+    const withWords = { ...line, words: [{ endTimeMs: 4200 }] }
+    // 拖尾起点 = 4200 + 60 = 4260 → 4260 + 320 = 4580
+    expect(resolveLinePassCutoffTime(withWords, Number.POSITIVE_INFINITY)).toBe(4580)
   })
 })
 

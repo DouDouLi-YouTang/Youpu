@@ -23,6 +23,7 @@
  * 两者若混用，词的时间边界会整体漂移。见 `fume-types.ts` 的 `FumeGraphemeTiming` 注释。
  */
 
+import { getLineRenderEndTimeMs, type RenderHintLineLike } from '../../shared/render-hints'
 import { clamp, splitGraphemes } from './fume-math'
 import type { FumeGraphemeTiming, FumeTimedSpan, FumeWord, FumeWordRange } from './fume-types'
 
@@ -211,22 +212,23 @@ export function resolvePrintedGlyphsInRange(range: FumeWordRange, currentTimeMs:
  * 歌词数据里「下一行提前 0.2s 进来」是常态，若不加这条钳制，当前行的颜色拖尾会跨进
  * 下一行的镜头里（两个块的颜色叠在一起，看起来像脏帧）。
  *
- * ⚠️ **与规格书的一处签名差异（需要拍板，已在最终报告里列出）**：
- * 规格书写的是 `resolveLinePassCutoffTime(line, nextLineStartTime)`，内部调
- * `getLineRenderEndTime(line)`。但「渲染结束时间」属于 §4.9 的 renderHints 层，
- * 本次三块（F1-F3）不包含它。为了**不在这里复制一份 hints 公式**（那会导致两处实现
- * 迟早漂移），本函数改为**直接接收算好的 `renderEndTimeMs`**。
- * 等 renderHints 落地后，调用处写
- * `resolveLinePassCutoffTime(getLineRenderEndTimeMs(line), next.startTimeMs)` 即可，
- * 语义与规格书完全一致。
+ * 「这一行能留多久」由 `shared/render-hints.ts` 的 `getLineRenderEndTimeMs` 给出
+ * （§4.9）：它已经含了行结束时间、过场三件套与 67ms 的极短行地板。本函数只做最后一步
+ * 「与下一行起点取 min」。
  *
- * @param renderEndTimeMs      本行的渲染结束时间（毫秒，= `getLineRenderEndTime(line)`）
- * @param nextLineStartTimeMs  数组里的下一行起始时间；非有限值（含 `null` / `undefined`）时不做钳制
+ * **为什么必须调共享层而不是自己算**：签名的第一版曾把算好的 `renderEndTimeMs` 当参数传进来
+ * （当时 renderHints 还没落地，为了不复制一份公式）。现在 hints 层已经存在，参数就还原成
+ * 规格书的 `(line, nextLineStartTime)` —— 让「渲染结束时间」永远只有一个实现，
+ * 否则 §8.3 的 `hasPassCutoffReached` 与 §9.7 的相机重定位迟早会用上两个不同的值。
+ *
+ * @param line                本行（时间单位毫秒；`words` 参与算拖尾起点，见 render-hints）
+ * @param nextLineStartTimeMs 数组里的下一行起始时间；非有限值（含 `null` / `undefined`）时不钳制
  */
 export function resolveLinePassCutoffTime(
-  renderEndTimeMs: number,
+  line: RenderHintLineLike,
   nextLineStartTimeMs: number | null | undefined
 ): number {
+  const renderEndTimeMs = getLineRenderEndTimeMs(line)
   if (typeof nextLineStartTimeMs !== 'number' || !Number.isFinite(nextLineStartTimeMs)) {
     return renderEndTimeMs
   }

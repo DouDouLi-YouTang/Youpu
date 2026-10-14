@@ -38,6 +38,15 @@ export interface WordColorEntry {
   color: string
 }
 
+/**
+ * CJK 匹配模式（上游 `WordColorCjkMatchMode`）。
+ *
+ * 只有 CJK 词会被它影响 —— 非 CJK 词一律走「配置项按空白拆词后精确比较」。
+ * 浮名用的是 `bidirectional-contains`（§6.4）：词比配置长时也要命中，
+ * 例如配置写「零れ落ち」而词正好是「零れ落ちて」的场景。
+ */
+export type WordColorCjkMatchMode = 'target-contains-token' | 'bidirectional-contains' | 'exact'
+
 /** CJK：汉字、假名、韩文（Folia 的口径，含扩展 A 区之外的常用区） */
 const CJK_RE = /[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/
 
@@ -71,14 +80,17 @@ function readEntryColor(entry: unknown): string {
  * @param wordText     词文本（本项目的 `LyricWord.word`，可能含前导 / 尾随空格）
  * @param wordColors   主题的逐词配色（本项目目前恒为空数组）
  * @param fallbackColor 未命中时的颜色（通常是主题的 accentColor / primaryColor）
+ * @param options      `cjkMatchMode` 决定 CJK 词怎么算命中（见 `WordColorCjkMatchMode`）
  */
 export function resolveWordColor(
   wordText: string,
   wordColors: readonly WordColorEntry[] | undefined,
-  fallbackColor: string
+  fallbackColor: string,
+  options: { cjkMatchMode?: WordColorCjkMatchMode } = {}
 ): string {
   if (!wordColors || wordColors.length === 0) return fallbackColor
 
+  const cjkMatchMode = options.cjkMatchMode ?? 'target-contains-token'
   const cleanCurrent = wordText.trim()
   if (!cleanCurrent) return fallbackColor
 
@@ -87,8 +99,15 @@ export function resolveWordColor(
     if (!target) continue
 
     if (isCjk(cleanCurrent)) {
-      // CJK：配置项包含词即可（配置可以比词长）
-      if (!target.includes(cleanCurrent)) continue
+      if (cjkMatchMode === 'exact') {
+        if (target !== cleanCurrent) continue
+      } else if (cjkMatchMode === 'bidirectional-contains') {
+        // 互含：「配置比词长」与「词比配置长」都算命中
+        if (!target.includes(cleanCurrent) && !cleanCurrent.includes(target)) continue
+      } else if (!target.includes(cleanCurrent)) {
+        // 默认：配置项包含词即可（配置可以比词长）
+        continue
+      }
     } else {
       // 非 CJK：按空白拆配置项，归一化后逐一比较
       const targetWords = target.split(/\s+/).map(normalizeToken).filter(Boolean)
