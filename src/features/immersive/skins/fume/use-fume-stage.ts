@@ -74,6 +74,8 @@ import type {
 import { drawFumeBackground } from './render/background'
 import { createStaticBlockSnapshot } from './render/canvas-text'
 import { drawFumeLiveBlock, type FumeLiveBlockParams } from './render/canvas-text-live'
+import { FumeLiveRaster, type FumeLiveRasterFrame } from './render/live-raster'
+import { isGlowBlurQuantized } from '../shared/glow-blur-quantize'
 import { resolveFumePassedFadeDurationMs } from './core/text-style'
 import {
   acquireFumeSnapshot,
@@ -141,12 +143,34 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
   /** 静态快照缓存：跨帧存活（§11.1） */
   const snapshotCache: FumeSnapshotCache = createFumeSnapshotCache()
 
+  /**
+   * 实时区块的量化栅格（§11.5）。**只有 Linux 降级档会真正用到它**
+   * （`isGlowBlurQuantized()` 默认只在 Linux 上为 true），但实例常驻：
+   * 平台在会话内不会变，判断放在每帧反而要多读一次模块级变量。
+   *
+   * 它跨帧存活的理由与快照缓存相同 —— 栅格 canvas 是「只增不减」的，
+   * 每帧新建就等于每帧重新分配一块后备缓冲。
+   */
+  const liveRaster = new FumeLiveRaster()
+
   /** 上一帧时间戳（`performance.now()` 同源，毫秒）；null = 本段循环的第一帧 */
   let lastFrameAt: number | null = null
   /** 「第一个区块开始打印」是否已经回调过；`article` 变化时重置（§17.1 第 5 条） */
   let hasPrintedContent = false
   /** 「已经排过一版文章」——用来区分「暂停」与「还没开始」 */
   let lastArticle: FumeArticleLayout | null = null
+  /**
+   * 上一帧的主题指纹（§11.1 的失效清单）。
+   *
+   * 快照与栅格里**烤了颜色与字体**，而这两样都能在播放中途变（切明暗主题、
+   * 换专辑主色、内置字体从兜底字形换成真字形）。不比对指纹的话，已经画成
+   * 上一套配色的那些块会一直用旧图 —— 表现是「切主题后只有正在唱的那块变色」。
+   *
+   * 指纹只取参与绘制的字段：`name`（参与背景种子与布局键）、三色、字体三件套。
+   * 与 §11.1 的清单逐项对应，**不要**图省事把整个 theme 塞进来 ——
+   * `animationIntensity` / `wordColors` 不进快照，它们变了没必要重建。
+   */
+  let lastThemeFingerprint: string | null = null
 
   // ── 每帧复用的入参对象（§16.2：不在 draw 里新建对象） ──────────────────────
   const liveParams: FumeLiveBlockParams = {
@@ -167,6 +191,13 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
   }
   /** 实时绘制的可见区间（世界坐标），供裁剪用 */
   const visibleRect = { left: 0, top: 0, right: 0, bottom: 0 }
+  /**
+   * 实时栅格的每帧入参（§16.2：复用同一个对象）。
+   *
+   * `visible` 直接引用上面那个 `visibleRect` —— 两者语义完全相同（都是本帧可见的
+   * 世界矩形），复制一份字段只会多出「改了一处忘改另一处」的机会。
+   */
+  const liveFrame: FumeLiveRasterFrame = { deviceScale: 1, visible: visibleRect }
   const cameraStepInput: Partial<FumeCameraStepInput> = {}
   /**
    * 每帧复用的视口对象（§16.2）。
@@ -258,6 +289,22 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
     return getSnapshot(spec, block, pendingGetSnapshotNow)
   }
 
+  /**
+   * 主题指纹（§11.1 的失效清单）。用 `\u0000` 分隔而不是 `:` —— 字体栈里的
+   * 族名可能含冒号，用冒号拼串会让「两个不同的主题」算出同一个指纹。
+   */
+  function resolveThemeFingerprint(theme: FumeTheme): string {
+    return [
+      theme.name,
+      theme.primaryColor,
+      theme.secondaryColor,
+      theme.accentColor,
+      theme.fontStyle,
+      theme.fontFamily ?? '',
+      (theme.fontFamilyStack ?? []).join(',')
+    ].join('\u0000')
+  }
+
   /** 每帧入口 */
   function draw(now: number): void {
     if (disposed) return
@@ -294,6 +341,21 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
     const theme = options.theme.value
     const backgroundScene = options.backgroundScene.value
 
+    /**
+     * 主题失效（§11.1）：三色 / 字体任一变化都要把两套缓存丢掉。
+     *
+     * 放在「无文章」分支**之前**：前奏期间换主题同样要清，否则第一句歌词
+     * 一开口就贴出上一套配色的快照（那正是用户最先看到的一帧）。
+     * 比对的是字符串指纹而不是对象引用 —— `theme` 是 `computed` 出来的新对象，
+     * 按引用比会**每帧都判不等**，等于每帧重建全部快照。
+     */
+    const themeFingerprint = resolveThemeFingerprint(theme)
+    if (themeFingerprint !== lastThemeFingerprint) {
+      lastThemeFingerprint = themeFingerprint
+      releaseFumeSnapshots(snapshotCache, Number.POSITIVE_INFINITY)
+      liveRaster.clear()
+    }
+
     // ── ② 无文章：只画背景 ────────────────────────────────────────────────
     const article = options.article.value
     if (!article) {
@@ -324,6 +386,8 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
       syncFumeCameraToArticle(cameraState, article)
       // 快照里烤了颜色 / 字体 / 尺寸，文章一换必须全清（§11.1）
       releaseFumeSnapshots(snapshotCache, Number.POSITIVE_INFINITY)
+      // 栅格同理：它烤的是同一批颜色与字体（§11.5 的 clear 走同一条路径）
+      liveRaster.clear()
       // 渐隐总时长只跟「全篇时间线 + textHoldRatio」有关，两者随文章一起换（§6.3）
       passedFadeDurationMs = resolveFumePassedFadeDurationMs(
         article.chronologicalBlocks.map((block) => block.line),
@@ -410,6 +474,16 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
     visibleRect.top = camera.y - viewportCenterY / screenScale - margin
     visibleRect.right = camera.x + viewportCenterX / screenScale + margin
     visibleRect.bottom = camera.y + viewportCenterY / screenScale + margin
+    liveFrame.deviceScale = screenScale * dpr
+    /**
+     * 实时块是否走量化栅格（§11.4）。
+     *
+     * 普通档直接在舞台的世界变换下画：相机连续缩放 → Chromium 每帧为新尺寸铸一份
+     * 字形 strike，观感最好但 Linux 上会在约半小时后耗尽 renderer 的字形缓存。
+     * 降级档改画进一块固定倍率的离屏 canvas 再缩放贴回，字形尺寸集合因此有界，
+     * 代价是相机缩放时最多损失 1.45% 锐度（`resolveLiveRasterScale` 的上取整）。
+     */
+    const rasterLive = isGlowBlurQuantized()
 
     context.save()
     context.translate(viewportCenterX, viewportCenterY)
@@ -459,15 +533,37 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
       //  1. §8.3 的 `staticState === null`（正在打印的那一块，主路径）；
       //  2. 快照创建失败（离屏 canvas 拿不到）—— 上游同样在这里回落到实时绘制，
       //     宁可多花点算力，也不要让那块字凭空消失。
-      //
-      // 调用时 context 的变换已经是「世界坐标 → 设备像素」（本函数上方刚设好），
-      // 所以这里传的是世界坐标，不要再自己 translate 到视口。
-      drawFumeLiveBlock(context, block, timing, liveParams)
+      if (!rasterLive) {
+        // 调用时 context 的变换已经是「世界坐标 → 设备像素」（本函数上方刚设好），
+        // 所以这里传的是世界坐标，不要再自己 translate 到视口。
+        drawFumeLiveBlock(context, block, timing, liveParams)
+        continue
+      }
+
+      // 降级档：先画进离屏栅格，再按世界矩形贴回。
+      // ⚠️ `image` 是**复用对象**（见 live-raster 的说明），必须当场用完；
+      // 返回 null（区块被裁没了 / 拿不到离屏 context）时这一帧就不贴，不抛错。
+      const image = liveRaster.draw(block, timing, liveParams, liveFrame, now)
+      if (image) {
+        context.drawImage(
+          image.canvas,
+          0,
+          0,
+          image.width,
+          image.height,
+          image.x,
+          image.y,
+          image.worldWidth,
+          image.worldHeight
+        )
+      }
     }
 
     context.restore()
 
     // ── ⑦ 清缓存 + 续帧 ──────────────────────────────────────────────────
+    // 两个 Map 遍历都是小常数，比挂定时器更可靠（§16.4）
+    liveRaster.sweep(now)
     releaseFumeSnapshots(snapshotCache, now)
     if (shouldKeepFrames()) rafId = requestAnimationFrame(draw)
   }
@@ -503,6 +599,7 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
     rafId = null
     // 卸载时把快照画布全部释放（§11.1）：只 delete 不够，要先把尺寸归零
     releaseFumeSnapshots(snapshotCache, Number.POSITIVE_INFINITY)
+    liveRaster.clear()
   })
 
   return { cameraState }
