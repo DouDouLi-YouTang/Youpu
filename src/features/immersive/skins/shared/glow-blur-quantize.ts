@@ -108,3 +108,71 @@ export function clearCanvasTextGlow(context: CanvasRenderingContext2D): void {
   context.shadowColor = 'transparent'
   if (glowBlurQuantized) context.filter = 'none'
 }
+
+/**
+ * 解析 `setCanvasTextGlow` 写出的 drop-shadow 半径（sigma，px）。
+ *
+ * 为什么用正则解析 `context.filter` 而不是传一个布尔标志进来：`fillGlowText` 是
+ * **与 `setCanvasTextGlow` 成对使用**的公开 API，调用方（浮名的 §10.4b）手上只有
+ * context。若要求它自己记住「刚才设的是哪个模式」，两个模式就各有各的状态，
+ * 迟早出现「设了 filter 却按 shadow 模式绘制」这种只在 Linux 上复现的错位。
+ *
+ * 正则只吃自己写出的格式（`drop-shadow(0 0 <数字>px `），所以外部主题给的
+ * filter 字符串不会被误判成光晕。解析失败返回 0 → 调用方退化成普通 `fillText`，
+ * 这正是「没有 filter 可用」时该有的行为。
+ */
+const GLOW_FILTER_SIGMA_RE = /^drop-shadow\(0 0 ([\d.]+)px /
+
+/**
+ * 带光晕的 `fillText`（上游 `glowBlurQuantize.ts:92`，**故意与上面三个函数同文件**：
+ * `drop-shadow(0 0 Npx color)` 这个字符串由 `setCanvasTextGlow` 写出、由本函数解析，
+ * 拆开会让格式契约有两个副本）。
+ *
+ * ## 为什么要有这个函数（性能，不是外观）
+ *
+ * 降级模式下光晕是 `context.filter`，而 Chromium 会把**带 filter 的绘制**渲染进
+ * 一个临时图层，图层尺寸默认等于当前裁剪区 —— 也就是**整个画布**。浮名一把画布
+ * 铺满视口时，这一条会把帧率从 120 打到 ~90（上游实测）。所以这里在绘制前把裁剪区
+ * 收窄到「文字包围盒 + 光晕余量」，让临时图层只有那一小块。
+ *
+ * 裁剪框的四个方向都按 `measureText` 的 `actualBoundingBox*` 算，而不用宽高近似：
+ * 汉字和拉丁字的字面在不同方向溢出基线的量差别很大（斜体拉丁尤其明显），
+ * 用宽高近似会在某些字形上把光晕切出一条直边。
+ *
+ * `pad = sigma * 4 + 4` 里的「4σ」是 blur 的实用半径（高斯在 4σ 外已不可见），
+ * `+4` 覆盖相机缩到 0.75 时**滤镜不跟随 CTM** 带来的偏差 —— 两个数都是上游实测值，
+ * 改小会让缩小时的边缘出现硬切。
+ *
+ * 普通模式（`filter` 为空）直接 `fillText`：canvas 的 `shadowBlur` 自己会把
+ * 后备缓冲扩到足够大，不需要（也不该）额外裁剪，多一次 save/clip 纯属浪费。
+ */
+export function fillGlowText(
+  context: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number
+): void {
+  const sigma = Number(GLOW_FILTER_SIGMA_RE.exec(context.filter)?.[1] ?? 0)
+  if (!sigma) {
+    context.fillText(text, x, y)
+    return
+  }
+
+  const metrics = context.measureText(text)
+  const pad = sigma * 4 + 4
+  // actualBoundingBoxLeft / -Ascent 是「相对绘制原点的**正**距离」，所以是从 x/y 往回减
+  const left = x - metrics.actualBoundingBoxLeft - pad
+  const top = y - metrics.actualBoundingBoxAscent - pad
+
+  context.save()
+  context.beginPath()
+  context.rect(
+    left,
+    top,
+    metrics.actualBoundingBoxLeft + metrics.actualBoundingBoxRight + pad * 2,
+    metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent + pad * 2
+  )
+  context.clip()
+  context.fillText(text, x, y)
+  context.restore()
+}
