@@ -12,6 +12,7 @@ import {
 } from 'twgl.js'
 
 import { parseColorChannels, type RgbChannels } from '../shared/color'
+import { useWebglFallback } from '../shared/use-webgl-fallback'
 import { markWebgl2Unavailable, releaseWebglContext } from '../shared/webgl-support'
 import { SORA_FRAGMENT_SHADER, SORA_PARTICLE_COUNT, SORA_VERTEX_SHADER } from './sora-shaders'
 
@@ -89,6 +90,8 @@ export function useSoraRender(options: UseSoraRenderOptions) {
   let resizeObserver: ResizeObserver | null = null
   /** 缓存当前颜色，避免每帧同步读 ref（rAF 回调里读 ref 是纯浪费） */
   let currentColors = resolveSoraParticleColor(options.theme.value, options.isDaylight.value)
+
+  const { showFallback } = useWebglFallback({ hasMount: () => state.value !== null })
 
   function invalidate(): void {
     if (animationId !== null || disposed) return
@@ -225,6 +228,8 @@ export function useSoraRender(options: UseSoraRenderOptions) {
   return {
     canvas,
     time,
+    // context 没建起来且全局标记已置位 → 主题底色渐变兜底（规格 §10.4 降级链）
+    showFallback,
     /** 调试/测试用 */
     hasContext: (): boolean => state.value !== null,
     invalidate

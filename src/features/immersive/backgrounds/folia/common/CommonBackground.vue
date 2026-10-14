@@ -1,0 +1,144 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+
+import GeometricBackground from '../../GeometricBackground.vue'
+import { DEFAULT_COMMON_BACKGROUND_OPACITY } from '../shared/host-props'
+import type { FoliaTheme } from '../types'
+import { resolveCommonLayerPlan } from './common-layer-plan'
+import FluidCoverLayer from './FluidCoverLayer.vue'
+
+/**
+ * common 模式 —— 流体封面底 + 主题底色层 + 几何层（规格 §2.1）。
+ *
+ * ## 层序（DOM 顺序 = 层叠顺序，自下而上）
+ *
+ *  1. `useCoverColorBg` 为真时的流体封面底（进场 1s 淡入）
+ *  2. **主题底色层**：`opacity = useCoverColorBg ? (opacity ?? 0.75) : 1`，带 1s 过渡
+ *  3. `!staticMode` 时的几何层（含它自带的暗角）
+ *
+ * 关键理解：**第 2 层压在第 1 层上面**。「打开封面取色」不是把底色删掉，而是把主题底色
+ * 以 75% 不透明度盖在流体底上 —— 这就是「染色/压暗」的来源。反过来说：
+ * 谁把第 2 层的 `opacity` 无条件写成 1，整个流体底就完全看不见了。
+ *
+ * ## 三条与 Folia 一致、容易被「顺手优化」掉的点
+ *
+ * - `staticMode` 是**移除整个几何层**，不是暂停它；`paused` 才是把几何层切成静态快照。
+ *   两者是两回事，必须分开落位（规格 §2.3.9 末段）。
+ * - 第 2 层的 `opacity` 用 `?? 0.75` 而不是 `|| 0.75`：`opacity = 0` 是合法值
+ *   （完全隐藏底色）且必须生效。
+ * - 第 2 层带 1s 过渡：改主题色或改 opacity 时是渐变而不是硬切。
+ *
+ * ## 几何层用的是本仓库已有的独立重写（规格 §10.5）
+ *
+ * `backgrounds/GeometricBackground.vue`（+ `geometric-model.ts`）是 common 几何层的
+ * **既有重写**：确定性种子、CSS keyframes 而非 framer-motion、暂停时不冻结、暗角末色
+ * 取 `--rnp-accent-color-overlay`。这些差异是**有意为之，不要「修正」**。
+ * 它不声明 props（自己读 player store 与全局 `audioBands`），所以这一层只做两件事：
+ *
+ *  1. `disableGeometricBackground` → **整层不挂载**（对应它的 `hideShapes` 语义）；
+ *  2. `disableVignette` → 用 `:deep()` 关掉它内部那个 `.rnp-geo-vignette` 元素。
+ *     这是本文件唯一一处「依赖对方类名」的耦合：对方组件没有暴露这个开关，
+ *     而 `common.disableVignette` 是本模式契约的一部分，只能这样落位。
+ *     如果对方改名或换结构，这条规则会静默失效 —— 排查暗角关不掉时先看这里。
+ */
+const props = defineProps<{
+  theme: FoliaTheme
+  coverUrl: string | null
+  isDaylight: boolean
+  paused: boolean
+  staticMode?: boolean
+  /**
+   * 几何层的重掷种子。**本组件收下但不用** —— 本仓库的几何层自己按当前歌曲 id
+   * 折叠出种子（`resolveGeometricSeed`），比外部传进来的更稳（切皮肤/暂停不会重掷）。
+   * 收这个 prop 是为了让宿主的名字表保持统一，删掉它反而会让「谁负责种子」变得含糊。
+   */
+  seed: string | number
+  useCoverColorBg: boolean
+  coverColorOpacity: number
+  disableGeometricBackground: boolean
+  disableVignette: boolean
+}>()
+
+/** 三层的落位判断全在 common-layer-plan.ts（每条都对应一个「写错了也不报错」的坑） */
+const plan = computed(() =>
+  resolveCommonLayerPlan({
+    useCoverColorBg: props.useCoverColorBg,
+    coverColorOpacity: props.coverColorOpacity,
+    staticMode: props.staticMode === true,
+    disableGeometricBackground: props.disableGeometricBackground,
+    disableVignette: props.disableVignette
+  })
+)
+
+const backgroundLayerStyle = computed(() => ({
+  backgroundColor: props.theme.backgroundColor,
+  opacity: String(plan.value.backgroundOpacity)
+}))
+
+defineExpose({ plan, defaultOpacity: DEFAULT_COMMON_BACKGROUND_OPACITY })
+</script>
+
+<template>
+  <div class="folia-common">
+    <!-- 1. 流体封面底：进场 1s 淡入（Folia 的 motion.div initial/animate/exit opacity） -->
+    <Transition name="folia-common-fluid-fade">
+      <div v-if="plan.showFluid" class="folia-common-fluid">
+        <FluidCoverLayer :cover-url="coverUrl" :theme="theme" />
+      </div>
+    </Transition>
+
+    <!-- 2. 主题底色层：压在流体层之上，1s 过渡 -->
+    <div class="folia-common-background" :style="backgroundLayerStyle" />
+
+    <!-- 3. 几何层：staticMode 时整层消失（不是暂停） -->
+    <div
+      v-if="plan.showGeometric"
+      class="folia-common-geometric"
+      :class="{ 'is-vignette-off': !plan.showVignette }"
+    >
+      <GeometricBackground />
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.folia-common {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.folia-common-fluid,
+.folia-common-background,
+.folia-common-geometric {
+  position: absolute;
+  inset: 0;
+}
+
+/* 主题底色层的 1s 过渡：改主题色 / 改 opacity 时渐变而不是硬切 */
+.folia-common-background {
+  transition: all 1s;
+}
+
+.folia-common-fluid-fade-enter-active,
+.folia-common-fluid-fade-leave-active {
+  transition: opacity 1s ease-in-out;
+}
+
+.folia-common-fluid-fade-enter-from,
+.folia-common-fluid-fade-leave-to {
+  opacity: 0;
+}
+
+/*
+ * `disableVignette` 的落位方式：几何层组件没暴露这个开关，只能按类名关掉它内部的暗角。
+ * `:deep()` 必须配合父选择器（`.folia-common-geometric`）才有正确的特异性 ——
+ * 写成裸 `:deep(.rnp-geo-vignette)` 会生成一个带 scope 属性的高特异性选择器，
+ * 反而更难被后续样式覆盖。
+ */
+.folia-common-geometric.is-vignette-off :deep(.rnp-geo-vignette) {
+  display: none;
+}
+</style>

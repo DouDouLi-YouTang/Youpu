@@ -2,6 +2,7 @@
 import { computed, toRef } from 'vue'
 
 import type { FoliaAudioBands, FoliaTheme } from '../types'
+import FoliaFallbackGradient from '../shared/FoliaFallbackGradient.vue'
 import { resolveLatentTuning, type LatentBackgroundTuning } from './latent-tuning'
 import { useLatentRender } from './use-latent-render'
 
@@ -33,15 +34,16 @@ const themeRef = toRef(props, 'theme')
 const coverUrlRef = toRef(props, 'coverUrl')
 const tuningRef = computed(() => resolveLatentTuning(props.tuning))
 
-const { meshHost, ditherHost, meshLayer, ditherLayer, showMesh, showDithering } = useLatentRender({
-  theme: themeRef,
-  coverUrl: coverUrlRef,
-  audioPower: () => props.audioPower(),
-  audioBands: () => props.audioBands(),
-  paused: () => props.paused,
-  staticMode,
-  tuning: tuningRef
-})
+const { meshHost, ditherHost, meshLayer, ditherLayer, showMesh, showDithering, showFallback } =
+  useLatentRender({
+    theme: themeRef,
+    coverUrl: coverUrlRef,
+    audioPower: () => props.audioPower(),
+    audioBands: () => props.audioBands(),
+    paused: () => props.paused,
+    staticMode,
+    tuning: tuningRef
+  })
 
 const showOverlay = computed(
   () => tuningRef.value.overlayEnabled && tuningRef.value.overlayOpacity > 0
@@ -80,20 +82,25 @@ defineExpose({ resolvedTuning: tuningRef, showMesh, showDithering })
 
 <template>
   <div class="folia-latent" :style="rootStyle">
-    <div v-if="showMesh" ref="meshLayer" class="folia-latent-layer" :style="meshLayerStyle">
-      <div ref="meshHost" class="folia-latent-shader" />
-    </div>
+    <!-- 两个 shader 都没挂上且全局标记置位 → 主题底色渐变兜底（不再是纯色背景） -->
+    <FoliaFallbackGradient v-if="showFallback" :theme="theme" />
 
-    <div
-      v-if="showDithering"
-      ref="ditherLayer"
-      class="folia-latent-layer"
-      :style="ditherLayerStyle"
-    >
-      <div ref="ditherHost" class="folia-latent-shader" />
-    </div>
+    <template v-else>
+      <div v-if="showMesh" ref="meshLayer" class="folia-latent-layer" :style="meshLayerStyle">
+        <div ref="meshHost" class="folia-latent-shader" />
+      </div>
 
-    <div v-if="showOverlay" class="folia-latent-overlay" :style="overlayStyle" />
+      <div
+        v-if="showDithering"
+        ref="ditherLayer"
+        class="folia-latent-layer"
+        :style="ditherLayerStyle"
+      >
+        <div ref="ditherHost" class="folia-latent-shader" />
+      </div>
+
+      <div v-if="showOverlay" class="folia-latent-overlay" :style="overlayStyle" />
+    </template>
   </div>
 </template>
 

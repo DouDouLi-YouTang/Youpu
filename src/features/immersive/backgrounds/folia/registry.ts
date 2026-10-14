@@ -7,7 +7,7 @@ import {
   type FoliaBackgroundRegistryEntry
 } from './types'
 import { defineBackground } from './definition'
-import FoliaFallbackGradient from './shared/FoliaFallbackGradient.vue'
+import CommonBackground from './common/CommonBackground.vue'
 import LatentBackground from './latent/LatentBackground.vue'
 import MonetBackground from './monet/MonetBackground.vue'
 import NomandBackground from './nomand/NomandBackground.vue'
@@ -24,11 +24,10 @@ import UrlBackground from './url/UrlBackground.vue'
  * 为什么 `assertFoliaModeList` 要在**模块求值**时跑：这是「加了一个模式目录但忘了
  * 登记 order / label」的唯一低成本拦截点。放在函数里就得有人调用它，等于没做。
  *
- * ⚠️ 尚未落地的模式暂时指向 `FoliaFallbackGradient`（主题底色渐变）。这是**过渡态**：
- * 每个模式的实际组件落地时，把对应那一行的 `component` 换掉即可，表格形状不要动 ——
- * order / labelKey / labelFallback 三列已经按规格逐字对齐（§1.5）。
- *
- * 已落地：latent、monet、nomand、sora、url。待落地：common。
+ * 六个模式全部落地：common、latent、monet、nomand、sora、url。
+ * 「WebGL 不可用 → 主题底色渐变」的兜底**不在这里**：它挂在每个 WebGL 模式组件内部
+ * （`shared/FoliaFallbackGradient.vue`），因为只有那些组件知道自己的挂载是否失败。
+ * 注册表这一层只负责「换模式时该渲染谁」。
  */
 
 const builtinEntries: FoliaBackgroundRegistryEntry[] = [
@@ -37,7 +36,7 @@ const builtinEntries: FoliaBackgroundRegistryEntry[] = [
     order: FOLIA_BACKGROUND_ORDER.common,
     labelKey: 'options.visualizerBackgroundModeCommon',
     labelFallback: 'Common',
-    component: FoliaFallbackGradient
+    component: CommonBackground
   }),
   defineBackground({
     mode: 'monet',

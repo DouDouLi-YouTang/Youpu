@@ -10,13 +10,20 @@
  * 要么一直不可用；重试只会在真正不可用的机器上反复制造失败路径。
  */
 
-let webgl2Unavailable = false
+import { ref, type Ref } from 'vue'
+
+/**
+ * 全局标记做成 ref 而不是普通变量：各模式要靠它把画面从「黑屏」换成兜底渐变，
+ * 而它的翻转发生在**异步挂载失败**之后 —— 那时没有别的响应式变化能触发重渲染。
+ * 用普通变量的话标记虽然置位了，组件却不知道，用户看到的仍是一片纯色。
+ */
+const webgl2Unavailable: Ref<boolean> = ref(false)
 /** 已 warn 过的模式名，避免同一模式切来切去刷屏（每种模式只 warn 一次）。 */
 const warnedModes = new Set<string>()
 
 /** WebGL2 是否已被判定为不可用 —— 模式组件在挂载前先问这一句。 */
 export function isWebgl2Unavailable(): boolean {
-  return webgl2Unavailable
+  return webgl2Unavailable.value
 }
 
 /**
@@ -27,7 +34,7 @@ export function isWebgl2Unavailable(): boolean {
  *              非 Error 值原样打印，不要 `String(error)` 丢掉堆栈对象
  */
 export function markWebgl2Unavailable(mode: string, error: unknown): void {
-  webgl2Unavailable = true
+  webgl2Unavailable.value = true
   if (warnedModes.has(mode)) return
   warnedModes.add(mode)
   console.warn(
@@ -38,7 +45,7 @@ export function markWebgl2Unavailable(mode: string, error: unknown): void {
 
 /** 仅测试用：重置全局标记，避免用例之间互相污染。 */
 export function resetWebglSupportStateForTests(): void {
-  webgl2Unavailable = false
+  webgl2Unavailable.value = false
   warnedModes.clear()
 }
 

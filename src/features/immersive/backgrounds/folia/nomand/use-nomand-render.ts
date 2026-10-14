@@ -3,6 +3,7 @@ import { getShaderNoiseTexture, type ShaderMountUniforms } from '@paper-design/s
 
 import type { FoliaTheme } from '../types'
 import { createPaperShaderMount, type PaperShaderHandle } from '../shared/paper-shader-mount'
+import { useWebglFallback } from '../shared/use-webgl-fallback'
 import { NOMAND_MAX_PIXEL_COUNT, resolveNomandShaderPlan } from './nomand-uniforms'
 import type { NomandBackgroundTuning } from './nomand-tuning'
 
@@ -49,6 +50,8 @@ export function useNomandRender(options: UseNomandRenderOptions) {
 
   let disposed = false
   let mountToken = 0
+
+  const { showFallback } = useWebglFallback({ hasMount: () => mount.value !== null })
 
   /**
    * paper-texture 独占的噪声纹理。
@@ -149,6 +152,8 @@ export function useNomandRender(options: UseNomandRenderOptions) {
 
   return {
     host,
+    // shader 没挂上且全局标记已置位 → 主题底色渐变兜底（规格 §10.4 降级链）
+    showFallback,
     /** 调试/测试用：当前是否挂着 shader */
     hasMount: computed(() => mount.value !== null),
     mountedKey

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, toRef } from 'vue'
 
+import FoliaFallbackGradient from '../shared/FoliaFallbackGradient.vue'
 import type { FoliaTheme } from '../types'
 import {
   resolveNomandSourceUrl,
@@ -41,7 +42,7 @@ const themeRef = toRef(props, 'theme')
 const isDaylightRef = toRef(props, 'isDaylight')
 const sourceUrlRef = computed(() => sourceUrl.value)
 
-const { host } = useNomandRender({
+const { host, showFallback } = useNomandRender({
   theme: themeRef,
   isDaylight: isDaylightRef,
   sourceUrl: sourceUrlRef,
@@ -65,7 +66,9 @@ defineExpose({ resolvedTuning: tuning, sourceUrl })
 
 <template>
   <div class="folia-nomand" :style="rootStyle">
-    <div ref="host" class="folia-nomand-shader" />
+    <!-- shader 没挂上且全局标记置位 → 主题底色渐变兜底（不再是纯底色） -->
+    <FoliaFallbackGradient v-if="showFallback" :theme="theme" />
+    <div v-else ref="host" class="folia-nomand-shader" />
 
     <div v-if="showOverlay" class="folia-nomand-overlay" :style="overlayStyle" />
   </div>

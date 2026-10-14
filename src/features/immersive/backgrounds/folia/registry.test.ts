@@ -26,6 +26,9 @@ vi.mock('../folia/sora/SoraBackground.vue', () => ({
 vi.mock('../folia/url/UrlBackground.vue', () => ({
   default: { name: 'UrlBackgroundStub' }
 }))
+vi.mock('../folia/common/CommonBackground.vue', () => ({
+  default: { name: 'CommonBackgroundStub' }
+}))
 
 import {
   appendFoliaBackgroundEntry,

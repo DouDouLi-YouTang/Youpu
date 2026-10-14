@@ -15,6 +15,7 @@ import {
   updatePaperShaderUniforms,
   type PaperShaderHandle
 } from '../shared/paper-shader-mount'
+import { useWebglFallback } from '../shared/use-webgl-fallback'
 import { extractRepresentativeColors } from '../shared/cover-palette'
 import {
   LATENT_FRAME_STATE_INITIAL,
@@ -134,6 +135,10 @@ export function useLatentRender(options: UseLatentRenderOptions) {
   let rafId: number | null = null
   let disposed = false
   let mountToken = 0
+
+  const { showFallback } = useWebglFallback({
+    hasMount: () => meshMount.value !== null || ditherMount.value !== null
+  })
 
   function applySpeeds(): void {
     const current = tuning.value
@@ -336,6 +341,8 @@ export function useLatentRender(options: UseLatentRenderOptions) {
     ditherLayer,
     showMesh,
     showDithering,
+    // 两个 shader 都没挂上、且全局标记已置位 → 换成主题底色渐变（规格 §10.4 降级链）
+    showFallback,
     /** 供单测/调试断言用（组件里不读） */
     hasMeshMount: computed(() => meshMount.value !== null),
     hasDitherMount: computed(() => ditherMount.value !== null)
