@@ -25,7 +25,6 @@ import {
   resolveLineHeight,
   type FumeColumnGeometry
 } from './article-blocks'
-import type { FumeBlockVariant } from './fume-types'
 
 /** 假字数：文本里非空白字符的数量（与 §4.9 的语义一致，但不受字素切分影响） */
 const fakeCount = (text: string): number => text.replace(/\s/g, '').length
@@ -351,17 +350,13 @@ describe('resolveLineHeight / resolveBlockGap（§7.5）', () => {
   })
 })
 
-/** 便捷断言：变体判断只关心 hero / body 两值 */
-function expectVariant(actual: FumeBlockVariant, expected: FumeBlockVariant): void {
-  expect(actual).toBe(expected)
-}
-
-describe('变体选择与装箱的组合（回归：hero 不影响 body 的对齐）', () => {
-  it('hero 之后 body 仍然落在最矮列，且 hero 的横向偏移不污染后续 x', () => {
+describe('变体选择与装箱的组合（回归：hero 的横向偏移不外溢）', () => {
+  it('2 列 1.5 列宽的 hero 之后，body 仍然落在列槽位上', () => {
     const geometry = makeGeometry({ columns: 2, paperWidth: 1000, gap: 10, horizontalMargin: 100 })
     const state = createPlacementState(2, 200)
     const metrics = resolveBlockMetrics('hero', geometry)
 
+    expect(metrics.heroSpanColumns).toBe(2)
     placeHeroBlock(state, geometry, {
       heroSpanColumns: metrics.heroSpanColumns,
       heroSpanWidth: metrics.heroSpanWidth,
@@ -371,9 +366,8 @@ describe('变体选择与装箱的组合（回归：hero 不影响 body 的对�
     })
     const body = placeBodyBlock(state, geometry, { blockHeight: 40, blockGap: 5 })
 
-    expectVariant(metrics.heroSpanColumns === 2 ? 'hero' : 'body', 'hero')
-    expect(body.x % (geometry.columnWidth + geometry.gap)).toBe(
-      geometry.horizontalMargin % (geometry.columnWidth + geometry.gap)
-    )
+    // hero 的居中偏移（+126.25）不能影响 body：它的 x 仍然正好落在某一列的槽位上
+    const columnStep = geometry.columnWidth + geometry.gap
+    expect((body.x - geometry.horizontalMargin) % columnStep).toBeCloseTo(0, 10)
   })
 })
