@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'motion-v'
 
 import { useLyricStore } from '@/stores/lyric.store'
 import { usePlayerStore } from '@/stores/player.store'
+import { useImmersiveSettingsStore } from '../../immersive-settings.store'
 import { resolveSkinEmptyState } from '../shared/empty-state'
 import { useFoliaSerifReady } from '../shared/folia-font'
 import { isGlowBlurQuantized } from '../shared/glow-blur-quantize'
@@ -76,6 +77,7 @@ const props = defineProps<{ ctx: SkinContext }>()
 
 const lyric = useLyricStore()
 const player = usePlayerStore()
+const settings = useImmersiveSettingsStore()
 
 /**
  * 面板配色 —— 逐歌主题（从封面推出来，每首歌不同；口径见 `shared/use-folia-palette`）。
@@ -174,8 +176,12 @@ const emptyState = computed(() =>
 /**
  * 底部副字幕轨道（罗马音在前、译文在后；可读性门槛与去重在共享层）。
  *
- * ⚠️ 与「倾诉」的一处**刻意差异**：流光的字幕档位是固定的 `'both'`
- * （没有设置面板，不考虑"只看译文"这类开关），与上游 `classic` 的默认表现一致。
+ * 档位取自沉浸页通用项 `settings.subtitleContentMode`（默认 `'both'` = 罗马音在前、
+ * 译文在后）。它是「这一页的副字幕显示哪几档」，不是「经典面板的外观项」——
+ * 所以本面板虽然没有设置，仍然跟随它（与明暗主题、底栏四项同一类）。
+ *
+ * ⚠️ 本面板**没有**设置入口（`hasSettings: false`），用户要到「经典」面板下改这一项；
+ * 这是既有的取舍（设置面板只有经典提供，见 skins/types.ts 的说明），不是遗漏。
  *
  * ⚠️ **当前行没有可读副字幕时回退到"最近一句唱完的行"**（上游
  * `resolveVisualizerSubtitleOverlayContent` 的 `[activeLine, recentCompletedLine]`
@@ -185,9 +191,12 @@ const emptyState = computed(() =>
  * 不是"每行结束后都拿上一句顶上"。
  */
 const subtitleRows = computed(() => {
-  const rows = resolveSubtitleTracks(activeLine.line.value, 'both')
+  const rows = resolveSubtitleTracks(activeLine.line.value, settings.subtitleContentMode)
   if (rows.length > 0) return rows
-  return resolveSubtitleTracks(activeLine.recentCompletedLine.value, 'both')
+  return resolveSubtitleTracks(
+    activeLine.recentCompletedLine.value,
+    settings.subtitleContentMode
+  )
 })
 
 /**

@@ -6,6 +6,7 @@ import {
   type KaraokeAnimation,
   type LyricAlignmentPct,
   type LyricTiming,
+  type SubtitleContentMode,
   useImmersiveSettingsStore
 } from '@/features/immersive/immersive-settings.store'
 import { num } from './defaults'
@@ -32,6 +33,17 @@ const contributorsOptions = [
   { label: '总是', value: 'show' as ContributorDisplay },
   { label: '鼠标移上', value: 'hover' as ContributorDisplay },
   { label: '隐藏', value: 'hide' as ContributorDisplay }
+]
+/**
+ * 副字幕内容档位。顺序按「信息从多到少」排（两行 → 译文 → 罗马音 → 隐藏），
+ * 与用户调这一项时的心理顺序一致；上游 `settings.subtitleContentMode` 的四个取值
+ * 是同一套（见 `immersive-settings.model`）。
+ */
+const subtitleContentOptions = [
+  { label: '罗马音+译文', value: 'both' as SubtitleContentMode },
+  { label: '只译文', value: 'translation' as SubtitleContentMode },
+  { label: '只罗马音', value: 'romanization' as SubtitleContentMode },
+  { label: '隐藏', value: 'none' as SubtitleContentMode }
 ]
 
 /**
@@ -68,6 +80,19 @@ const isRotate = computed(() => settings.lyricRotate)
       :max="1.5"
       :step="0.05"
     />
+    <!--
+      副字幕内容档位。**沉浸页通用项**（不是经典面板的外观项）：三个 Folia 系皮肤
+      （倾诉 / 流光 / 浮名）都读它，所以放在这里虽然属于「经典」的设置面板，
+      但它改的是「这一页的副字幕显示哪几档」，与背景 / 封面那类面板外观项不同。
+    -->
+    <div class="setting-row">
+      <label>副字幕内容</label>
+      <a-segmented
+        v-model:value="settings.subtitleContentMode"
+        :options="subtitleContentOptions"
+        block
+      />
+    </div>
     <div v-show="!isRotate" class="setting-row">
       <a-checkbox v-model:checked="settings.lyricFade">歌词渐隐</a-checkbox>
     </div>

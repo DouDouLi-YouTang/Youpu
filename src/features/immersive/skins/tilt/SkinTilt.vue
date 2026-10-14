@@ -83,13 +83,19 @@ const lineKey = computed(() => `${lyric.songId ?? 'none'}:${currentIndex.value}`
  * 只显示一次。共享层还带一道**可读性门槛**（至少含一个字母或数字），于是 `//`、`●●●`
  * 这类占位行不会漏到底栏 —— 这条门槛倾诉原先没有，是切过来时一并修掉的。
  *
+ * 档位取自沉浸页通用项 `settings.subtitleContentMode`（默认 `'both'`）—— 它是
+ * 「这一页的副字幕显示哪几档」，不是「经典面板的外观项」，所以倾诉虽然没有设置，
+ * 仍然跟随它（与明暗主题、底栏四项同一类）。
+ *
  * ⚠️ 行对象的角色名 `role` 是 `'romanization' | 'translation'`，而倾诉的 SCSS 用的是
  * 短名 `is-romaji` / `is-translation`（历史命名，样式文件里已存在）。这里在模板上做映射，
  * 不动样式 —— 改 class 名会让 `tilt.scss` 与模板同时要改，收益只是"名字更整齐"。
  *
  * 两行各自的字号档写在 tilt.scss 里（内置固定值，不受设置面板影响）。
  */
-const subtitleRows = computed(() => resolveSubtitleTracks(currentLine.value, 'both'))
+const subtitleRows = computed(() =>
+  resolveSubtitleTracks(currentLine.value, settings.subtitleContentMode)
+)
 
 const panelRef = ref<HTMLElement | null>(null)
 /** 舞台元素：量它的高度当「歌词可占多高」，纵向放不下时据此整体缩小字号 */

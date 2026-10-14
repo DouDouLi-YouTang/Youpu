@@ -38,6 +38,7 @@ import { computed, onBeforeUnmount, ref, type ComputedRef, type Ref } from 'vue'
 
 import { useLyricStore } from '@/stores/lyric.store'
 import { usePlayerStore } from '@/stores/player.store'
+import { useImmersiveSettingsStore } from '../../immersive-settings.store'
 import type { LyricLine } from '@/domain/lyric'
 import { colorWithAlpha } from '../shared/color-mix'
 import { resolveSkinEmptyState, type SkinEmptyState } from '../shared/empty-state'
@@ -98,6 +99,7 @@ export interface UseFumeOverlayResult {
 export function useFumeOverlay(options: UseFumeOverlayOptions): UseFumeOverlayResult {
   const lyric = useLyricStore()
   const player = usePlayerStore()
+  const settings = useImmersiveSettingsStore()
 
   /** 副字幕底距（跟随控制条显隐；上游口径见 `shared/use-subtitle-bottom`） */
   const { bottomPx: subtitleBottomPx } = useSubtitleBottom()
@@ -141,12 +143,15 @@ export function useFumeOverlay(options: UseFumeOverlayOptions): UseFumeOverlayRe
 
   /**
    * 副字幕轨道（罗马音在前、译文在后；可读性门槛与去重在共享层）。
-   * 档位固定 `'both'`：浮名没有设置面板，与「流光」同一取舍。
+   *
+   * 档位取自沉浸页通用项 `settings.subtitleContentMode`（默认 `'both'`）。
+   * 它是「这一页的副字幕显示哪几档」，不是「经典面板的外观项」，所以本面板
+   * 虽然没有设置，仍然跟随它（与明暗主题、底栏四项同一类）—— 与「流光」同款取舍。
    */
   const subtitleRows = computed(() => {
-    const rows = resolveSubtitleTracks(activeLine.line.value, 'both')
+    const rows = resolveSubtitleTracks(activeLine.line.value, settings.subtitleContentMode)
     if (rows.length > 0) return rows
-    return resolveSubtitleTracks(recentCompletedLine.value, 'both')
+    return resolveSubtitleTracks(recentCompletedLine.value, settings.subtitleContentMode)
   })
 
   /**
