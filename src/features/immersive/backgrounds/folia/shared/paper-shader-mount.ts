@@ -60,6 +60,15 @@ export interface PaperShaderHandle {
   /** 挂载后的 WebGL canvas（lose context 用） */
   readonly canvas: HTMLCanvasElement
   setUniforms(uniforms: ShaderMountUniforms): void
+  /**
+   * **只写 uniform 值，不触发绘制**（paper 的私有 `setUniformValues`）。
+   *
+   * 为什么提升到 handle 上：逐帧音频幅度更新必须走这条路，否则「写值 + 立即整帧重绘」
+   * 会和 shader 自己的帧循环叠成每帧画两遍全屏（见 `updatePaperShaderUniforms`）。
+   * 它是私有 API，装在 handle 上而不是把 mount 直接暴露出去，版本变更导致方法缺失时
+   * 就是 `undefined`，由调用方决定回退行为。
+   */
+  setUniformValues?(uniforms: ShaderMountUniforms): void
   setSpeed(speed: number): void
   setFrame(frame: number): void
   getCurrentFrame(): number
@@ -155,6 +164,138 @@ export async function resolveShaderUniformImages(
 }
 
 /**
+ * `ShaderMount` 的**私有实例属性**（d.ts 里标了 private，运行时就是实例上的箭头函数属性）。
+ * 这两处依赖都是为了性能，不是图方便：
+ *  - `setUniformValues`：只写值、带 uniformCache 去重、**不绘制**（`shader-mount.js:276-335`）；
+ *    公开的 `setUniforms` 会在末尾立刻 `render()`（`shader-mount.js:377-381`）。
+ *  - `handleResize`：重设 drawing buffer + `gl.viewport` + **同步整帧重绘**
+ *    （`shader-mount.js:160-192`），拖动窗口时每次回调都要付一遍。
+ */
+interface ShaderMountPrivateApi {
+  setUniformValues?: (values: ShaderMountUniforms) => void
+  handleResize: () => void
+}
+
+/** 连续 resize 的静默时长：期间只记录尺寸，停手后才真正重设 drawing buffer。 */
+export const RESIZE_SETTLE_MS = 120
+
+/** 合并调度用到的「帧 + 计时器」原语，抽出来是为了能在 node 环境的单测里注入假时钟。 */
+export interface ResizeCoalescerClock {
+  requestFrame(callback: () => void): number
+  cancelFrame(id: number): void
+  startTimer(callback: () => void, delayMs: number): number
+  clearTimer(id: number): void
+}
+
+export interface ResizeCoalescer {
+  /** 请求一次落地：空闲时下一帧执行，连续请求时一直往后推，停手后补最后一次。 */
+  request(run: () => void): void
+  dispose(): void
+}
+
+const defaultResizeClock: ResizeCoalescerClock = {
+  requestFrame: (callback) => requestAnimationFrame(callback),
+  cancelFrame: (id) => cancelAnimationFrame(id),
+  startTimer: (callback, delayMs) => window.setTimeout(callback, delayMs),
+  clearTimer: (id) => window.clearTimeout(id)
+}
+
+/**
+ * 性能修复（resize 卡顿）：把「每次尺寸变化都同步重设 drawing buffer + 立即重绘」
+ * 合并成「前沿一帧 + 尾部静默期」两次。
+ *
+ * 时序：空闲态收到请求 → 下一帧先落一次地（保证单次 resize / 窗口最大化不延迟）；
+ * 之后仍在静默期内到达的请求只把计时器往后推，不再落地；静默期结束时若还有未落地的
+ * 尺寸，补一次。真正执行的 `run()` 每次都会全量重算，所以「跳过中间步骤」不影响最终尺寸。
+ */
+export function createResizeCoalescer(clock: ResizeCoalescerClock): ResizeCoalescer {
+  let frameId: number | null = null
+  let timerId: number | null = null
+  let pendingRun: (() => void) | null = null
+  /** 自上次落地以来是否又收到过请求 —— 决定静默期结束时要不要补一次 */
+  let dirty = false
+
+  function flush(): void {
+    if (!dirty) return
+    const run = pendingRun
+    dirty = false
+    pendingRun = null
+    run?.()
+  }
+
+  function scheduleFrame(): void {
+    if (frameId !== null) return
+    frameId = clock.requestFrame(() => {
+      frameId = null
+      flush()
+    })
+  }
+
+  function armTimer(): void {
+    if (timerId !== null) clock.clearTimer(timerId)
+    timerId = clock.startTimer(() => {
+      timerId = null
+      if (dirty) scheduleFrame()
+    }, RESIZE_SETTLE_MS)
+  }
+
+  return {
+    request(run) {
+      pendingRun = run
+      dirty = true
+      if (frameId !== null || timerId !== null) {
+        armTimer()
+        return
+      }
+      scheduleFrame()
+      armTimer()
+    },
+    dispose() {
+      if (frameId !== null) clock.cancelFrame(frameId)
+      if (timerId !== null) clock.clearTimer(timerId)
+      frameId = null
+      timerId = null
+      pendingRun = null
+      dirty = false
+    }
+  }
+}
+
+/**
+ * 把 `ShaderMount` 的 `handleResize` 换成合并调度版，返回取消挂起任务的函数。
+ *
+ * 为什么可以整体推迟：ResizeObserver 回调**先**把最新尺寸写进实例字段、**再**调用
+ * `handleResize`，而 `handleResize` 每次都是「读字段 → 算目标尺寸 → 与 canvas.width/height
+ * 比对 → 变了才重设」。所以中间步骤全跳过、只在最后一帧读一次最新尺寸，最终结果与逐帧执行
+ * 完全一致；拖动期间 canvas 由 paper 注入的 `width/height: 100%` CSS 拉伸显示，不会黑屏。
+ *
+ * 首次回调必须保持同步：刚挂载时 canvas 还是 HTML 默认的 300×150，推迟一帧会让首屏
+ * 出现一帧拉伸画面。
+ *
+ * 导出仅供单测（假时钟 + 假 mount）；运行时只由 `createPaperShaderMount` 调用。
+ */
+export function installCoalescedResize(
+  mount: ShaderMount,
+  clock: ResizeCoalescerClock = defaultResizeClock
+): () => void {
+  const api = mount as unknown as ShaderMountPrivateApi
+  const runResize = api.handleResize.bind(mount)
+  const coalescer = createResizeCoalescer(clock)
+  let sizedOnce = false
+
+  api.handleResize = () => {
+    if (!sizedOnce) {
+      sizedOnce = true
+      runResize()
+      return
+    }
+    coalescer.request(runResize)
+  }
+
+  return () => coalescer.dispose()
+}
+
+/**
  * 挂载一个 paper shader。宿主尺寸为 0 或 WebGL2 不可用时返回 null（调用方走渐变兜底），
  * **不抛错** —— 背景层是装饰，任何失败都不该冒泡成未捕获异常。
  *
@@ -194,14 +335,21 @@ export async function createPaperShaderMount(
     return null
   }
 
+  const api = mount as unknown as ShaderMountPrivateApi
+  const disposeResize = installCoalescedResize(mount)
+  const writeUniformValues =
+    typeof api.setUniformValues === 'function' ? api.setUniformValues.bind(mount) : undefined
   const canvas = mount.canvasElement
   return {
     canvas,
     setUniforms: (next) => mount.setUniforms(next),
+    ...(writeUniformValues ? { setUniformValues: writeUniformValues } : {}),
     setSpeed: (speed) => mount.setSpeed(speed),
     setFrame: (frame) => mount.setFrame(frame),
     getCurrentFrame: () => mount.getCurrentFrame(),
     dispose: () => {
+      // 先取消挂起的 resize 任务，再 dispose —— 否则 dispose 之后还可能跑一次 handleResize
+      disposeResize()
       mount.dispose()
       releaseWebglContext(canvas)
     }
@@ -211,18 +359,18 @@ export async function createPaperShaderMount(
 /**
  * 写入 uniform：shader 自己在跑帧循环时只写值、不当场重画。
  *
- * 为什么：`setUniforms` 会立刻整帧重画，紧接着帧循环下一帧又画一遍 —— 一次更新画两遍全屏。
+ * 为什么：`setUniforms` 会立刻整帧重画，紧接着帧循环下一帧又画一遍 —— 一次更新画两遍全屏
+ * （每帧都调一次就是每帧多画一屏，这是实测到的性能缺陷）。
  * shader 停着（speed = 0）时没有循环，才必须用 `setUniforms` 立刻画一次。
- * `setUniformValues` 在 d.ts 里是 private、运行时是实例属性；拿不到就退回 `setUniforms`。
+ * handle 上没有 `setUniformValues`（paper 版本变了）时同样退回 `setUniforms`，宁可多画一屏。
  */
 export function updatePaperShaderUniforms(
   mount: PaperShaderHandle,
   uniforms: ShaderMountUniforms,
   animating: boolean
 ): void {
-  const writer = (mount as unknown as { setUniformValues?: (values: ShaderMountUniforms) => void })
-    .setUniformValues
-  if (animating && typeof writer === 'function') {
+  const writer = mount.setUniformValues
+  if (animating && writer) {
     writer(uniforms)
     return
   }
