@@ -9,6 +9,7 @@ import {
 import { defineBackground } from './definition'
 import FoliaFallbackGradient from './shared/FoliaFallbackGradient.vue'
 import LatentBackground from './latent/LatentBackground.vue'
+import MonetBackground from './monet/MonetBackground.vue'
 import NomandBackground from './nomand/NomandBackground.vue'
 
 /**
@@ -25,7 +26,7 @@ import NomandBackground from './nomand/NomandBackground.vue'
  * 每个模式的实际组件落地时，把对应那一行的 `component` 换掉即可，表格形状不要动 ——
  * order / labelKey / labelFallback 三列已经按规格逐字对齐（§1.5）。
  *
- * 已落地：latent、nomand。待落地：common、monet、sora、url。
+ * 已落地：latent、monet、nomand。待落地：common、sora、url。
  */
 
 const builtinEntries: FoliaBackgroundRegistryEntry[] = [
@@ -41,7 +42,7 @@ const builtinEntries: FoliaBackgroundRegistryEntry[] = [
     order: FOLIA_BACKGROUND_ORDER.monet,
     labelKey: 'options.visualizerBackgroundModeMonet',
     labelFallback: 'Monet',
-    component: FoliaFallbackGradient
+    component: MonetBackground
   }),
   defineBackground({
     mode: 'nomand',
