@@ -5,6 +5,7 @@ import GeometricBackground from '@/features/immersive/backgrounds/GeometricBackg
 import { useImmersiveSettingsStore } from '@/features/immersive/immersive-settings.store'
 import { useLyricStore } from '@/stores/lyric.store'
 import { usePlayerStore } from '@/stores/player.store'
+import { resolveSubtitleTracks } from '../shared/subtitle-tracks'
 import type { SkinContext } from '../types'
 import TiltLine from './TiltLine.vue'
 import {
@@ -77,22 +78,18 @@ const lineKey = computed(() => `${lyric.songId ?? 'none'}:${currentIndex.value}`
 /**
  * 底部副字幕行（Folia 的副字幕层）。
  *
- * 与经典皮肤的口径对齐：罗马音在前、译文在后，两者都有时两行都给（Folia 的 'both' 档
- * 也是这个顺序，且缺哪个就少一行、绝不出现空占位）；有些音源两个字段填同一串
- * （例如本身就是拉丁字母的歌词），此时只显示一次。
+ * 解析走**共享层** `skins/shared/subtitle-tracks.ts`（与「流光」「浮名」同一份口径）：
+ * `'both'` 档罗马音在前、译文在后；缺哪档就少一行、绝不出现空占位；两档填同一串时
+ * 只显示一次。共享层还带一道**可读性门槛**（至少含一个字母或数字），于是 `//`、`●●●`
+ * 这类占位行不会漏到底栏 —— 这条门槛倾诉原先没有，是切过来时一并修掉的。
+ *
+ * ⚠️ 行对象的角色名 `role` 是 `'romanization' | 'translation'`，而倾诉的 SCSS 用的是
+ * 短名 `is-romaji` / `is-translation`（历史命名，样式文件里已存在）。这里在模板上做映射，
+ * 不动样式 —— 改 class 名会让 `tilt.scss` 与模板同时要改，收益只是"名字更整齐"。
  *
  * 两行各自的字号档写在 tilt.scss 里（内置固定值，不受设置面板影响）。
  */
-const subtitleRows = computed<{ text: string; kind: 'romaji' | 'translation' }[]>(() => {
-  const line = currentLine.value
-  if (!line) return []
-  const romaji = line.romaji?.trim() ?? ''
-  const translation = line.translation?.trim() ?? ''
-  const rows: { text: string; kind: 'romaji' | 'translation' }[] = []
-  if (romaji) rows.push({ text: romaji, kind: 'romaji' })
-  if (translation && translation !== romaji) rows.push({ text: translation, kind: 'translation' })
-  return rows
-})
+const subtitleRows = computed(() => resolveSubtitleTracks(currentLine.value, 'both'))
 
 const panelRef = ref<HTMLElement | null>(null)
 /** 舞台元素：量它的高度当「歌词可占多高」，纵向放不下时据此整体缩小字号 */
@@ -213,9 +210,9 @@ function handleSeek(): void {
       <div v-if="subtitleRows.length" class="tilt-subtitles">
         <p
           v-for="row in subtitleRows"
-          :key="row.kind"
+          :key="row.role"
           class="tilt-subtitle"
-          :class="`is-${row.kind}`"
+          :class="row.role === 'romanization' ? 'is-romaji' : 'is-translation'"
         >
           {{ row.text }}
         </p>
