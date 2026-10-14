@@ -10,7 +10,6 @@ import {
   CHAR_FADE_DELAY_MS,
   CHAR_FADE_DURATION_MS,
   FALLBACK_LINE_DURATION_MS,
-  FONT_SCALE_BASE_PX,
   LINE_HEIGHT_PLAIN,
   LINE_HEIGHT_TILT,
   PLAIN_PULSE_SCALE,
@@ -20,7 +19,6 @@ import {
   PULSE_TOTAL_FACTOR,
   resolveAvailableWidth,
   resolveBaseFontPx,
-  resolveFontScale,
   resolveHeightScale,
   resolveLineEndMs,
   resolveOverflowScale,
@@ -35,6 +33,7 @@ import {
   SHORT_LAST_SEGMENT_SCALE,
   shouldResplit,
   TILT_CHAR_FADE_DELAY_MS,
+  TILT_FONT_SCALE,
   TILT_PULSE_SCALE,
   toWordSpans
 } from './tilt-adapter'
@@ -187,18 +186,9 @@ describe('resolveBaseFontPx clamp(3.125rem, 6.875vw, 5.625rem)（笔记 §4）',
   })
 })
 
-describe('resolveFontScale 用户字号倍率', () => {
-  it('默认 32px 即 1 倍，16/64 是 0.5/2 倍', () => {
-    expect(FONT_SCALE_BASE_PX).toBe(32)
-    expect(resolveFontScale(32)).toBe(1)
-    expect(resolveFontScale(16)).toBe(0.5)
-    expect(resolveFontScale(64)).toBe(2)
-  })
-
-  it('非法值不放大（退化为 1，避免 0 字号把面板排没）', () => {
-    expect(resolveFontScale(0)).toBe(1)
-    expect(resolveFontScale(-1)).toBe(1)
-    expect(resolveFontScale(Number.NaN)).toBe(1)
+describe('TILT_FONT_SCALE 固定字号倍率', () => {
+  it('恒为 1 —— 倾诉不读设置里的「字体大小」（2026-10-11 用户定：倾诉没有设置）', () => {
+    expect(TILT_FONT_SCALE).toBe(1)
   })
 })
 

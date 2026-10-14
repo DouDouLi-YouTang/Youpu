@@ -11,6 +11,11 @@ import { initLa51Analytics } from '@/services/la51-analytics'
 import '@/assets/styles/tokens.scss'
 import '@/assets/styles/tailwind.css'
 import '@/assets/styles/index.scss'
+// 「倾诉」面板的内置字体（站酷快乐体 + 圆体假名兜底）。**全局注册**是刻意的：
+// 倾诉是异步组件（chunk 随皮肤切换才加载），而 @font-face 必须先注册好、
+// FontFaceSet 才认得它（见文件头与 skins/tilt/use-tilt-font.ts）。
+// 声明不触发下载 —— 没打开过倾诉就不会多取字体文件。
+import '@/assets/fonts/fonts.scss'
 // 0.1.21 打包产物整包 CSS（已剥离 data-v-*），强制 BEM/组件视觉与昨天安装包一致
 
 installThemeProvider()

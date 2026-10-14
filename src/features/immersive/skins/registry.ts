@@ -1,7 +1,7 @@
 import { computed } from 'vue'
 
 import { useImmersiveSettingsStore } from '../immersive-settings.store'
-import type { SkinDefinition, SkinId } from './types'
+import { DEFAULT_SKIN_ID, type SkinDefinition } from './types'
 
 /**
  * 皮肤注册表 —— 自动发现 `skins/<id>/index.ts`（每个文件 default export defineSkin({...})）。
@@ -26,8 +26,8 @@ export const skins: SkinDefinition[] = Object.values(modules)
   .map((m) => m.default)
   .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
 
-/** 默认皮肤 id：持久化值为空 / 未注册时的回退。 */
-export const DEFAULT_SKIN_ID: SkinId = 'classic'
+/** 默认皮肤 id —— 定义在 ./types（settings store 也要用，放这里会形成循环 import），此处转出。 */
+export { DEFAULT_SKIN_ID }
 
 /** 按 id 取皮肤；未注册的 id（旧持久化 / 已删除的皮肤）回退到默认皮肤，保证任何值都能渲染。 */
 export function getSkin(id: string): SkinDefinition {

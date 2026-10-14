@@ -1,15 +1,13 @@
 // 由 SkinTilt.vue <style scoped src> 引入（「倾诉」皮肤的舞台与内容层）。
 //
+// ⚠️ **倾诉没有设置**：本文件里的字号 / 字重 / 字间距 / 行高 / 副字幕 em 档全是
+// **内置固定值**，刻意不读沉浸设置（用户 2026-10-11 定：倾诉的外观全部固定）。
+// 外壳也因此不给本面板注入面板外观那套 CSS 变量与 class（见 shared/use-backdrop.ts）。
+//
 // 与经典皮肤**结构不同**：Folia 的倾诉是全屏歌词（视觉以文字排版为主、没有封面列），
 // 所以歌词区是自持的 `.tilt-lyric`（满宽满高），刻意不复用 `.immersive-lyric`
 // —— 那个类名会被 immersive-shell.scss 的 `.display-mode-lyric-only` 规则套上给
 // 滚动列表用的左右内边距（clamp(72px, 9vw, 144px)），对全屏舞台是多余的留白。
-//
-// 唯一保留同名的是 `.immersive-cover-slot`：只有「仅封面」模式会渲染它，需要外壳
-// 挂在 .immersive-root 上的这两条规则继续生效（名字一致即可命中）——
-//   .display-mode-cover-only  :deep(.immersive-cover-slot)                  → 占满整屏
-//   .cover-halign-center      :deep(... .rnp-cover)                          → 水平居中微调
-// 所以本文件里的对齐声明必须与 classic.scss 同语义（见下面 .immersive-cover-slot 注释）。
 //
 // .rnp-lyrics / .rnp-lyrics-line 那几处 :deep() 是 LyricLines 的内部结构，
 // 「倾诉」不用 LyricLines，故不复用：居中、旋转裁切、贡献者显隐都由本皮肤自己承担
@@ -42,6 +40,20 @@
   // 控制条是 absolute 覆盖层，这里主动让开它的高度
   padding-bottom: calc(var(--bottombar-height, 90px) + clamp(24px, 4vh, 56px));
   color: var(--rnp-accent-color-shade-2, var(--color-text-primary));
+  // ── 内置字体（2026-10-11 用户定：「换成俏皮一点的字体」）──
+  // **整块面板**都用它：歌词行、空态歌名/歌手卡、底部罗马音/译文副字幕
+  // （三者都是 .tilt-lyric 的后代，在这里设一次就全体继承；.tilt-row 也写了
+  //  `font-family: inherit`，等于把这个栈一路带进逐字 span）。
+  //
+  // 栈的构成与理由见 `@/assets/fonts/fonts.scss`：站酷快乐体出汉字、M PLUS
+  // Rounded 1c 出假名（快乐体是纯简体字库，实测无任何假名字形），两者都是圆头笔画。
+  // 末尾的通用族兜底「两个内置字体都没有的字符」（韩文 / emoji / 快乐体缺的二级生僻字）。
+  //
+  // ⚠️ 这一行的**族名与顺序**是三层契约的一半：`use-tilt-layout` 的测量直接
+  // `getComputedStyle` 读这个栈去让 canvas 量字宽（见 use-tilt-layout 的
+  // readFontFamily），另一层在 `use-tilt-font.ts` 的常量里。改这里必须同步改那边，
+  // 由 use-tilt-font.test.ts 锁住 —— 不然测量宽度与渲染宽度会悄悄对不上。
+  font-family: 'ZCOOL KuaiLe', 'M PLUS Rounded 1c', sans-serif;
   overflow: hidden;
 }
 
@@ -66,6 +78,10 @@
   max-width: 85vw;
 }
 
+// 空态「纯音乐，请欣赏」等提示文字。
+// ⚠️ font-weight 300 是名义值：内置字体只有 400 字面，实际渲染就是 400
+// （不合成更细的字重）。「次要」的观感靠 font-size 与 opacity 0.55，
+// 不靠字重。见 tilt-adapter.ts 的 FONT_WEIGHT_TILT 注释。
 .tilt-placeholder {
   margin: 0;
   font-size: 1.05rem;
@@ -74,8 +90,58 @@
   opacity: 0.55;
 }
 
-// 底部副字幕（罗马音 / 译文）。字号 = Folia 的副字幕 clamp × 用户字号倍率 × 该行的 em 设置，
+// ── 空态歌曲信息卡（有歌、歌词还没出来：请求中 / 前奏中）──
+// 字号与歌词行同源（同一组 clamp 锚点 3.125rem / 6.875vw / 5.625rem），只取一个比例：
+// 这张卡出现在「没有行可排」时，拿不到布局算出的 --tilt-font-size，比例必须自己带。
+// 倾诉没有设置，比例是内置固定值，不乘任何用户倍率。
+// 颜色继承 .tilt-lyric 的 shade-2（随沉浸层明暗翻转），不透用 --rnp-accent-color ——
+// 主色在不同专辑间深浅不定，标题要的是稳定可读。
+.tilt-song-info {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(8px, 1.4vh, 18px);
+  align-items: center;
+  margin: 0;
+  text-align: center;
+  // ⚠️ 这一条必须有，缺了子元素的省略号就是死代码（2026-10-10 实测）：
+  // column flex + align-items:center 的 item 宽度按内容（max-content）撑开，
+  // 子元素的 max-width:100% 于是「相对自身宽度」——约束等于没有，超长歌名会撑破舞台、
+  // 被 .tilt-lyric 的 overflow:hidden 硬裁（文字左右各切一截，而不是打省略号）。
+  // 给 info 一个确定宽度（百分比相对 .tilt-stage-inner 解析）后，子元素的 100% 才生效。
+  max-width: 100%;
+}
+
+.tilt-song-title,
+.tilt-song-artist {
+  // 长歌名 / 多歌手打省略号 —— 生效的前提是父级 .tilt-song-info 有确定宽度（见上）
+  max-width: 100%;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tilt-song-title {
+  font-size: calc(clamp(3.125rem, 6.875vw, 5.625rem) * 0.45);
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  line-height: 1.25;
+}
+
+// ⚠️ 与 .tilt-song-title（400）一样实际都是 400 —— 内置字体只有 400 字面。
+// 歌手行比歌名「轻」的观感来自字号（0.2 vs 0.45 倍）与 opacity 0.6。
+.tilt-song-artist {
+  font-size: calc(clamp(3.125rem, 6.875vw, 5.625rem) * 0.2);
+  font-weight: 300;
+  letter-spacing: 0.12em;
+  opacity: 0.6;
+}
+
+// 底部副字幕（罗马音 / 译文）。字号 = Folia 的副字幕 clamp × 该行的内置 em 档
+// （TILT_SUBTITLE_ROMAJI_EM / TILT_SUBTITLE_TRANSLATION_EM，编译进了下面的数字），
 // 三锚点与 Folia 的 resolveSubtitleFontSizes 同构（1.125rem / 2.6vw / 1.25rem）。
+//
+// ⚠️ 这两个数字**不读设置面板**（倾诉没有设置）：与舞台字号一样是内置固定档。
 //
 // **颜色必须用沉浸层的 rnp 变量，不能用全局 --color-text-secondary**：
 // 沉浸页的明暗由 colorScheme 单独控制（rnp-light/rnp-dark/rnp-auto 会把 shade-2 连同
@@ -93,52 +159,20 @@
   color: var(--rnp-accent-color-shade-2, var(--color-text-primary));
 }
 
+// 底部副字幕（罗马音 / 译文）。⚠️ 同 .tilt-song-artist：300 是名义值，实际 400。
 .tilt-subtitle {
   margin: 0;
   font-weight: 300;
   letter-spacing: 0.06em;
   opacity: 0.75;
 
-  // 罗马音在前、译文在后（与经典皮肤两行的顺序一致）；两者字号各自独立可调
+  // 罗马音在前、译文在后（与经典皮肤两行的顺序一致）
   &.is-romaji {
-    font-size: calc(
-      clamp(1.125rem, 2.6vw, 1.25rem) * var(--tilt-sub-scale, 1) * var(--tilt-sub-romaji-em, 0.6)
-    );
+    font-size: calc(clamp(1.125rem, 2.6vw, 1.25rem) * 0.6);
     opacity: 0.6;
   }
 
   &.is-translation {
-    font-size: calc(
-      clamp(1.125rem, 2.6vw, 1.25rem) * var(--tilt-sub-scale, 1) *
-        var(--tilt-sub-translation-em, 1)
-    );
-  }
-}
-
-// ── 「仅封面」模式：整屏让给封面 ──
-// 外壳在 .display-mode-cover-only 下把槽改成 flex: 0 0 100%（见 immersive-shell.scss），
-// 这里的对齐声明与 classic.scss 逐条同语义 —— 设置面板的「封面对齐」是全局设置，
-// 换皮肤不能换语义。缺了变体规则的后果不是「没反应」而是「反应错」：外壳里
-// `.display-mode-cover-only .cover-halign-center .rnp-cover { margin-left: 0 }`
-// 会照常生效，把封面推到槽左边而不是居中。
-.immersive-cover-slot {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  justify-content: flex-end;
-  align-items: flex-start;
-  height: 100%;
-  min-height: 0;
-  box-sizing: border-box;
-  overflow: hidden;
-  // 与底栏留出距离（--bottombar-height 由 immersive-shell.scss 定义）
-  padding-bottom: calc(var(--bottombar-height, 90px) + 12px);
-
-  &.cover-valign-middle {
-    justify-content: center;
-  }
-
-  &.cover-halign-center {
-    align-items: center;
+    font-size: clamp(1.125rem, 2.6vw, 1.25rem);
   }
 }

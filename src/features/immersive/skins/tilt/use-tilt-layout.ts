@@ -152,15 +152,23 @@ function measureWidestSegment(
  * 布局 hook。
  *
  * @param options.source   当前行（null = 无行可排）。ComputedRef 或 getter 均可
- * @param options.fontScale 用户字号倍率（resolveFontScale 的结果）
- * @param options.fontKey  自定义字体的可响应标识：变化会触发重新测量
+ * @param options.fontScale 字号倍率。倾诉不读设置，恒传 tilt-adapter 的 TILT_FONT_SCALE（=1）
+ * @param options.fontKey  字体的可响应标识：变化会触发重新测量。字族本身是从 DOM 的
+ *                         computed style 读的（见 readFontFamily），Vue 看不到它变化，
+ *                         所以调用方要给一个「字体可能变了」的信号。倾诉传的是内置字体的
+ *                         就绪状态（use-tilt-font.ts：异步加载完成 → 重测一次）
  * @param options.panel    排版带元素（测它的 clientWidth 当可用宽度，并用 ResizeObserver 跟随）
  * @param options.stage    舞台元素（测它的 clientHeight 当可用高度，供纵向缩放）
  */
 export function useTiltLayout(options: {
   source: MaybeRefOrGetter<TiltLineSource | null>
   fontScale: MaybeRefOrGetter<number>
-  fontKey: MaybeRefOrGetter<string>
+  /**
+   * 取值本身没人用，只用来建立响应式依赖（`void toValue(...)`）：值一变就重测。
+   * 因此类型是 `unknown` 而不是 `string` —— 它只是「字体可能变了」的信号，
+   * 不是字体名（字族从 DOM 读）。
+   */
+  fontKey: MaybeRefOrGetter<unknown>
   panel: Ref<HTMLElement | null>
   stage: Ref<HTMLElement | null>
 }): { layout: ComputedRef<TiltLayout | null> } {
@@ -225,6 +233,26 @@ export function useTiltLayout(options: {
       }
     },
     { immediate: true, flush: 'post' }
+  )
+
+  /**
+   * 字体标识一变就**先清测量缓存**，再去重测。
+   *
+   * 不清的话这次重测是空转：pretext 按 (文本, font string) 缓存测量结果，而
+   * **字体文件加载完成并不会改变 font string** —— CSS 字体栈一个字都没变，只是同一个栈
+   * 从「兜底字」换成了「真字形」。于是「字体就绪 → 重测」只是把同一个键再问一遍，
+   * 拿回兜底字量出的旧宽度，排版永久按错误的宽度缩放（不报错、不白屏，只是字号一直偏小）。
+   * 实测：未就绪 1120.00 → 就绪后不清缓存重测 1120.00 → 就绪后清缓存 1030.40，差 8%。
+   *
+   * 用 `flush: 'sync'` 是**必须的**：要让清缓存发生在 computed 重算**之前**。
+   * 默认的 'pre' 会排在渲染前、但那时 computed 可能已被求值（任何读取 layout 的
+   * 同步代码都会触发），顺序就没有保证了。immediate 的一次是首测保险：这一次测量前
+   * 无法确认缓存里有没有旧实例留下的条目。
+   */
+  watch(
+    () => toValue(options.fontKey),
+    () => clearCache(),
+    { immediate: true, flush: 'sync' }
   )
 
   onBeforeUnmount(() => {

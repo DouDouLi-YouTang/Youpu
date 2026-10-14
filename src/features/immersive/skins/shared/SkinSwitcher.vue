@@ -8,11 +8,32 @@ import { useImmersivePlayer } from '@/features/immersive/use-immersive-player'
 import type { SkinId } from '@/features/immersive/skins/types'
 
 /**
- * 沉浸页悬浮皮肤切换条（切换入口 ①）—— 歌词区右上角的胶囊，点击展开面板列表，
- * 选择即切并自动收起。跟随 idle 显隐（与关闭按钮一致，共用 immersive-close-hidden），
- * 演示模式下隐藏。另一个入口是设置面板「样式」tab（settings/SettingsSkin.vue），
- * 两者都写 settings.applySkin，因此天然同步。
+ * 沉浸页顶部的面板主题切换按钮 —— **面板主题的唯一入口**（点击展开面板列表，
+ * 选择即切并自动收起）。
+ *
+ * 「唯一」是 2026-10-11 用户明确要求的：设置面板里的「样式」tab 与页内切换条都已删除，
+ * 「歌词面板样式是在外部设置，直接在顶部控制栏里选歌词面板的主题」。设置面板里不再有
+ * 任何切换入口。
+ *
+ * **位置在控制栏第一排、紧挨设置按钮左侧**（同样是用户明确要求：「主题切换按钮直接放到
+ * 设置旁边，不要放到第二排」）。两个按钮的列位关系见下面样式里的 right 计算。
+ *
+ * `hasSettings` 由外壳传入（= 当前面板有没有设置）：
+ *  - true（经典）—— 设置按钮在，本按钮让位到它左侧（right:184 / 全屏 right:96）
+ *  - false（倾诉）—— 设置按钮不存在，本按钮**占住那一格**（right:140 / 全屏 right:52），
+ *    否则顶部那一排会空出一个洞
+ *
+ * ⚠️ z-index 必须高于设置面板（`.immersive-settings` 是 7）：展开的列表向下挂，
+ * 正好落在设置面板所在的区域，z-index 不够就会被整个盖住 —— 而它是唯一入口，
+ * 盖住就等于切不了。
+ *
+ * 跟随 idle 显隐（与关闭按钮一致，共用 immersive-close-hidden），演示模式下隐藏。
  */
+defineProps<{
+  /** 当前面板是否自带设置（= 设置按钮是否存在）。见 skins/types.ts 的 SkinDefinition.hasSettings */
+  hasSettings: boolean
+}>()
+
 const settings = useImmersiveSettingsStore()
 const { idle } = useImmersivePlayer()
 
@@ -35,13 +56,13 @@ function select(id: SkinId): void {
   <div
     v-if="!settings.presentationMode"
     class="skin-switcher"
-    :class="{ 'immersive-close-hidden': idle }"
+    :class="{ 'immersive-close-hidden': idle, 'no-settings': !hasSettings }"
   >
     <button
       type="button"
       class="skin-switcher-trigger"
       :class="{ expanded }"
-      :aria-label="expanded ? '收起皮肤列表' : '切换皮肤'"
+      :aria-label="expanded ? '收起面板列表' : '切换歌词面板'"
       :aria-expanded="expanded"
       @click="toggleExpanded"
     >
@@ -69,10 +90,16 @@ function select(id: SkinId): void {
 <style scoped lang="scss">
 .skin-switcher {
   position: fixed;
-  // 关/最小化/最大化/设置四个按钮占据 top:8 起的 36px 一行，切换条落在其下方空白区
-  top: 56px;
-  right: 20px;
-  z-index: 6;
+  // 控制栏第一排：与关/最小化/最大化/设置**同一行同一尺寸**（都是 top:8、36×36）。
+  // 本按钮原先是控制条下方的悬浮胶囊（30×30，top:56），2026-10-11 挪到第一排后
+  // 尺寸没跟着改，比兄弟按钮小一圈 —— 见下方 .skin-switcher-trigger 的注释。
+  top: 8px;
+  // 设置按钮 right:140（36 宽）+ 8px 间距 = 184。两者同一排、紧挨着。
+  // 全屏档与「当前面板没有设置」档的覆写在 immersive-shell.scss（那些规则要看根元素状态）。
+  right: 184px;
+  // 高于设置面板(.immersive-settings 的 7)：展开的列表向下挂，正好落在面板区域，
+  // 不高于它就会被整个盖住 —— 而本按钮是面板主题的唯一入口，盖住 = 切不了。
+  z-index: 8;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -85,14 +112,18 @@ function select(id: SkinId): void {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  // 与同排的关/最小化/最大化/设置按钮**逐值相同**（36×36、图标继承 16px 字号）：
+  // 它现在跟它们是兄弟按钮，不再是自己一个人挂在下方的胶囊。改这里记得对齐
+  // immersive-shell.scss 里那四个按钮的宽高。
+  width: 36px;
+  height: 36px;
   padding: 0;
   border: 0;
   border-radius: 9999px;
   background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.1);
   color: var(--rnp-accent-color-shade-2, var(--color-text-primary));
-  font-size: 15px;
+  // 不写 font-size：与那四个按钮一样继承基准字号（图标是 1em），
+  // 原先写死 15px 是配合 30px 的小圆，现在跟着兄弟走
   cursor: pointer;
   transition:
     background 0.2s ease,

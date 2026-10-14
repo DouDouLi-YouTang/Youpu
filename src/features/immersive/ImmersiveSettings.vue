@@ -8,14 +8,20 @@ import BackgroundTab from '@/features/immersive/settings/BackgroundTab.vue'
 import CoverTab from '@/features/immersive/settings/CoverTab.vue'
 import FontTab from '@/features/immersive/settings/FontTab.vue'
 import LyricTab from '@/features/immersive/settings/LyricTab.vue'
-import SettingsSkin from '@/features/immersive/settings/SettingsSkin.vue'
 
 /**
- * 沉浸层设置面板外壳 —— 7 个 tab（样式 / 外观 / 封面 / 背景 / 歌词 / 字体 / 关于），
- * 前 6 个严格对齐参考项目 settings-menu.html，「样式」是皮肤系统新增（放最前）。
- * 从右侧滑入，各 tab 内容已拆分为 ./settings/*.vue，
- * 所有控件双向绑定 immersive-settings store，即时生效（store 变更驱动 SkinShell
- * 的 rootClasses / rootStyleVars 重算）。
+ * 沉浸层设置面板外壳 —— 6 个 tab（外观 / 封面 / 背景 / 歌词 / 字体 / 关于），
+ * 顺序与文案对齐参考项目 settings-menu.html。从右侧滑入，各 tab 内容已拆分为
+ * ./settings/*.vue，所有控件双向绑定 immersive-settings store，即时生效
+ * （store 变更驱动 SkinShell 的 rootClasses / rootStyleVars 重算）。
+ *
+ * ⚠️ **面板主题切换不在本面板内**（2026-10-11 用户要求）：「歌词面板样式是在外部设置，
+ * 直接在顶部控制栏里选歌词面板的主题」。所以这里既没有「样式」tab、也没有页内面板
+ * 切换条 —— 切换入口只有沉浸页顶部那个悬浮按钮（SkinSwitcher.vue）。
+ *
+ * 这些设置**属于「经典」面板**（沉浸页唯一有外观设置的面板）。「倾诉」没有设置，
+ * 它下面根本不渲染设置按钮（见 skins/shared/SkinShell.vue）—— 所以本面板不会在
+ * 倾诉下被打开，也就不需要「按面板裁剪设置行」那套机制。
  *
  * 本组件只负责：Transition + 悬浮小窗外壳 + 纵向 tab 列 + 内容区分发。
  * 外壳与 antd 控件覆盖样式见 ./settings/settings-panel.scss，多 tab 共用的行样式见
@@ -29,9 +35,8 @@ function close(): void {
   emit('update:visible', false)
 }
 
-// ── tab 定义（「样式」为皮肤系统新增放最前，其余顺序与文案对齐参考项目 settings-menu.html） ──
+// ── tab 定义（顺序与文案对齐参考项目 settings-menu.html） ──
 const TABS = [
-  { key: 'skin', label: '样式' },
   { key: 'appearance', label: '外观' },
   { key: 'cover', label: '封面' },
   { key: 'background', label: '背景' },
@@ -67,7 +72,6 @@ const activeTab = ref<TabKey>('appearance')
 
       <!-- 内容区：每个 tab 一个组件，根节点 <section class="settings-section"> 由外壳样式命中 -->
       <div class="settings-body">
-        <SettingsSkin v-show="activeTab === 'skin'" />
         <AppearanceTab v-show="activeTab === 'appearance'" />
         <CoverTab v-show="activeTab === 'cover'" />
         <BackgroundTab v-show="activeTab === 'background'" />

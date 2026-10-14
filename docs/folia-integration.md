@@ -9,13 +9,13 @@
 
 **不能搬组件，只能搬架构 + 重写布局算法。**
 
-| | Folia | youpu |
-|---|---|---|
-| 框架 | React 19 | Vue 3.5.32 |
-| 状态 | zustand + MotionValue | Pinia 3 + ref |
-| 渲染 | Pixi.js / three.js / canvas 2D / DOM | DOM + SCSS |
-| 动画 | framer-motion | CSS transition + GSAP（已装） |
-| 样式 | tailwind | SCSS + ant-design-vue |
+|      | Folia                                | youpu                         |
+| ---- | ------------------------------------ | ----------------------------- |
+| 框架 | React 19                             | Vue 3.5.32                    |
+| 状态 | zustand + MotionValue                | Pinia 3 + ref                 |
+| 渲染 | Pixi.js / three.js / canvas 2D / DOM | DOM + SCSS                    |
+| 动画 | framer-motion                        | CSS transition + GSAP（已装） |
+| 样式 | tailwind                             | SCSS + ant-design-vue         |
 
 Folia 的 13 个视觉模式里，**5 个是 DOM 实现**（classic / cadenza / partita / claddagh / tilt），
 这 5 个可以直接用 Vue 重写布局算法，成本可控；
@@ -46,16 +46,17 @@ Folia 的 13 个视觉模式里，**5 个是 DOM 实现**（classic / cadenza / 
 
 ```
 src/features/immersive/
-├── ImmersiveSettings.vue          # 壳：Transition + 关闭按钮 + tab 导航 + <component :is>，~140 行
+├── ImmersiveSettings.vue          # 壳：Transition + 关闭按钮 + tab 导航 + 6 个 tab 子组件
 └── settings/
-    ├── SettingsAppearance.vue     # 外观 11 项，~130 行
-    ├── SettingsCover.vue          # 封面 6 项，~110 行
-    ├── SettingsBackground.vue     # 背景 9 项，~190 行
-    ├── SettingsLyric.vue          # 歌词 16 项，~230 行
-    ├── SettingsFont.vue           # 字体 2 项，~70 行
-    ├── SettingsAbout.vue          # 关于，~60 行
-    ├── options.ts                 # 各 tab 共用的 options 数组 + marks 常量，~90 行
-    └── use-settings-draft.ts      # 条件显隐 computed（isLyricOnly/isFluid/...），~50 行
+    ├── AppearanceTab.vue          # 外观
+    ├── CoverTab.vue               # 封面
+    ├── BackgroundTab.vue          # 背景
+    ├── LyricTab.vue               # 歌词（单一版本，不按面板拆分）
+    ├── FontTab.vue                # 字体
+    ├── AboutTab.vue               # 关于
+    ├── SettingsSlider.vue         # 共用滑块行（reset 圆点）
+    ├── defaults.ts                # 各 slider 默认值（reset 用）
+    └── system-fonts.ts            # 系统字体查询（整会话缓存一次）
 ```
 
 ### 1.2 音频分析器缺失 —— Folia 视觉模式的动力源（**这里有个架构级障碍**）
@@ -68,8 +69,8 @@ Folia 每个模式都收 `audioPower: MotionValue<number>` 与 `audioBands: Audi
 ```ts
 const remote = shouldUseRemoteAudio()
 const c = remote
-  ? createRemoteAudioController(callbacks, () => this.currentItem)   // Electron：音频在主进程的隐藏窗口
-  : useAudioElement(getAudioElement(), callbacks)                    // 浏览器调试：本地 <audio>
+  ? createRemoteAudioController(callbacks, () => this.currentItem) // Electron：音频在主进程的隐藏窗口
+  : useAudioElement(getAudioElement(), callbacks) // 浏览器调试：本地 <audio>
 ```
 
 `shouldUseRemoteAudio()`（`src/platform/electron/remote-audio.ts:154`）= `isElectronRuntime() && Boolean(window.muiceDesktop?.audio)`，
@@ -164,23 +165,23 @@ export function useAudioBands(): { bands: Ref<AudioBands> } {
 
 要做「随拍反应」必须把分析器放进 **bg-player 窗口**，再把结果 IPC 推回来。改动面：
 
-| 层 | 文件 | 改动 |
-|---|---|---|
-| 1 | `electron/main/bg-player.ts:90` 内联 HTML `<audio id="a" preload="auto">` | 加 `crossorigin="anonymous"`（**有静音风险，见下方 CORS 第 3 条**） |
-| 1 | `bg-player.ts:159-172` 的 `case 'load'` | `a.src = p.url` **之前**按 URL 前缀决定是否设 `a.crossOrigin`（换 src 会重置） |
-| 1 | `bg-player.ts:91` `<script>` 内，`bridge.onCommand`（:157）之前 | 加 `ensureAnalyser()` + `pushSpectrum()` + `setSpectrum()` |
-| 1 | `bg-player.ts:157` 的 `switch (cmd.type)` | 加 `case 'spectrum'` |
-| 1 | `bg-player.ts:50-59` 的 `BgCommand` 联合类型 | 加 `\| { type: 'spectrum'; enabled: boolean }` |
-| 2 | `bg-player.ts:18-27` 的 `BgPlayerEvent` | 加 `\| { type: 'spectrum'; bins: number[] }` |
-| 2 | `BgPlayerWindow` 类 | 加 `setSpectrum(enabled: boolean)` 方法（向页面发 command） |
-| 3 | `electron/main/audio-engine.ts:136-171` `handleEngineEvent` 的 switch | 加 `case 'spectrum'` + `forwardToRenderer(event)` |
-| 3 | `electron/main/audio-engine.ts` | 新增导出的 `engineSetSpectrum(enabled)`（照抄 `engineSetSink`（:272）的 `withEngine` 写法） |
-| 3 | `electron/main/index.ts:1233-1265` 的 `ipcMain.handle('audio:*')` 区 | 加 `ipcMain.handle('audio:spectrum', (_e, enabled) => void engineSetSpectrum(Boolean(enabled)))` |
-| 4 | `electron/preload/index.ts:427-475` 的 `audio: {}` | 加 `setSpectrum(enabled)`（照抄 `setSink`（:460）） |
-| 4 | `src/types/global.d.ts:144-152` `AudioEngineEvent` | 加 `\| { type: 'spectrum'; bins: number[] }` |
-| 4 | `src/types/global.d.ts:304-318` `audio` 命名空间 | 加 `setSpectrum(enabled: boolean): Promise<void>` |
-| 4 | `src/platform/electron/remote-audio.ts:46` 的 `api.onEvent` switch | 加 `case 'spectrum'`（合成 4 带） |
-| 4 | `src/composables/useAudioElement.ts:16-33` 的 `AudioControllerCallbacks` | 加 `onSpectrum?: (bands: AudioBands) => void` |
+| 层  | 文件                                                                      | 改动                                                                                             |
+| --- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| 1   | `electron/main/bg-player.ts:90` 内联 HTML `<audio id="a" preload="auto">` | 加 `crossorigin="anonymous"`（**有静音风险，见下方 CORS 第 3 条**）                              |
+| 1   | `bg-player.ts:159-172` 的 `case 'load'`                                   | `a.src = p.url` **之前**按 URL 前缀决定是否设 `a.crossOrigin`（换 src 会重置）                   |
+| 1   | `bg-player.ts:91` `<script>` 内，`bridge.onCommand`（:157）之前           | 加 `ensureAnalyser()` + `pushSpectrum()` + `setSpectrum()`                                       |
+| 1   | `bg-player.ts:157` 的 `switch (cmd.type)`                                 | 加 `case 'spectrum'`                                                                             |
+| 1   | `bg-player.ts:50-59` 的 `BgCommand` 联合类型                              | 加 `\| { type: 'spectrum'; enabled: boolean }`                                                   |
+| 2   | `bg-player.ts:18-27` 的 `BgPlayerEvent`                                   | 加 `\| { type: 'spectrum'; bins: number[] }`                                                     |
+| 2   | `BgPlayerWindow` 类                                                       | 加 `setSpectrum(enabled: boolean)` 方法（向页面发 command）                                      |
+| 3   | `electron/main/audio-engine.ts:136-171` `handleEngineEvent` 的 switch     | 加 `case 'spectrum'` + `forwardToRenderer(event)`                                                |
+| 3   | `electron/main/audio-engine.ts`                                           | 新增导出的 `engineSetSpectrum(enabled)`（照抄 `engineSetSink`（:272）的 `withEngine` 写法）      |
+| 3   | `electron/main/index.ts:1233-1265` 的 `ipcMain.handle('audio:*')` 区      | 加 `ipcMain.handle('audio:spectrum', (_e, enabled) => void engineSetSpectrum(Boolean(enabled)))` |
+| 4   | `electron/preload/index.ts:427-475` 的 `audio: {}`                        | 加 `setSpectrum(enabled)`（照抄 `setSink`（:460））                                              |
+| 4   | `src/types/global.d.ts:144-152` `AudioEngineEvent`                        | 加 `\| { type: 'spectrum'; bins: number[] }`                                                     |
+| 4   | `src/types/global.d.ts:304-318` `audio` 命名空间                          | 加 `setSpectrum(enabled: boolean): Promise<void>`                                                |
+| 4   | `src/platform/electron/remote-audio.ts:46` 的 `api.onEvent` switch        | 加 `case 'spectrum'`（合成 4 带）                                                                |
+| 4   | `src/composables/useAudioElement.ts:16-33` 的 `AudioControllerCallbacks`  | 加 `onSpectrum?: (bands: AudioBands) => void`                                                    |
 
 > `AudioControllerCallbacks` 定义在 `src/composables/useAudioElement.ts`（不在 `src/types/`），
 > 由本地控制器与 `remote-audio.ts` 共用一个接口（`player.store.ts:30` import 它）。
@@ -193,7 +194,10 @@ export function useAudioBands(): { bands: Ref<AudioBands> } {
 bg-player 页面内联脚本追加（保持在 `bridge.onCommand` 之前）：
 
 ```js
-var audioCtx = null, analyser = null, srcNode = null, freqData = null
+var audioCtx = null,
+  analyser = null,
+  srcNode = null,
+  freqData = null
 var spectrumTimer = null
 var BINS = 32
 
@@ -282,12 +286,14 @@ case 'spectrum': {
 低内存模式回收主渲染进程后 `contents.isDestroyed()` 为 true，:1622 直接 `return` —— 事件没有接收方；而此时 bg-player 里那个
 `setInterval` 还在跑（`clearInterval` 只在 `setSpectrum(false)` 时触发），会**空转烧 CPU**。
 两种处理，二选一：
+
 - 省事：**不用改代码**。20Hz × 32 个数字的开销可以忽略，且回收期间本来也没人看频谱；
 - 干净：主进程检测到渲染进程回收时主动 `win.setSpectrum(false)`，渲染进程重建后再订阅一次。
 
-**建议先按「省事」实现**（回收期间无人看频谱，等 §6.3 决定上 B 方案再补）。**
+**建议先按「省事」实现**（回收期间无人看频谱，等 §6.3 决定上 B 方案再补）。\*\*
 
 **CORS 的三个坑（第 3 个最危险）**：
+
 1. **网易云 CDN 直链**：实测返回 `Access-Control-Allow-Origin: *`（403 响应也带，说明是 CDN 层统一加的头）。
    注意**实测的是 403 响应**（链接已过期），200 响应要等真正播放时再确认一次。
 2. **`muice-cache://` 走的是 `serveAudioFile`（`electron/main/index.ts:195`），它的两个 `Response`（206 在 :235、200 在 :248）都没有 `Access-Control-Allow-Origin`**，
@@ -314,30 +320,31 @@ case 'spectrum': {
 
 ```
 src/features/immersive/
-├── ImmersivePlayer.vue              # 瘦身成壳：<SkinShell><component :is="skinComp"/></SkinShell>
+├── ImmersivePlayer.vue              # 瘦身成壳：Transition + v-if="open" + <SkinShell/>
 ├── use-immersive-player.ts          # 已有：open / idle
 ├── use-audio-bands.ts               # 新增：§1.2
-├── immersive-settings.store.ts      # 已有：+skin 字段 +applySkin（§3）
+├── immersive-settings.store.ts      # 已有：扁平设置 + skin 字段 + applySkin（§3.3）
 ├── settings/                        # 新增：§1.1 拆出的 6 个 tab
 └── skins/                           # 新增：全部皮肤
-    ├── types.ts                     # SkinId / SkinDefinition / SkinContext
+    ├── types.ts                     # SkinId / SkinDefinition（含 hasSettings）/ SkinContext
     ├── registry.ts                  # import.meta.glob 自动发现
     ├── use-skin-context.ts          # 统一把 store 状态喂给皮肤
     ├── shared/                      # 所有皮肤共用，不分叉
-    │   ├── SkinShell.vue            # 拖拽带 + 4 个窗口按钮 + 全屏时钟 + 演示提示 + ESC + CSS 变量
+    │   ├── SkinShell.vue            # 拖拽带 + 窗口按钮 + 全屏时钟 + 演示提示 + ESC + 设置按钮 + 切换按钮
+    │   ├── SkinChromeButtons.vue    # 4 个窗口按钮（避免 SkinShell 超 400 行）
+    │   ├── SkinSwitcher.vue         # 顶部切换按钮（唯一入口，§3.7）
     │   ├── use-transport.ts         # 从 ImmersiveControls 抽出的 seek/volume/rate/音质
-    │   ├── use-backdrop.ts          # backgroundType → 实际渲染参数
-    │   └── skin-host.scss
-    ├── classic/                     # 现有 ImmersivePlayer 布局 = 第一款皮肤
+    │   └── use-backdrop.ts          # 两档 rootClasses / CSS 变量（§3.7）
+    ├── classic/                     # 现有 ImmersivePlayer 布局 = 第一款皮肤（hasSettings: true）
     │   ├── index.ts                 # export default defineSkin({...})
     │   ├── SkinClassic.vue
     │   └── classic.scss
-    ├── tilt/                        # Folia 倾诉（DOM，~800 行 TSX → Vue ~450 行）
+    ├── tilt/                        # Folia 倾诉（hasSettings: false —— 没有设置）
     │   ├── index.ts
     │   ├── SkinTilt.vue
-    │   ├── use-tilt-layout.ts       # 逐行倾斜 + 手写体 + 当前句描边发光的几何算法
+    │   ├── use-tilt-layout.ts       # 逐行倾斜 + 手写体 + 缩放的几何算法
     │   └── tilt.scss
-    └── partita/                     # Folia 云阶（DOM，~1100 行 TSX → Vue ~600 行）
+    └── partita/                     # （未来）Folia 云阶（DOM，~1100 行 TSX → Vue ~600 行）
         ├── index.ts
         ├── SkinPartita.vue
         ├── use-partita-layout.ts    # 阶梯错位 + 十字准线
@@ -355,12 +362,13 @@ src/features/immersive/
 ### 3.1 `skins/types.ts`
 
 ```ts
-import type { Component } from 'vue'
-import type { ImmersiveSettings } from '../immersive-settings.store'
+import { defineAsyncComponent, type Component } from 'vue'
 
-export type SkinId = string
+/** 皮肤 id 的单一真源；新增皮肤先加到 `SKIN_IDS`（registry 与 store 都从它派生类型）。 */
+export const SKIN_IDS = ['classic', 'tilt'] as const
+export type SkinId = (typeof SKIN_IDS)[number]
 
-/** 音频四带能量，0–1。假节拍（§1.2.A）与真实频谱（§1.2.B）共用这个形状 */
+/** 音频四带能量，0–1。真实频谱（§1.2.B / 本项目 renderer 内建图）共用这个形状 */
 export interface AudioBands {
   low: number
   mid: number
@@ -368,11 +376,11 @@ export interface AudioBands {
   power: number
 }
 
-/** 皮肤只读上下文：全部是 getter，皮肤在自己的 rAF 里拉取，避免 Vue 响应式穿透到 canvas */
+/** 皮肤只读上下文：全部是 getter，皮肤在自己的 rAF 里拉取（**时间单位一律毫秒**） */
 export interface SkinContext {
-  /** 当前播放秒数（已含 lyricOffset 修正） */
+  /** 当前播放毫秒数（已含 lyricOffset 修正） */
   currentTime: () => number
-  /** 当前高亮歌词行下标；-1 表示无 */
+  /** 当前高亮歌词行下标；-1 表示尚未到首行 */
   currentLineIndex: () => number
   isPlaying: () => boolean
   /** 逐帧读 audioBands.value，不要解构 */
@@ -381,152 +389,138 @@ export interface SkinContext {
   songTitle: () => string | null
   songArtist: () => string | null
   songAlbum: () => string | null
-  /** 歌词行点击 → seek。皮肤传「行开始的秒数」，由壳层扣掉 lyricOffset */
-  seekLyric: (lineTimeSec: number) => void
+  /** 歌词行点击 → seek。皮肤传「行开始的毫秒数」，由壳层扣掉 lyricOffset 并按播放器规则钳 0 */
+  seekLyric: (lineTimeMs: number) => void
 }
 
 export interface SkinDefinition {
   id: SkinId
-  /** 设置面板卡片上的中文名，如「倾诉」 */
+  /** 悬浮切换条上的中文名，如「倾诉」 */
   name: string
   desc: string
   order: number
-  /** 设置面板缩略图，相对本皮肤目录；用 import.meta.glob 的 ?url 形式取 */
-  thumb: string
   /**
-   * 异步加载布局组件。**必须是 loader 而不是组件本身** ——
-   * registry 用 eager glob 发现 index.ts，若 index.ts 静态 import 组件，
-   * 任何碰皮肤设置的模块都会连带拉入全部皮肤（Folia 用注释明确记录了这个坑：
-   * 13 个 renderer = 183 个模块，含只有 diorama 用的 three.js）。
+   * 该面板是否**有自己的设置**（2026-10-11 用户定：设置是给「经典」用的，
+   * 「倾诉」没有设置）。true（经典）—— 沉浸页右上角显示设置按钮，根节点套用经典那套
+   * 外观（背景 / 显示模式 / 歌词排版 / 字体 / 封面）；false（倾诉）—— 不显示设置按钮，
+   * 也不读那套外观（背景恒为「几何」、永不显示封面、排版与字体用内置值）。
+   * 判据只此一处，不要在别处硬判皮肤 id。
    */
-  loader: () => Promise<Component>
-  /** 切到本皮肤时覆盖的设置默认值；用户之后的改动不回流 */
-  preset?: Partial<ImmersiveSettings>
-  /** 本皮肤下无意义的设置项，从面板隐藏，避免用户被 50 个旋钮淹没 */
-  hiddenFields?: (keyof ImmersiveSettings)[]
-  /** 是否需要音频响应（决定是否向 bg-player 订阅频谱，见 §1.2.B） */
-  needsAudio?: boolean
+  hasSettings: boolean
+  /** 皮肤根组件：接收 `ctx: SkinContext`，自行消费 store 渲染布局 */
+  component: Component
 }
 
-export const defineSkin = (skin: SkinDefinition): SkinDefinition => skin
+/** `defineSkin` 入参：组件用动态 import 传入（仍会单独打包成 chunk，不进主 bundle）。 */
+export interface SkinDefinitionInput extends Omit<SkinDefinition, 'component'> {
+  component: () => Promise<{ default: Component }>
+}
+
+export const defineSkin = (input: SkinDefinitionInput): SkinDefinition => ({
+  ...input,
+  component: defineAsyncComponent(input.component)
+})
 ```
 
 ### 3.2 `skins/registry.ts`
 
 ```ts
-import type { SkinDefinition, SkinId } from './types'
+import { computed } from 'vue'
 
-const modules = import.meta.glob<{ default: SkinDefinition }>('./*/index.ts', { eager: true })
+import { useImmersiveSettingsStore } from '../immersive-settings.store'
+import { DEFAULT_SKIN_ID, type SkinDefinition } from './types'
 
-function buildRegistry(modules: Record<string, { default: SkinDefinition }>) {
-  const entries = Object.entries(modules).map(([path, mod]) => {
-    if (!mod.default) {
-      throw new Error(`[SkinRegistry] Missing default export in ${path}`)
-    }
-    return mod.default
-  })
-  const byId: Record<SkinId, SkinDefinition> = {}
-  for (const entry of entries) {
-    if (byId[entry.id]) {
-      throw new Error(`[SkinRegistry] Duplicate skin id "${entry.id}"`)
-    }
-    byId[entry.id] = entry
-  }
-  return { entries: [...entries].sort((a, b) => a.order - b.order), byId }
+const modules = import.meta.glob('./*/index.ts', { eager: true }) as Record<
+  string,
+  { default: SkinDefinition }
+>
+
+/** 全部已注册皮肤，按 order 升序（同 order 按 id，保证列表顺序稳定）。 */
+export const skins: SkinDefinition[] = Object.values(modules)
+  .map((m) => m.default)
+  .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
+
+// DEFAULT_SKIN_ID 定义在 ./types（settings store 也要用，放这里会形成循环 import），此处转出
+export { DEFAULT_SKIN_ID }
+
+/** 按 id 取皮肤；未注册的 id（旧持久化 / 已删除的皮肤）回退到默认皮肤，保证任何值都能渲染。 */
+export function getSkin(id: string): SkinDefinition {
+  const found = skins.find((s) => s.id === id) ?? skins.find((s) => s.id === DEFAULT_SKIN_ID)
+  if (!found) throw new Error('未注册任何皮肤：请检查 skins/*/index.ts 是否存在')
+  return found
 }
 
-const { entries: SKIN_REGISTRY, byId: SKIN_BY_ID } = buildRegistry(modules)
-
-export { SKIN_REGISTRY }
-export const DEFAULT_SKIN_ID: SkinId = 'classic'
-
-export const hasSkin = (id: string | null | undefined): id is SkinId =>
-  Boolean(id && SKIN_BY_ID[id])
-
-/** 未知 id 一律回落默认皮肤：store 里可能是旧版本持久化的、已被删除的皮肤 id */
-export const getSkin = (id: SkinId): SkinDefinition =>
-  SKIN_BY_ID[id] ?? SKIN_BY_ID[DEFAULT_SKIN_ID]
+/** 当前生效的皮肤（跟随 settings.skin，无效值同上回退）。切换入口改 settings 即生效。 */
+export function useActiveSkin() {
+  const settings = useImmersiveSettingsStore()
+  return computed(() => getSkin(settings.skin))
+}
 ```
 
-> `import.meta.glob` 是 Vite 核心能力，本项目 Vite 7.3.5 原生支持；
-> 目前代码库里**尚无任何 `import.meta.glob` 使用**，首次引入建议先在 `pnpm dev` 下打一行
-> `console.log(Object.keys(modules))` 确认解析出的路径，再往下写。
+> 说明：
+>
+> - `DEFAULT_SKIN_ID` 与 `SKIN_IDS` 都在 `skins/types.ts`（**不能在 registry 里定义** ——
+>   settings store 要用它们，而 registry 反过来 import store，会成环）。
+> - `SkinId` 是 `SKIN_IDS` 派生的联合类型（`'classic' | 'tilt'`），不是 `string`：
+>   store 无法 import registry 推导配置键集，靠这个中立常量保证「注册项一定在集合内」。
+> - `import.meta.glob` 是 Vite 核心能力，本项目 Vite 7.3.5 原生支持；
+>   路径必须写成 `'./*/index.ts'`（不支持 `@/` 别名）。
 
 ### 3.3 `immersive-settings.store.ts` 增量（只加 1 个字段 + 1 个 action）
 
+设置**只有一份，它属于「经典」面板**（2026-10-11 用户定）—— state 就是扁平的
+`{ ...createDefaultSettings(), skin }`，没有 `panels` 分桶、没有 `active`、没有 `settingsTarget`。
+
 ```ts
-import { getSkin, hasSkin, DEFAULT_SKIN_ID, type SkinId } from './skins/registry'
+import { DEFAULT_SKIN_ID, type SkinId } from './skins/types' // 从 types 取，不要从 registry（会成环）
 
 // state 里追加：
 skin: DEFAULT_SKIN_ID as SkinId,
 
 // actions 里追加：
-/**
- * 切换皮肤。preset 只在「切过去的那一刻」铺一层默认值，
- * 之后用户的手动改动不回流到 preset（否则用户每次切回来都被重置）。
- */
+/** 切换面板：只改「在放哪个面板」，不换设置（设置只有一份，见上）。 */
 applySkin(id: SkinId): void {
-  if (!hasSkin(id)) return
-  const skin = getSkin(id)
   this.skin = id
-  if (skin.preset) this.$patch(skin.preset)
 },
 ```
 
-`persist: true` 已在 store 上，`skin` 会自动持久化。旧版本没有这个字段时 `pinia-plugin-persistedstate`
-不会覆盖默认值，`DEFAULT_SKIN_ID` 生效。
+持久化用 `persist: { key, pick }`，`pick` 由 `createDefaultSettings()` 的全部键 + `skin` 推导
+（`PERSISTED_KEYS`），新增设置字段不会漏落盘。
+
+> 历史注记：皮肤系统刚上线时曾短暂按面板分桶（`panels: Record<SkinId, ImmersiveSettings>`），
+> 已被用户否决。旧分桶数据由 `immersive-settings.migrate.ts` 的 `settingsFromBucketed()`
+> **只取 classic 那一桶**折叠成扁平（tilt 桶按设计丢弃），由 `migrateBucketedSettings()`
+> 在 `bootstrapSettings()` 里跑一次。
 
 ### 3.4 `ImmersivePlayer.vue` 瘦身成壳
 
-现有 442 行里，**8 类职责全部属于壳层，不属于任何皮肤**：
+现有 442 行里，**全部窗口 chrome 职责都属于壳层，不属于任何皮肤**：
 顶部 32px 拖拽带、4 个窗口 chrome 按钮（关闭/最小化/最大化/全屏）、设置按钮、全屏时钟、
-演示模式提示、ESC 分层（关设置 → 退全屏 → 关闭）、CSS 变量注入（`rootStyleVars` + `rootClasses` + `accentVars` + `fontFamilyStyle`）。
+演示模式提示、ESC 分层（关设置 → 退全屏 → 关闭）、CSS 变量注入
+（`useBackdrop()` 的 `rootStyleVars` + `rootClasses` + `fontFamilyStyle`，加 `accentVars`）。
+它们落在 `SkinShell.vue`（壳）里；`ImmersivePlayer.vue` 只剩常驻挂载的几件事：
+`<Transition>` + `v-if="open"` 的开关时机、旧持久化引导（`bootstrapSettings()`）、
+歌词懒加载、专辑主色提取（它同时驱动全局主题色，必须常驻挂载）。
 
-新的 `ImmersivePlayer.vue` 目标 **~130 行**：
+**设置按钮与切换按钮都在 `SkinShell` 里，按 `hasSettings` 分派**：
+
+- 设置按钮：仅当前面板 `hasSettings` 为真时渲染（倾诉下**没有**这个按钮）；
+- 切换胶囊：不受 `hasSettings` 影响（两款面板都渲染，仅演示模式下隐藏），`hasSettings`
+  为真时紧挨设置按钮左侧（第一排 `right:184` / 全屏 `right:96`），为假时**占住设置按钮那一格**
+  （`right:140` / 全屏 `right:52`）；
+- 复用 `useBackdrop()` 得到的 `rootClasses` / `rootStyleVars` / `fontFamilyStyle` 挂在根
+  `<section class="immersive-root">` 上（两档注入见 §3.7）。
 
 ```vue
-<script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useImmersivePlayer } from '@/features/immersive/use-immersive-player'
-import { useImmersiveSettingsStore } from './immersive-settings.store'
-import { getSkin } from './skins/registry'
-import SkinShell from './skins/shared/SkinShell.vue'
-import { useSkinContext } from './skins/use-skin-context'
-import { useColorExtraction } from './use-color-extraction'
-import { usePlayerStore } from '@/stores/player.store'
-
-const { open, close, idle } = useImmersivePlayer()
-const settings = useImmersiveSettingsStore()
-const player = usePlayerStore()
-const coverUrl = computed(() => player.currentItem?.song?.coverUrl ?? null)
-const { accentVars } = useColorExtraction(coverUrl)
-const skinCtx = useSkinContext()
-
-// 皮肤异步组件：defineAsyncComponent 包住 loader，切皮肤时才拉对应 chunk
-const skinComponent = computed(() => defineAsyncComponent(getSkin(settings.skin).loader))
-
-const settingsOpen = ref(false)
-const toggleSettings = (): void => { settingsOpen.value = !settingsOpen.value }
-const closeSettings = (): void => { settingsOpen.value = false }
-defineExpose({ toggleSettings, closeSettings })
-</script>
-
 <template>
   <Transition name="immersive-slide">
-    <section v-if="open" class="immersive-root" :class="[`skin-${settings.skin}`]"
-             :style="[accentVars, skinCtx.rootStyleVars.value]">
-      <SkinShell :idle="idle" :settings-open="settingsOpen"
-                 @toggle-settings="toggleSettings" @close="close">
-        <!-- 皮肤只负责「内容区」，壳层负责窗口 chrome / 全屏 / ESC / 拖拽带 -->
-        <component :is="skinComponent" :ctx="skinCtx" />
-      </SkinShell>
-    </section>
+    <SkinShell v-if="open" :accent-vars="accentVars" />
   </Transition>
 </template>
 ```
 
-**皮肤切换过渡**：`<Suspense>` 由 `SkinShell` 内部提供，fallback 用上一个皮肤的首帧
-（或一个纯色底），避免异步 chunk 到达前白屏。
+**皮肤切换过渡**：皮肤组件用 `defineAsyncComponent`（`defineSkin` 内部包好），
+chunk 到达前由异步组件自身的 loading 态兜底，避免白屏。
 
 ### 3.5 第一款皮肤 `classic/index.ts`（把现有布局原样搬进来）
 
@@ -536,19 +530,21 @@ import { defineSkin } from '../types'
 export default defineSkin({
   id: 'classic',
   name: '经典',
-  desc: '左封面右歌词，当前默认布局',
+  desc: '左封面右歌词，界面与改造前一致',
   order: 0,
-  thumb: 'thumb.png',
-  loader: () => import('./SkinClassic.vue'),
-  // classic 就是现有 50 个旋钮的完整生效范围，不隐藏任何项
-  hiddenFields: [],
-  needsAudio: false
+  // 沉浸页设置说的就是本面板（见 types.ts 的 hasSettings 说明）
+  hasSettings: true,
+  component: () => import('./SkinClassic.vue')
 })
 ```
 
 `SkinClassic.vue` 直接复用现有的 `.immersive-content` / `.immersive-cover-slot` / `.immersive-lyric`
-结构 + `LyricLines.vue`，把 `immersive-shell.scss` 里属于「内容区」的那部分（第 201–248 行）
-搬到 `classic/classic.scss`，属于窗口 chrome 的部分（第 191–199、250–461 行）留在 `shared/skin-host.scss`。
+结构 + `LyricLines.vue`，把 `immersive-shell.scss` 里属于「内容区」的那部分
+搬到 `classic/classic.scss`（选择器与声明一字未改），属于窗口 chrome 的部分留在 `immersive-shell.scss`。
+
+「倾诉」对应 `hasSettings: false`：不显示设置按钮，背景恒为「几何」、永不显示封面、
+排版与字体用内置值（`skins/tilt/` 内固定；字体是随包内置的「站酷快乐体 + 圆体假名兜底」，
+声明在 `src/assets/fonts/fonts.scss`，详见 `docs/tilt-porting-notes.md` §8.3）。
 
 ### 3.6 皮肤上下文 `skins/use-skin-context.ts`
 
@@ -560,15 +556,15 @@ import { useImmersiveSettingsStore } from '../immersive-settings.store'
 import { audioBands } from '../use-audio-bands'
 import type { SkinContext } from './types'
 
-export function useSkinContext(): SkinContext & { rootStyleVars: ReturnType<typeof computed> } {
+export function useSkinContext(): SkinContext {
   const player = usePlayerStore()
   const lyric = useLyricStore()
   const settings = useImmersiveSettingsStore()
 
-  /** 歌词显示时间 = 播放时间 + 用户偏移；与 ImmersivePlayer 现有 lyricDisplayTimeMs 同式 */
+  /** 歌词显示时间 = 播放时间 + 用户偏移；与改造前的 lyricDisplayTimeMs 同式 */
   const lyricTimeMs = (): number => player.currentTimeMs + settings.lyricOffset
 
-  /** 线性扫描，与现有 activeIndex 一致；lyricStagger 时提前 200ms */
+  /** 线性扫描，与改造前一致；lyricStagger 时提前 200ms */
   const currentLineIndex = (): number => {
     const lines = lyric.lines
     if (!lines.length) return -1
@@ -582,7 +578,7 @@ export function useSkinContext(): SkinContext & { rootStyleVars: ReturnType<type
   }
 
   return {
-    currentTime: () => lyricTimeMs() / 1000,
+    currentTime: () => lyricTimeMs(), // 毫秒
     currentLineIndex,
     isPlaying: () => player.isPlaying,
     bands: () => audioBands.value,
@@ -590,78 +586,90 @@ export function useSkinContext(): SkinContext & { rootStyleVars: ReturnType<type
     songTitle: () => player.currentItem?.song?.name ?? null,
     songArtist: () => player.currentItem?.song?.artists?.map((a) => a.name).join(' / ') ?? null,
     songAlbum: () => player.currentItem?.song?.album?.name ?? null,
-    seekLyric: (lineTimeSec) => {
-      player.seek(Math.max(0, lineTimeSec * 1000 - settings.lyricOffset))
-    },
-    rootStyleVars: computed(() => ({ /* 现有 rootStyleVars 内容原样搬入 */ }))
+    seekLyric: (lineTimeMs) => {
+      player.seek(Math.max(0, lineTimeMs - settings.lyricOffset))
+    }
   }
 }
 ```
 
+> **`rootStyleVars` / `rootClasses` / 字体注入在 `shared/use-backdrop.ts`**（不在本 hook）：
+> 那里**分两档**注入 —— 「面板外观档」（背景 / 显示模式 / 歌词排版 / 自定义字体）只在
+> `SkinDefinition.hasSettings` 为真时注入（倾诉拿到空对象），「沉浸页通用档」（明暗主题 /
+> 专辑主色 / 底栏四项 / 演示模式 / 空闲态）无条件注入。详见 §3.7。
+
 > **谁来启动 rAF**：`useSkinContext()` 只**读**共享的 `audioBands` ref，不启动循环。
 > 启动交给 `SkinShell.vue` —— 它在 `v-if="open"` 内部，所以 `useAudioBands()` 的
 > `onBeforeUnmount` 会在沉浸页关闭时触发，订阅数归零、rAF 停下。这样：
+>
 > - 沉浸页关闭 → 没有空转循环；
 > - 切换皮肤 → `SkinShell` 不卸载（只换里面的 `<component>`），循环不会重启，没有闪烁；
 > - 某个皮肤忘了用 `bands()` → 只是白跑一条 rAF，不影响正确性。
 >
-> `needsAudio` 在 A 方案下**不参与决策**（假节拍几乎零成本，常开更省心）；
-> 等上 B 方案时它才变成开关：`SkinShell` 按 `getSkin(settings.skin).needsAudio` 决定
-> 要不要 `audio.setSpectrum(true)`。**先不写这个判断**，避免多一处没人验证的分支。
+> 音频图（`AudioContext` + `AnalyserNode`）现在建在渲染进程里（原「A 假节拍 / B 频谱」两阶段
+> 随音频回归渲染进程而合并）；`audioBands` 是模块级 ref，图未就绪时全 0。
+> 皮肤是否「需要音频」不再由 `SkinDefinition` 声明 —— 当前没有 `needsAudio` 字段，
+> 图在沉浸页打开时统一挂起（消费者只有「几何」背景）。
 
-### 3.7 设置面板新增「样式」tab
+### 3.7 面板主题切换入口与「设置归属」—— **定稿（2026-10-11）**
 
-在拆好的 `ImmersiveSettings.vue` 里把 `TABS` 改成：
+> ⚠️ 本节原方案（在设置面板里加「样式」tab + 页内切换条、并按面板分桶设置）**已被用户否决并删除**。
+> 用户原话：「原来的设置是给经典面板用的，然后倾诉这个主题是没有设置的，然后倾诉这个主题的
+> 背景就是几何并且无法更改，你怎么把设置直接给我干掉了，还有，主题切换按钮直接放到设置旁边，
+> 不要放到第二排」。
 
-```ts
-const TABS = [
-  { key: 'skin', label: '样式' },        // 放最前
-  { key: 'appearance', label: '外观' },
-  { key: 'cover', label: '封面' },
-  { key: 'background', label: '背景' },
-  { key: 'lyric', label: '歌词' },
-  { key: 'font', label: '字体' },
-  { key: 'about', label: '关于' }
-] as const
-```
+最终形态：
 
-`SettingsSkin.vue`：卡片网格，每张卡 = 缩略图 + 中文名 + 一句话描述，点击即时生效（调 `settings.applySkin(id)`）。
-`hiddenFields` 生效方式：各 tab 内 `v-if="!hidden.includes('lyricBlur')"` —— 但为了不改 6 个 tab 的模板，
-更省事的做法是在 `SettingsSkin` 之外加一层 `visibleFields` computed 放在 `settings/options.ts` 里，
-由每个 tab 自己 `v-show`。
+- **切换入口唯一** —— 沉浸页顶部控制栏**第一排**的切换按钮 `skins/shared/SkinSwitcher.vue`，
+  紧挨设置按钮左侧（用户明确要求：「主题切换按钮直接放到设置旁边，不要放到第二排」）。
+  设置面板里没有 `skin` tab，也没有页内切换条。位置：有设置按钮时 `right:184`（全屏 `right:96`）；
+  倾诉没有设置按钮，切换按钮占住那一格（`right:140` / 全屏 `right:52`）。
+- **设置只有一份，它是「经典」面板的设置**；「倾诉」没有设置（背景恒为「几何」、永不显示封面、
+  排版与字体用内置值）。归属说明写在 `immersive-settings.store.ts` 与 `skins/types.ts`
+  的 `hasSettings` 注释里。
+- **面板外观档 vs 沉浸页通用档**（`skins/shared/use-backdrop.ts` 两档注入）：
+  面板外观档（`rootClasses` 的 `display-mode-*` / `rnp-bg-*` / 歌词排版 class / `custom-font`、
+  `rootStyleVars` 的 `--bg-*` `--lyric-*`、`fontFamilyStyle`）只在 `hasSettings` 为真时注入；
+  通用档（明暗主题、专辑主色、底栏四项、演示模式、空闲态）无条件注入。
+- **设置面板不按面板裁剪任何行**（`settings/panel-capabilities.ts` 那套已被否决并删除）。
+  「倾诉」没有设置按钮，所以那张面板在倾诉下根本打不开 —— 不需要按面板裁剪。
+
+> 历史注记（均已删除）：`SettingsSkin.vue` / `skin-tab.scss` / `PanelTargetSwitch.vue`、
+> `settings/panel-capabilities.ts` + `panel-capabilities.test.ts`、
+> `settings/LyricTabClassic.vue` / `LyricTabTilt.vue`。
 
 ---
 
 ## 4. 分阶段落地
 
-| 阶段 | 内容 | 新增/改动 | 预估 |
-|---|---|---|---|
-| **P0** | 拆 `ImmersiveSettings.vue` → 6 个 tab 组件 | 改 1 建 8 | 半天，纯机械重构，无行为变更 |
-| **P0** | 补 `use-audio-bands.ts`（假节拍版，零架构改动） | 建 1 | 半天 |
-| **P1** | `skins/` 骨架：types / registry / SkinShell / use-skin-context | 建 6 | 1 天 |
-| **P1** | `classic` 皮肤 = 现有布局搬进来，`ImmersivePlayer.vue` 瘦身 | 建 3 改 2 | 1 天，验收标准：视觉与重构前逐像素一致 |
-| **P1** | 设置面板「样式」tab + 缩略图卡片 | 建 2 改 1 | 半天 |
-| **P2** | 移植 Folia `tilt`（倾诉）：逐行倾斜 + 手写体 + 当前句描边发光 | 建 4 | 1.5 天，第一个「真的不一样」的皮肤 |
-| **P2** | 移植 Folia `partita`（云阶）：阶梯错位 + 十字准线 | 建 5 | 2 天 |
-| **P3** | 移植 Folia `cadenza`（心象）：逐字随机旋转/位移/字号 + 光圈 | 建 5 | 3 天，逐字布局量大，需拆 3 个子组件 |
-| **P3** | 背景注册表：把现有 `backgroundType` 5 类扩展成注册表，补 Folia 的 `geometric` / `latent` | 建 5 改 2 | 2 天 |
-| **P4** | 移植 Folia `fume`（浮名）：canvas 2D 文字雾 + 相机 | 建 8 | 5 天+，要重写文字测量与栅格化 |
-| **P4** | 移植 Folia `pendolo`（时计）：canvas 2D 齿轮表盘 | 建 6 | 4 天+ |
-| **P4（可选）** | 上 B 方案真实频谱：§1.2.B 的 13 处 + `serveAudioFile` CORS 头 | 改 8 建 3 | 1.5 天，**必须与 crossorigin 同批改完，否则播缓存文件静音** |
-| **不做** | `monet` / `sonnet` / `tempera` / `lumiere` / `diorama` | — | 依赖 Pixi.js / three.js，与当前 60fps 流体背景的性能预算冲突 |
+| 阶段           | 内容                                                                                     | 新增/改动 | 预估                                                         |
+| -------------- | ---------------------------------------------------------------------------------------- | --------- | ------------------------------------------------------------ |
+| **P0**         | 拆 `ImmersiveSettings.vue` → 6 个 tab 组件                                               | 改 1 建 8 | 半天，纯机械重构，无行为变更                                 |
+| **P0**         | 补 `use-audio-bands.ts`（假节拍版，零架构改动）                                          | 建 1      | 半天                                                         |
+| **P1**         | `skins/` 骨架：types / registry / SkinShell / use-skin-context                           | 建 6      | 1 天                                                         |
+| **P1**         | `classic` 皮肤 = 现有布局搬进来，`ImmersivePlayer.vue` 瘦身                              | 建 3 改 2 | 1 天，验收标准：视觉与重构前逐像素一致                       |
+| ~~**P1**~~     | ~~设置面板「样式」tab + 缩略图卡片~~ **已取消**（面板主题只在顶部胶囊选，见 §3.7）       | —         | —                                                            |
+| **P2**         | 移植 Folia `tilt`（倾诉）：逐行倾斜 + 手写体 + 当前句描边发光                            | 建 4      | 1.5 天，第一个「真的不一样」的皮肤                           |
+| **P2**         | 移植 Folia `partita`（云阶）：阶梯错位 + 十字准线                                        | 建 5      | 2 天                                                         |
+| **P3**         | 移植 Folia `cadenza`（心象）：逐字随机旋转/位移/字号 + 光圈                              | 建 5      | 3 天，逐字布局量大，需拆 3 个子组件                          |
+| **P3**         | 背景注册表：把现有 `backgroundType` 5 类扩展成注册表，补 Folia 的 `geometric` / `latent` | 建 5 改 2 | 2 天                                                         |
+| **P4**         | 移植 Folia `fume`（浮名）：canvas 2D 文字雾 + 相机                                       | 建 8      | 5 天+，要重写文字测量与栅格化                                |
+| **P4**         | 移植 Folia `pendolo`（时计）：canvas 2D 齿轮表盘                                         | 建 6      | 4 天+                                                        |
+| **P4（可选）** | 上 B 方案真实频谱：§1.2.B 的 13 处 + `serveAudioFile` CORS 头                            | 改 8 建 3 | 1.5 天，**必须与 crossorigin 同批改完，否则播缓存文件静音**  |
+| **不做**       | `monet` / `sonnet` / `tempera` / `lumiere` / `diorama`                                   | —         | 依赖 Pixi.js / three.js，与当前 60fps 流体背景的性能预算冲突 |
 
 ### 移植 Folia DOM 模式的通用改法
 
-| Folia (React) | youpu (Vue) |
-|---|---|
-| `props.currentTime: MotionValue<number>` | `ctx.currentTime()` getter + 皮肤内 rAF |
-| `props.audioPower: MotionValue<number>` | `ctx.bands().power` |
-| `React.lazy(() => import(...))` | `defineAsyncComponent(() => import(...))` |
-| `<Suspense fallback>` | `<Suspense>` 或异步组件自带 loading |
-| `useMemo` 布局计算 | `computed` |
-| `useEffect` 订阅 | `watch` + `onBeforeUnmount` 清理 |
-| 逐字 `transform` inline style | 同一个 `:style` 对象，逐字元素用 `v-for` |
-| tailwind class | SCSS + `:deep()`（项目已大量使用这个模式） |
+| Folia (React)                            | youpu (Vue)                                |
+| ---------------------------------------- | ------------------------------------------ |
+| `props.currentTime: MotionValue<number>` | `ctx.currentTime()` getter + 皮肤内 rAF    |
+| `props.audioPower: MotionValue<number>`  | `ctx.bands().power`                        |
+| `React.lazy(() => import(...))`          | `defineAsyncComponent(() => import(...))`  |
+| `<Suspense fallback>`                    | `<Suspense>` 或异步组件自带 loading        |
+| `useMemo` 布局计算                       | `computed`                                 |
+| `useEffect` 订阅                         | `watch` + `onBeforeUnmount` 清理           |
+| 逐字 `transform` inline style            | 同一个 `:style` 对象，逐字元素用 `v-for`   |
+| tailwind class                           | SCSS + `:deep()`（项目已大量使用这个模式） |
 
 ---
 
@@ -693,22 +701,22 @@ const TABS = [
 
 ### 6.1 首批移植哪几款？
 
-| 选项 | 成本 | 特点 |
-|---|---|---|
-| **`classic`** | 1 天 | 不是新皮肤，是把现有布局原样搬进 `skins/classic/`，作为骨架验收基准 |
-| **`tilt`（倾诉）** | 1.5 天 | 最安静。逐行倾斜 + 手写体 + 当前句描边发光。中文抒情歌气质最搭 |
-| **`partita`（云阶）** | 2 天 | 工程图纸感。阶梯错位 + 极细十字准线。与现有风格差异最大 |
-| **`cadenza`（心象）** | 3 天 | 逐字随机旋转/位移/字号 + 光圈。视觉冲击最强，逐字布局量大，要拆 3 个子组件 |
-| **`claddagh`** | 2 天 | DOM，49479 B，尚未细读源码 |
+| 选项                  | 成本   | 特点                                                                       |
+| --------------------- | ------ | -------------------------------------------------------------------------- |
+| **`classic`**         | 1 天   | 不是新皮肤，是把现有布局原样搬进 `skins/classic/`，作为骨架验收基准        |
+| **`tilt`（倾诉）**    | 1.5 天 | 最安静。逐行倾斜 + 手写体 + 当前句描边发光。中文抒情歌气质最搭             |
+| **`partita`（云阶）** | 2 天   | 工程图纸感。阶梯错位 + 极细十字准线。与现有风格差异最大                    |
+| **`cadenza`（心象）** | 3 天   | 逐字随机旋转/位移/字号 + 光圈。视觉冲击最强，逐字布局量大，要拆 3 个子组件 |
+| **`claddagh`**        | 2 天   | DOM，49479 B，尚未细读源码                                                 |
 
 **我的建议：`classic` 必做（骨架的验收标准就是「与重构前逐像素一致」），然后从 `tilt` 起步** ——
 它最安静，出了问题最容易看出是布局错还是动画错；`partita` 的十字准线是绝对定位，调起来更费眼。
 
 ### 6.2 P0 的 `ImmersiveSettings.vue` 拆分要不要现在做？
 
-- **现在做**：纯机械重构，行为零变更。之后每次加皮肤只动 `settings/SettingsSkin.vue`，不碰 1318 行的巨型文件。
+- **现在做**：纯机械重构，行为零变更。之后每次加皮肤只动 `skins/<id>/index.ts`（在 `hasSettings` 上表态即可，设置面板本身不动）。
   代价：有回归风险，拆完你需要手动过一遍 6 个 tab 确认没漏控件。
-- **不做**：把「样式」tab 直接塞进 1318 行里 → 变 1500+ 行，且以后每加皮肤都要动它。
+- **不做**：把面板切换塞进 1318 行的设置组件里 → 变 1500+ 行，且以后每加皮肤都要动它。
 
 **我的建议：做。** 这一步是纯搬运（模板段复制粘贴 + `v-show` 改 `:is`），风险主要在「漏搬某一行」，
 拆完可以用 `git diff --stat` 核对行数守恒。
@@ -719,13 +727,14 @@ const TABS = [
 但要做完整链路要动 **13 处、跨 4 层**，而且有一个**必须一起改的连带风险**：
 给 `<audio>` 加 `crossorigin="anonymous"` 会让不带 CORS 头的音源**彻底播不出来**（不只是频谱为 0）。
 
-| 方案 | 效果 | 成本 | 风险 |
-|---|---|---|---|
-| **A. 假节拍**（`use-audio-bands.ts` 按 120 BPM 出正弦） | 有呼吸感，但与音乐**不同步**。鼓点重的地方不会真的跳 | 半天，零架构改动 | 无 |
-| **B. 真实频谱**（§1.2.B 的 4 层链路） | 真正的随拍反应 | 1.5 天 | 改 `serveAudioFile` 的 CORS 头 + 逐源验证，漏一个源就静音 |
+| 方案                                                    | 效果                                                 | 成本             | 风险                                                      |
+| ------------------------------------------------------- | ---------------------------------------------------- | ---------------- | --------------------------------------------------------- |
+| **A. 假节拍**（`use-audio-bands.ts` 按 120 BPM 出正弦） | 有呼吸感，但与音乐**不同步**。鼓点重的地方不会真的跳 | 半天，零架构改动 | 无                                                        |
+| **B. 真实频谱**（§1.2.B 的 4 层链路）                   | 真正的随拍反应                                       | 1.5 天           | 改 `serveAudioFile` 的 CORS 头 + 逐源验证，漏一个源就静音 |
 
 **我的建议：先做 A，把皮肤跑起来；等 `tilt` 皮肤验收通过后再决定要不要上 B。**
 理由有三条：
+
 1. A 的接口（`useAudioBands()` 返回 `{ bands }`）与 B 完全一致，切 B 时皮肤代码一行不用改 —— **先做 A 不会返工**；
 2. B 的连带风险（加 crossorigin 导致静音）需要逐个音源实测，不适合和「皮肤架构改造」同时进行 —— 两件事叠在一起，出问题分不清是谁的锅；
 3. Folia 的 DOM 模式（`tilt`/`partita`/`cadenza`）对音频的依赖本来就弱，它们靠的是**歌词排版**而不是频谱；

@@ -177,7 +177,6 @@ export function useTiltTiming(options: UseTiltTimingOptions): {
   model: ComputedRef<TiltLineModel | null>
   epoch: Ref<number>
   resync: () => void
-  resyncNow: () => void
 } {
   const clockMs = ref(toValue(options.time))
   const epoch = ref(0)
@@ -225,17 +224,6 @@ export function useTiltTiming(options: UseTiltTimingOptions): {
     epoch,
     resync: (): void => {
       resyncRequested = true
-    },
-    /**
-     * 立即重建快照（不等下一次时间更新）。
-     *
-     * 给「歌词区被卸载后又挂载」用：`TiltLine` 在「仅封面」模式下会被 `v-if` 卸载，
-     * 回来后它的 CSS 动画从零重播，但快照里的延迟还是离开时那一刻算的 ——
-     * 于是整行相位滞后「离开的时长」，已唱完的字会再浮现一遍。
-     * 这里显式重取一次当前时间，把相位拉回正确位置。
-     */
-    resyncNow: (): void => {
-      snapshot()
     }
   }
 }

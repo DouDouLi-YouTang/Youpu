@@ -71,8 +71,21 @@ export const FONT_CLAMP_REM_MIN = 3.125
 export const FONT_CLAMP_VW = 6.875
 export const FONT_CLAMP_REM_MAX = 5.625
 
-/** 用户字号设置（16–64，默认 32）→ 倍率的基准：默认值即 1 倍 */
-export const FONT_SCALE_BASE_PX = 32
+/**
+ * 「倾诉」的舞台字号倍率 —— **恒为 1**。
+ *
+ * 倾诉的面板外观是固定长相，**不读**设置面板里的「字体大小」滑块（2026-10-11 用户定
+ * 「倾诉这个主题是没有设置的……全部固定，不读设置」）。舞台字号就是它自己的
+ * `clamp(3.125rem, 6.875vw, 5.625rem)` 响应式档位，再乘溢出缩放 —— 与 Folia 一致。
+ *
+ * 之所以保留这个常量而不是直接写 1：`useTiltLayout` 的入参是倍率，写个具名常量能让
+ * 「这里本来可能有个用户倍率，但我们决定固定」这层信息留在代码里，也便于单测断言。
+ */
+export const TILT_FONT_SCALE = 1
+
+/** 副字幕两行的 em 档（相对舞台字号倍数）—— 同样内置固定，不读设置里的罗马音 / 翻译滑块 */
+export const TILT_SUBTITLE_ROMAJI_EM = 0.6
+export const TILT_SUBTITLE_TRANSLATION_EM = 1
 
 /** 读不到根字号时的兜底（浏览器默认 16px） */
 export const FALLBACK_REM_PX = 16
@@ -110,7 +123,25 @@ export function resolveSegmentGapPx(viewportHeightPx: number): number {
   return Math.min(Math.max(scaled, SEGMENT_GAP_MIN_PX), SEGMENT_GAP_MAX_PX)
 }
 
-/** §4 字重（固定值，不跟用户 lyricFontWeight —— 细字重是「倾诉」的排版气质） */
+/**
+ * §4 字重（固定值，不跟用户 lyricFontWeight）。
+ *
+ * ⚠️ **2026-10-11 起实际已扁平化**：内置字体（站酷快乐体 / M PLUS Rounded 1c）各自
+ * **只有 400 一个字面**（见 `@/assets/fonts/fonts.scss`），浏览器不会为「更细」合成字重，
+ * 只会按字体匹配回落到 400 —— 于是倾斜段与普通段**渲染出的字重完全相同**，两者的区分
+ * 只剩斜体 / 字间距 / 主色 / 字号。
+ *
+ * 实测（构建产物，canvas 量宽，两个族各只注册一个 400 字面）：
+ *   汉字 300 → 1030.4，400 → 1030.4；假名 300 → 800，400 → 800（完全一致）。
+ *
+ * 换字体前栈里是系统字体（Windows 上是 Segoe UI，含 Light 300 字面），那 300 是真更细 ——
+ * 所以旧注释说的「细字重是倾诉的排版气质」现在是**历史陈述**。用户 2026-10-11 确认
+ * 接受这个扁平化（斜体本身已足够区分）。
+ *
+ * 数值仍保留 300 而不是直接改写成 400：这样将来若给内置字体补了细字面，
+ * 这里不用再动就能自动生效；测量侧（use-tilt-layout 拼 font string）与渲染侧
+ * 用同一个常量，两者始终一致，回落到 400 也是两边一起回落。
+ */
 export const FONT_WEIGHT_PLAIN = 400
 export const FONT_WEIGHT_TILT = 300
 
@@ -217,12 +248,6 @@ export function resolveBaseFontPx(viewportWidthPx: number, remPx: number): numbe
     ? (FONT_CLAMP_VW / 100) * Math.max(viewportWidthPx, 0)
     : 0
   return Math.min(Math.max(preferred, min), max)
-}
-
-/** 用户字号设置 → 倍率（默认 32px 即 1 倍；非法值不放大） */
-export function resolveFontScale(lyricFontSizePx: number): number {
-  if (!Number.isFinite(lyricFontSizePx) || lyricFontSizePx <= 0) return 1
-  return lyricFontSizePx / FONT_SCALE_BASE_PX
 }
 
 /**

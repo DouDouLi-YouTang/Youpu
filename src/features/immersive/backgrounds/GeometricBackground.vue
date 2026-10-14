@@ -119,7 +119,10 @@ function particleStyle(p: (typeof particles.value)[number]): Record<string, stri
     top: `${p.topPct}%`,
     width: `${p.sizePx}px`,
     height: `${p.sizePx}px`,
+    // 内联 opacity：动画被关掉（prefers-reduced-motion）时的不透明度；
+    // 动画跑起来后真正生效的是关键帧里的 --g-p-opacity（两者同值，见 scss 说明）
     opacity: String(p.opacity),
+    '--g-p-opacity': String(p.opacity),
     '--g-dur': `${p.durationSec}s`,
     '--g-delay': `${p.delaySec}s`,
     '--g-rise': `${PARTICLE_RISE_PX}px`

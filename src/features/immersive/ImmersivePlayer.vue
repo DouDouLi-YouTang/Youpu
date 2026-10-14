@@ -21,8 +21,9 @@ import { usePlayerStore } from '@/stores/player.store'
  */
 const { open } = useImmersivePlayer()
 const settings = useImmersiveSettingsStore()
-// 迁移旧持久化的 customFontFamily(string → string[]),幂等
-settings.normalizeFontFamily()
+// 启动引导：旧的分桶持久化 → 折叠回扁平的这一份设置，再收拢旧格式的字体名、
+// 纠正非法皮肤 id。顺序与幂等性由 store 内部保证（见 bootstrapSettings 注释），此处只调一次。
+settings.bootstrapSettings()
 const player = usePlayerStore()
 const lyric = useLyricStore()
 

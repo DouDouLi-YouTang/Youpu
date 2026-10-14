@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { SettingOutlined } from '@ant-design/icons-vue'
 
 import AppTooltip from '@/components/common/AppTooltip.vue'
@@ -17,7 +17,7 @@ import { useBackdrop } from './use-backdrop'
 /**
  * 皮肤外壳 —— 根 `<section class="immersive-root">` 与全部「窗口 chrome」：
  * 顶部拖拽带、窗口按钮（见 SkinChromeButtons）、全屏时钟、演示模式提示、
- * 悬浮皮肤切换条、设置按钮、ESC 分层关闭。
+ * 控制栏第一排的皮肤切换按钮、设置按钮、ESC 分层关闭。
  *
  * 皮肤外的共享层 `ImmersiveControls`（控制条）与 `ImmersiveSettings`（设置面板）
  * **保持在本组件内**，任何皮肤都不接管它们；皮肤只负责「内容层」（背景 / 迷你歌曲
@@ -38,6 +38,14 @@ useAudioBands().start()
 const ctx = useSkinContext()
 const activeSkin = useActiveSkin()
 
+/**
+ * 设置面板的归属：设置**只属于自带设置的面板**（当前是「经典」）。
+ * 「倾诉」没有设置可调（外观全部固定），所以它下面右上角不出现设置按钮 ——
+ * 摆一个点开全是无效项的入口，与「摆一个调了没反应的控件」是同一类问题。
+ * 判据是皮肤定义上的 `hasSettings`（见 skins/types.ts），不要在这里硬判 id。
+ */
+const hasPanelSettings = computed(() => activeSkin.value.hasSettings)
+
 // 背景/根节点渲染参数：rootClasses / rootStyleVars / 字体 / 全屏状态
 const {
   rootClasses,
@@ -51,6 +59,11 @@ const {
 
 // 设置面板显隐（由右上角设置按钮触发，ImmersiveSettings 双向绑定）
 const settingsOpen = ref(false)
+// 切到「没有设置」的面板（倾诉）时把面板收起来：它的设置按钮会随之消失，
+// 面板若留在屏幕上，用户既没有按钮可关、看到的又是「经典」那套设置 —— 像是串了面板。
+watch(hasPanelSettings, (has) => {
+  if (!has) settingsOpen.value = false
+})
 function toggleSettings(): void {
   settingsOpen.value = !settingsOpen.value
 }
@@ -63,6 +76,7 @@ function handleToggleFullScreen(): void {
 const presentationHintVisible = ref(false)
 let presentationHintTimer: ReturnType<typeof setTimeout> | null = null
 watch(
+  // 演示模式属于沉浸页通用项（不是面板外观），倾诉也跟随
   () => settings.presentationMode,
   (on) => {
     if (!on) return
@@ -150,12 +164,14 @@ onBeforeUnmount(() => {
     <!-- 窗口按钮：关闭 / 最小化 / 最大化 / 全屏（跟随 idle 显隐） -->
     <SkinChromeButtons :is-fullscreen="isFullscreen" @toggle-fullscreen="handleToggleFullScreen" />
 
-    <!-- 悬浮皮肤切换条（歌词区右上角；跟随 idle 显隐，演示模式隐藏） -->
-    <SkinSwitcher />
+    <!-- 悬浮皮肤切换按钮（控制栏第一排，紧挨设置按钮左侧；跟随 idle 显隐，演示模式隐藏） -->
+    <SkinSwitcher :has-settings="hasPanelSettings" />
 
     <!-- 设置按钮(对齐参考 .rnp-settings:控制条外,沉浸页右上角独立 fixed;
-         非全屏 right:140、全屏 right:52,跟随 idle 显隐) -->
-    <AppTooltip :title="settingsOpen ? '关闭设置' : '打开设置'">
+         非全屏 right:140、全屏 right:52,跟随 idle 显隐)。
+         ⚠️ 只在当前面板**自带设置**时渲染 —— 「倾诉」没有设置（外观全部固定），
+         它下面不提供设置入口，切换按钮自动占住这一格（见 SkinSwitcher 的 right 覆写）。 -->
+    <AppTooltip v-if="hasPanelSettings" :title="settingsOpen ? '关闭设置' : '打开设置'">
       <button
         type="button"
         class="rnp-settings-button"
@@ -180,7 +196,8 @@ onBeforeUnmount(() => {
     <!-- 控制条（ImmersiveControls：播放/进度/音量/模式/队列/设置 + 自动隐藏）。共享层,不属于皮肤 -->
     <ImmersiveControls />
 
-    <!-- 设置面板（6+1 tab，从右滑入）。共享层,不属于皮肤 -->
+    <!-- 设置面板（6 个 tab，从右滑入）。共享层,不属于皮肤；
+         它配置的是**经典面板**的那份设置，故只在 hasPanelSettings 时才有入口 -->
     <ImmersiveSettings v-model:visible="settingsOpen" />
   </section>
 </template>

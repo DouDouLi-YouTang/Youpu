@@ -1,194 +1,159 @@
 import { defineStore } from 'pinia'
 
-import type { SkinId } from './skins/types'
+// ⚠️ 常量与类型都从 skins/types 取（**不要**从 skins/registry 取 —— registry 反过来
+// 依赖本 store，会形成循环 import；原因写在 types.ts 的 DEFAULT_SKIN_ID 注释里）
+import { DEFAULT_SKIN_ID, SKIN_IDS, type SkinId } from './skins/types'
+// 类型 / 常量 / 默认值 / 派生字段名都在纯数据层 model 里（本文件只留响应式接线）。
+// 这样 migrate 既能拿类型又不必反过来 import 本文件 —— 见 model 顶部说明。
+import {
+  createDefaultSettings,
+  PERSIST_KEY,
+  type ImmersiveSettings
+} from './immersive-settings.model'
+import {
+  isBucketed,
+  normalizeFontFamily,
+  sanitizeSkinId,
+  settingsFromBucketed
+} from './immersive-settings.migrate'
 
 /**
- * 全部沉浸式播放页设置。键名 / 写入目标对齐参考项目；默认值按本项目自定义
- * refined-now-playing-netease 的 settings-menu.html 与 main.js 绑定函数。
+ * 沉浸页设置 + 当前面板。两件事要分清（2026-10-11 用户明确）：
  *
- * 命名约定：保持参考项目原始 kebab-case 设置键，便于与参考实现逐项对照；
- * 仅在外层包裹 TypeScript 字面量联合类型约束取值范围。
+ *  - **设置只有一份，它属于「经典」面板。** 沉浸页的设置面板（外观 / 封面 / 背景 /
+ *    歌词 / 字体 / 关于）改的就是这一份，扁平字段直接挂在 store 上，没有第二个「编辑目标」。
+ *  - **「倾诉」没有设置。** 它的外观全部固定：背景恒为「几何」且不可改、永不显示封面、
+ *    歌词排版与字体用内置值。所以它**不读**这里跟面板外观有关的字段。
+ *    它只沿用少数沉浸页通用项 —— 明暗主题、专辑主色、底栏四项、演示模式、歌词偏移；
+ *    那些读的仍是**同一份**设置，不是另开一份。
+ *
+ * 于是持久化就是一个扁平对象 + 全局的 `skin`（当前在放哪个面板）。皮肤系统刚上线时
+ * 曾短暂按面板分桶（`panels: Record<SkinId, ImmersiveSettings>`），那个设计已被否决：
+ * 「原来的设置是给经典面板用的，倾诉这个主题是没有设置的」。旧的分桶数据由
+ * `migrateBucketedSettings` 取出经典那一桶还原成扁平（见该函数）。
+ *
+ * 由此推出两条显示约定：
+ *  1. 设置面板**只由经典面板提供** —— 倾诉下右上角没有设置按钮（见 SkinShell.vue）。
+ *  2. 各 tab 列的就是经典的那一整套，不因为「倾诉不消费」而裁掉任何一行。
  */
 
-export type DisplayMode = 'all' | 'lyric-only' | 'cover-only'
-export type ColorScheme = 'dark' | 'light' | 'auto'
-export type AccentColorVariant = 'off' | 'primary' | 'secondary' | 'tertiary'
-export type CoverHAlign = 'left' | 'center'
-export type CoverVAlign = 'bottom' | 'middle'
-export type SongInfoAlign = 'left' | 'center'
-export type BackgroundType = 'fluid' | 'blur' | 'gradient' | 'solid' | 'none' | 'geometric'
-export type KaraokeAnimation = 'float' | 'slide'
-export type LyricAlignmentPct = 30 | 50
-export type LyricTiming = 'smooth' | 'sharp' | 'lazy' | 'easeout'
-export type ContributorDisplay = 'show' | 'hover' | 'hide'
-/** remain = 显示剩余; total = 显示已播(点击切换) */
-export type TimeIndicator = 'remain' | 'total'
+// 数据层（类型 / 常量 / 默认值 / 字段名派生）原样再导出，消费方继续从 store 导入即可，
+// 不必知道它们被拆到了 model。
+export * from './immersive-settings.model'
 
-/** 流体帧率上限档位 → 实际 fps。0=∞ */
-export const FLUID_FPS_MAP: Record<number, number> = { 0: 5, 1: 10, 2: 30, 3: 60, 4: Infinity }
-/** 流体模糊档位 → 实际 px */
-export const FLUID_BLUR_MAP: Record<number, number> = { 5: 32, 6: 64, 7: 128 }
-
-/** 四种动画曲线 → CSS timing-function。对齐参考项目 main.js bindSelectGroupToClasses('lyric-animation-timing') */
-export const LYRIC_TIMING_MAP: Record<LyricTiming, string> = {
-  smooth: 'cubic-bezier(0.18, 0.77, 0.58, 0.99)',
-  sharp: 'cubic-bezier(0.54, 0, 0.16, 1)',
-  lazy: 'cubic-bezier(0.32, 0.72, 0, 1)',
-  easeout: 'cubic-bezier(0, 0.55, 0.45, 1)'
-}
-
-export interface ImmersiveSettings {
-  // ── 外观 ──
-  displayMode: DisplayMode
-  centerLyric: boolean
-  autoHideMiniSongInfo: boolean
-  colorScheme: ColorScheme
-  accentColorVariant: AccentColorVariant
-  textShadow: boolean
-  textGlow: boolean
-  alwaysShowBottomBar: boolean
-  bottomProgressbar: boolean
-  enableProgressbarPreview: boolean
-  timeIndicator: TimeIndicator
-
-  // ── 封面 ──
-  coverHAlign: CoverHAlign
-  coverVAlign: CoverVAlign
-  songInfoAlign: SongInfoAlign
-  rectangleCover: boolean
-  albumSize: 200 | 400 | 600 | 800
-  coverBlurryShadow: boolean
-
-  // ── 背景 ──
-  backgroundType: BackgroundType
-  staticFluid: boolean
-  gradientBgDynamic: boolean
-  bgBlur: number // 0–128 px, default 90
-  bgDim: number // 0–100, default 55
-  bgDimForGradientBg: number // default 45
-  bgDimForFluidBg: number // default 30
-  bgBlurForNoneBgMask: number // default 0
-  bgDimForNoneBgMask: number // default 0
-
-  // ── 歌词 ──
-  lyricFontWeight: number // 100–900, default 500
-  lyricFontSize: number // 16–64 px, default 32
-  lyricRomajiSizeEm: number // 0.3–1.5 em, default 0.6
-  lyricTranslationSizeEm: number // 0.3–1.5 em, default 1
-  lyricFade: boolean
-  lyricZoom: boolean
-  lyricBlur: boolean
-  lyricRotate: boolean
-  rotateCurvature: number // 10–80 deg, default 25
-  karaokeAnimation: KaraokeAnimation
-  currentLyricAlignmentPercentage: LyricAlignmentPct
-  lyricStagger: boolean
-  lyricAnimationTiming: LyricTiming
-  lyricGlow: boolean
-  lyricOffset: number // -10000–10000 ms, default 0
-  lyricContributorsDisplay: ContributorDisplay
-
-  // ── 字体 ──
-  customFont: boolean
-  /** 字体回退链(多选)。旧持久化可能是 string，需 normalizeFontFamily 迁移。 */
-  customFontFamily: string[]
-
-  // ── 实验 ──
-  fluidMaxFramerate: 0 | 1 | 2 | 3 | 4 // → FLUID_FPS_MAP
-  fluidBlur: 5 | 6 | 7 // → FLUID_BLUR_MAP
-  presentationMode: boolean
-
-  // ── 皮肤 ──
-  /** 沉浸页歌词面板皮肤(布局)。持久化随 store 末尾的 persist: true 自动完成。 */
+interface ImmersiveSettingsState extends ImmersiveSettings {
+  /**
+   * 当前在放哪个面板（经典 / 倾诉）。**唯一**的全局项，不属于上面那份设置。
+   *
+   * 它只决定「渲染哪个面板」，不再决定「编辑哪一份设置」（只有一份）。
+   * 切换入口只有一个：沉浸页顶部控制栏那一排的悬浮胶囊（skins/shared/SkinSwitcher.vue）。
+   */
   skin: SkinId
 }
 
+/**
+ * 落盘的键 = 一份默认设置的全部字段 + `skin`。
+ *
+ * 从 `createDefaultSettings()` 推导而不是手写清单：新增设置字段时忘了同步清单，
+ * 后果是「这个设置在磁盘上悄悄不存在」（刷新后回到默认值），很难查；这样写就不可能漏。
+ *
+ * ⚠️ `pick` 在**读写两侧都生效**（hydrate 与 persist 都过 `deepPickUnsafe`），
+ * 这一条同时承担两件事：
+ *  1. 旧分桶数据里的 `panels` 不会漏进 state，也不会被原样写回（迁移自己读 localStorage）；
+ *  2. 将来往 state 里加 UI 态字段时，只要不写进 `createDefaultSettings()`，就自动不落盘。
+ */
+const PERSISTED_KEYS: string[] = [...Object.keys(createDefaultSettings()), 'skin']
+
 export const useImmersiveSettingsStore = defineStore('immersive-settings', {
-  state: (): ImmersiveSettings => ({
-    // 外观（默认值按本项目自定义（参考 main.js bindCheckboxToClass 第二参数 / selectGroup default））
-    displayMode: 'all',
-    centerLyric: true,
-    autoHideMiniSongInfo: false,
-    colorScheme: 'dark',
-    accentColorVariant: 'primary',
-    textShadow: true,
-    textGlow: false,
-    alwaysShowBottomBar: false,
-    bottomProgressbar: false,
-    enableProgressbarPreview: true,
-    timeIndicator: 'total',
-
-    // 封面
-    coverHAlign: 'center',
-    coverVAlign: 'middle',
-    songInfoAlign: 'center',
-    rectangleCover: false,
-    // 默认 800(沿用作者偏好)。ImmersiveCover 会再与 20vw/42vh 取 min,即便很大也不易撑破布局。
-    albumSize: 800,
-    coverBlurryShadow: true,
-
-    // 背景（background-type 默认 fluid，对齐 main.js 渲染处 getSetting('background-type','fluid')）
-    backgroundType: 'fluid',
-    staticFluid: false,
-    gradientBgDynamic: true,
-    bgBlur: 90,
-    bgDim: 55,
-    bgDimForGradientBg: 45,
-    bgDimForFluidBg: 30,
-    bgBlurForNoneBgMask: 0,
-    bgDimForNoneBgMask: 0,
-
-    // 歌词
-    lyricFontWeight: 500,
-    lyricFontSize: 32,
-    lyricRomajiSizeEm: 0.6,
-    lyricTranslationSizeEm: 1,
-    lyricFade: true,
-    lyricZoom: true,
-    lyricBlur: false,
-    lyricRotate: false,
-    rotateCurvature: 25,
-    karaokeAnimation: 'float',
-    currentLyricAlignmentPercentage: 50,
-    // stagger 参考项目默认 true（getSetting('lyric-stagger', true)），我们已实现错位延迟 + 200ms 提前量
-    lyricStagger: true,
-    lyricAnimationTiming: 'lazy',
-    lyricGlow: true,
-    lyricOffset: 0,
-    lyricContributorsDisplay: 'hover',
-
-    // 字体
-    customFont: true,
-    customFontFamily: ['Microsoft JhengHei UI', 'Microsoft JhengHei'],
-
-    // 实验
-    fluidMaxFramerate: 4,
-    fluidBlur: 7,
-    presentationMode: false,
-
-    // 皮肤（默认「经典」= 改造前布局）
-    skin: 'classic'
+  state: (): ImmersiveSettingsState => ({
+    ...createDefaultSettings(),
+    skin: DEFAULT_SKIN_ID
   }),
+
   actions: {
     /**
-     * 迁移旧持久化的 customFontFamily(string)→ string[],幂等。
-     * pinia-plugin-persistedstate 恢复时旧 string 值会覆盖默认 [],
-     * 需在首次使用前调用一次转成数组。
+     * 启动引导 —— **必须在任何设置被读写之前调用一次**（唯一调用点：ImmersivePlayer.vue）。
+     *
+     * 顺序不能变，各步之间是有依赖的：
+     *  1. `migrateBucketedSettings()` 先把旧分桶数据换成扁平（新结构数据则什么都不做）；
+     *  2. `normalizeFontFamily()` 再把可能残留的旧格式字体名收成数组
+     *     —— 必须在 1 **之后**：迁移会把旧数据整体搬过来，而旧数据里的
+     *     `customFontFamily` 可能是字符串（更早版本的格式）；顺序反了它就会以字符串
+     *     留在 state 里，`use-backdrop` 的 `.map()` 直接抛 TypeError。
+     *  3. 纠正非法的 skin：非法值会被 registry 的 getSkin 兜底成经典，
+     *     但**它本身会被持久化原样写回**，于是垃圾值永久留在磁盘上。
+     *
+     * **重入安全**：各子步骤幂等，重复调用无副作用；
+     * 只有真的改动了东西才写回 storage（避免每次启动都无谓写一次）。
      */
-    normalizeFontFamily() {
-      if (!Array.isArray(this.customFontFamily)) {
-        this.customFontFamily = this.customFontFamily
-          ? [this.customFontFamily as unknown as string]
-          : []
+    bootstrapSettings() {
+      let changed = this.migrateBucketedSettings()
+      if (normalizeFontFamily(this)) changed = true
+      if (sanitizeSkinId(this.skin, SKIN_IDS, DEFAULT_SKIN_ID) !== this.skin) {
+        this.skin = DEFAULT_SKIN_ID
+        changed = true
       }
+      if (changed) this.$persist()
     },
+
     /**
-     * 切换沉浸页皮肤。两个切换入口（沉浸页悬浮切换条 / 设置面板「样式」tab）都走这里，
-     * 因此状态天然同步；未注册的 id 由 registry 的 getSkin 回退到默认皮肤，不会渲染空白。
+     * 切换面板 —— **唯一入口**是沉浸页顶部控制栏的悬浮胶囊（SkinSwitcher.vue）。
+     * 只改「在放哪个面板」；设置只有一份，不受影响。
+     * 未注册的 id 由 registry 的 getSkin 回退到默认皮肤。
      */
     applySkin(id: SkinId) {
       this.skin = id
+    },
+
+    /**
+     * 迁移 v2（按面板分桶）持久化 → 当前扁平结构。幂等：不是分桶数据就什么都不做，
+     * 返回是否发生了改动（`bootstrapSettings` 据此决定要不要写回）。
+     *
+     * **为什么必须直读 localStorage，而不是用插件的 afterHydrate**：
+     * 插件的 hydration 受 `pick` 影响，分桶数据的顶层只有 `skin` / `panels`，
+     * 而 `panels` 不在 pick 清单里 —— 到 `afterHydrate` 时它已经被丢掉了，
+     * 拿不回来。所以这里读一次原始 JSON。
+     *
+     * 迁移策略：**取经典那一桶**当全局设置。倾诉桶按设计丢弃 —— 它本来就不该有设置，
+     * 那批值只是上一次错误设计的产物（用户升级后看到的是经典的设置，符合预期）。
+     *
+     * ⚠️ 返回后**不要**忘了 `normalizeFontFamily`（见 `bootstrapSettings` 的顺序说明）。
+     */
+    migrateBucketedSettings(): boolean {
+      const raw = readPersistedRaw()
+      if (!raw || !isBucketed(raw)) return false
+
+      // 只覆盖老数据里出现过的已知键（settingsFromBucketed 已按默认值的键集过滤），
+      // 未列出的字段保留当前默认值，不会变成 undefined。
+      Object.assign(this, settingsFromBucketed(raw))
+      return true
     }
   },
-  persist: true
+
+  /**
+   * 持久化：整个扁平 state（见 PERSISTED_KEYS 的推导说明）。
+   *
+   * ⚠️ 隐含约束：**任何模块都不许在顶层调 `useImmersiveSettingsStore()`**。
+   * store 一实例化，插件就立刻 hydrate + 订阅；若在 bootstrap 之前就有一次写入，
+   * 新结构会先落盘，把还没迁移的旧数据覆盖掉（不可恢复）。当前所有调用点都在
+   * setup / 函数体内，保持这个不变量。
+   */
+  persist: {
+    key: PERSIST_KEY,
+    pick: PERSISTED_KEYS
+  }
 })
+
+/** 读取持久化里的原始对象（未经 pick/hydrate）。读不到 / 解析失败都返回 null。 */
+function readPersistedRaw(): Record<string, unknown> | null {
+  try {
+    const text = localStorage.getItem(PERSIST_KEY)
+    if (!text) return null
+    const parsed = JSON.parse(text) as unknown
+    // 排除数组：typeof [] 也是 'object'，但它不可能是合法的设置对象
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+    return parsed as Record<string, unknown>
+  } catch {
+    return null
+  }
+}

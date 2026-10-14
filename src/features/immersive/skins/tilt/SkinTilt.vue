@@ -1,48 +1,56 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 
-import ImmersiveBackground from '@/features/immersive/ImmersiveBackground.vue'
-import ImmersiveCover from '@/features/immersive/ImmersiveCover.vue'
-import MiniSongInfo from '@/features/immersive/MiniSongInfo.vue'
+import GeometricBackground from '@/features/immersive/backgrounds/GeometricBackground.vue'
 import { useImmersiveSettingsStore } from '@/features/immersive/immersive-settings.store'
-import { useEffectiveDisplayMode } from '@/features/immersive/use-skin-context'
 import { useLyricStore } from '@/stores/lyric.store'
 import { usePlayerStore } from '@/stores/player.store'
 import type { SkinContext } from '../types'
 import TiltLine from './TiltLine.vue'
 import {
   CHAR_FADE_DURATION_MS,
-  resolveFontScale,
+  TILT_FONT_SCALE,
   resolveLineEndMs,
   type TiltLineSource
 } from './tilt-adapter'
+import { useTiltFontReady } from './use-tilt-font'
 import { useTiltLayout } from './use-tilt-layout'
 import { useTiltTiming } from './use-tilt-timing'
 
 /**
  * 「倾诉」(tilt) 皮肤 —— Folia 式**全屏歌词**面板（与「经典」皮肤并列的款式）。
  *
- * 这是一个独立面板，不是经典布局的换色版：Folia 的预览图里歌词是**一条占满窗口的
- * 居中舞台**（`VisualizerTilt` 的 `w-full h-[70vh] flex items-center justify-center`），
- * 没有封面列、没有侧边留白。因此这里：
- *  - 歌词区自成一套（`.tilt-lyric`，满宽满高居中），**不复用**经典皮肤的 `.immersive-lyric`
- *    —— 那个类名会被外壳的 `.display-mode-lyric-only` 规则加上给滚动列表用的内边距；
- *  - 封面只在「仅封面」模式出现（此时整屏让给封面），其余模式完全不渲染封面；
- *  - 底部补一条译文（Folia 的副字幕层）。
+ * ⚠️ **本面板没有设置**（2026-10-11 用户定：「原来的设置是给经典面板用的，然后倾诉这个
+ * 主题是没有设置的」）。外观全部固定，不读 store 里那套面板外观字段：
+ *  - **背景恒为「几何」且不可改** —— 直接挂 `backgrounds/GeometricBackground.vue`，
+ *    不经过 `ImmersiveBackground.vue`（那个组件是「按 backgroundType 六选一」的实现）；
+ *  - **永不显示封面** —— 有歌词就是整屏歌词舞台；没有歌词时舞台中央显示歌名 + 歌手卡
+ *    （纯音乐 / 加载失败 / 未选歌各自的中文提示不变），不再回退到整屏封面；
+ *  - **歌词排版与字体用内置值** —— 字号倍率是 `TILT_FONT_SCALE`（1 倍）、副字幕的
+ *    em 档与字重 / 字间距 / 行高都在 tilt.scss 与 tilt-adapter.ts 里写死。
+ *    所以沉浸页右上角也没有设置按钮（见 shared/SkinShell.vue），根节点不套用
+ *    经典那套外观 class / CSS 变量（见 shared/use-backdrop.ts 的两档说明）。
+ *  - 顶部迷你歌曲信息条不显示（它原是「仅歌词」模式专属，而倾诉不再读显示模式）。
  *
- * 与外壳的边界沿用 C1 约定：外壳管窗口 chrome 与 rootClasses/rootStyleVars，
- * 本组件只负责内容层（背景 / 迷你歌曲信息 / 封面槽 / 歌词区）。唯一保留同名的内容层
- * class 是 `.immersive-cover-slot`（「仅封面」模式要复用外壳的整屏与水平居中微调规则）。
+ * **仍然跟随的沉浸页通用项**：明暗主题、专辑主色、底栏四项、演示模式、歌词偏移
+ * （最后一项在下面读 `settings.lyricOffset`：它是节拍对齐，不是排版）。用户拍板。
+ *
+ * 布局本身就是本皮肤的主体：Folia 的预览图里歌词是**一条占满窗口的居中舞台**
+ * （`VisualizerTilt` 的 `w-full h-[70vh] flex items-center justify-center`），
+ * 没有封面列、没有侧边留白。歌词区是自持的 `.tilt-lyric`，**不复用**经典皮肤的
+ * `.immersive-lyric` —— 那个类名会被外壳的 `.display-mode-lyric-only` 规则加上给
+ * 滚动列表用的内边距。
  *
  * 歌词块**不复用** LyricLines：布局逻辑完全不同（一行切成 1–4 段 + 倾斜段 + 逐字脉冲），
  * 因此对齐的是它的行为约定：点击行 seek、暂停定格、切行/seek/改偏移重建逐字时间轴。
  */
 const props = defineProps<{ ctx: SkinContext }>()
 
+// 只读 lyricOffset（沉浸页通用项）。面板外观那套（字号 / 译文倍率 / 字体 / 封面 / 背景）
+// 一律不读 —— 见文件头。
 const settings = useImmersiveSettingsStore()
 const lyric = useLyricStore()
 const player = usePlayerStore()
-const effectiveDisplayMode = useEffectiveDisplayMode()
 
 /** 当前行下标（-1 = 尚未到首行）；文本/逐字时间戳从 lyric store 取（契约只给下标） */
 const currentIndex = computed(() => props.ctx.currentLineIndex())
@@ -73,8 +81,7 @@ const lineKey = computed(() => `${lyric.songId ?? 'none'}:${currentIndex.value}`
  * 也是这个顺序，且缺哪个就少一行、绝不出现空占位）；有些音源两个字段填同一串
  * （例如本身就是拉丁字母的歌词），此时只显示一次。
  *
- * 两者的字号各不相同（设置面板「歌词」tab 里罗马音 / 译文各有一个滑块），所以分别给出
- * 文案与字号倍率。
+ * 两行各自的字号档写在 tilt.scss 里（内置固定值，不受设置面板影响）。
  */
 const subtitleRows = computed<{ text: string; kind: 'romaji' | 'translation' }[]>(() => {
   const line = currentLine.value
@@ -87,36 +94,29 @@ const subtitleRows = computed<{ text: string; kind: 'romaji' | 'translation' }[]
   return rows
 })
 
-const fontScale = computed(() => resolveFontScale(settings.lyricFontSize))
-
-/**
- * 副字幕行的字号倍率 = 用户歌词字号倍率 × 该行的 em 设置。
- *
- * 基数是本皮肤自己的 clamp 字号（Folia 的 `resolveSubtitleFontSizes` 口径），em 倍率取自
- * 设置面板那两个滑块 —— 滑块语义与经典皮肤一致（「这一段相对本面板正文有多大」），
- * 但**绝对 px 两款皮肤本就不同**：经典皮肤的译文是正文的 1 倍（32px 即 32px），
- * 本皮肤是 Folia 的副字幕档（正文约 90px 时译文约 20px）。这是设计如此，不是缺陷。
- */
-const subtitleStyle = computed<Record<string, string>>(() => ({
-  '--tilt-sub-romaji-em': String(settings.lyricRomajiSizeEm),
-  '--tilt-sub-translation-em': String(settings.lyricTranslationSizeEm),
-  '--tilt-sub-scale': String(fontScale.value)
-}))
-/** 自定义字体的可响应标识：字体族是从 DOM 读的，靠它告诉测量层「字体变了，要重测」 */
-const fontKey = computed(() =>
-  settings.customFont && settings.customFontFamily.length > 0
-    ? settings.customFontFamily.join('|')
-    : '默认字体'
-)
-
 const panelRef = ref<HTMLElement | null>(null)
 /** 舞台元素：量它的高度当「歌词可占多高」，纵向放不下时据此整体缩小字号 */
 const stageRef = ref<HTMLElement | null>(null)
-const { layout } = useTiltLayout({ source, fontScale, fontKey, panel: panelRef, stage: stageRef })
+// 内置字体的就绪信号（站酷快乐体 + 圆体假名兜底，见 use-tilt-font.ts）。
+// 字体文件是异步到位的，就绪前 canvas 只能拿兜底字量宽；把它接进下面的 fontKey，
+// 字体一到位就重测一次，避免「按兜底字宽缩放、真字体来了却不重算」。
+const { fontState } = useTiltFontReady()
+const { layout } = useTiltLayout({
+  source,
+  // 字号倍率固定 1：倾诉的字号不是用户的「歌词字体大小」，是它自己的 clamp 档位（见文件头）
+  fontScale: TILT_FONT_SCALE,
+  // 字体标识：倾诉不读「自定义字体」设置（没有设置面板），它的字体是内置常量 ——
+  // 这个 key 唯一会变的就是「内置字体加载完成」（pending → ready）。
+  // 布局 hook 只需知道「变过」，不必知道变成了什么：字体族名它自己从
+  // getComputedStyle 读（见该 hook 的 readFontFamily）。
+  fontKey: fontState,
+  panel: panelRef,
+  stage: stageRef
+})
 
 // lyricOffset 变化会让 ctx.currentTime() 整体平移（滑块 step=100ms，低于 seek 判定阈值），
 // 故把它作为显式的重同步键 —— 与经典皮肤调 LyricLines.resyncKaraoke() 是同一件事。
-const { model, epoch, resync, resyncNow } = useTiltTiming({
+const { model, epoch, resync } = useTiltTiming({
   time: () => props.ctx.currentTime(),
   lineKey: () => lineKey.value,
   resyncKey: () => settings.lyricOffset,
@@ -125,37 +125,53 @@ const { model, epoch, resync, resyncNow } = useTiltTiming({
   fontPx: () => layout.value?.fontPx ?? 0
 })
 
-// 「仅封面」模式会把歌词区整块 v-if 掉，回来时 TiltLine 是**新挂载**的元素，
-// CSS 动画从零重播；而快照里的延迟还是离开那一刻算的 → 整行相位滞后「离开的时长」，
-// 已唱完的字会再浮现一遍，直到下一次切行/seek 才自愈。
-// 这里在歌词区重新可见时立刻重取当前时间，把相位拉回正确位置。
-watch(
-  () => effectiveDisplayMode.value !== 'cover-only',
-  (lyricVisible) => {
-    if (lyricVisible) resyncNow()
-  }
-)
-
 /** 暂停时定格：交给 CSS 的 animation-play-state: paused（见 tilt-line.scss） */
 const paused = computed(() => !props.ctx.isPlaying())
 
-/** 舞台 CSS 变量：字号由布局算好（clamp × 用户倍率 × 溢出缩放），淡入时长取自适配层常量 */
+/** 舞台 CSS 变量：字号由布局算好（clamp × 溢出缩放），淡入时长取自适配层常量 */
 const stageStyle = computed<Record<string, string>>(() => {
-  const style: Record<string, string> = { '--tilt-fade-dur': `${CHAR_FADE_DURATION_MS}ms` }
+  const style: Record<string, string> = {
+    '--tilt-fade-dur': `${CHAR_FADE_DURATION_MS}ms`
+  }
   const fontPx = layout.value?.fontPx
   // 测量完成前不写字号，让 SCSS 里的 clamp 兜底值顶着，避免先用 0px 排一次
   if (fontPx && fontPx > 0) style['--tilt-font-size'] = `${fontPx}px`
   return style
 })
 
-/** 无行可排时的中文占位（笔记 §8.5：加载中 / 纯音乐 / 无歌词 / 等待音乐要分开） */
-const placeholder = computed(() => {
-  if (lyric.loading) return '歌词加载中…'
-  if (lyric.isPureMusic) return '纯音乐，请欣赏'
-  if (!lyric.hasLyric) return '暂无歌词'
-  if (!player.currentItem) return '等待音乐'
-  if (currentIndex.value < 0) return '等待音乐'
-  return ''
+/** 空态：没有歌词行可排时显示什么（null = 有行可排，交给 TiltLine） */
+type TiltEmptyState =
+  /** 歌名 + 歌手（歌手可能为空串 → 只显示歌名） */
+  | { kind: 'song'; title: string; artist: string }
+  /** 一句中文提示（纯音乐 / 无歌词 / 未选歌） */
+  | { kind: 'text'; text: string }
+
+/**
+ * 有歌但歌词还没出来时显示「歌名 + 歌手」，而不是「等待音乐」—— 歌明明在放却写「等待」，
+ * 看上去像没在播（2026-10-10 用户反馈）。覆盖两种情形：歌词请求中、还没唱到第一句（前奏）。
+ *
+ * 其余保持原中文提示：纯音乐 / 暂无歌词是**终态**（这两句本身在解释「为什么没有歌词」，
+ * 换成歌名反而丢了这层信息），未选歌时也没有歌名可显示。
+ *
+ * ⚠️ 顺序不能动：`lyric.loading` 期间 hasLyric 还是 false（见 lyric.store），
+ * 先判 isPureMusic / hasLyric 会把「加载中」误报成「暂无歌词」。
+ * 另外 mapper 里 `isPureMusic = !hasLyric || 含纯音乐标记`（lyric.mapper.ts），
+ * 所以成功加载后的「没有歌词」走纯音乐分支，「暂无歌词」实际是**歌词请求失败**那条路。
+ */
+const emptyState = computed<TiltEmptyState | null>(() => {
+  /** 歌名 + 歌手卡；连歌名都拿不到（一首歌都没选）时返回 null，由调用处退回文本占位 */
+  const songCard = (): TiltEmptyState | null => {
+    const title = props.ctx.songTitle()
+    return title ? { kind: 'song', title, artist: props.ctx.songArtist() ?? '' } : null
+  }
+
+  if (lyric.loading) return songCard() ?? { kind: 'text', text: '歌词加载中…' }
+  if (lyric.isPureMusic) return { kind: 'text', text: '纯音乐，请欣赏' }
+  if (!lyric.hasLyric) return { kind: 'text', text: '暂无歌词' }
+  if (!player.currentItem) return { kind: 'text', text: '等待音乐' }
+  // 轮到此处：有歌也有歌词，只是还没唱到第一句 —— 显示歌名 + 歌手
+  if (currentIndex.value < 0) return songCard() ?? { kind: 'text', text: '等待音乐' }
+  return null
 })
 
 function handleSeek(): void {
@@ -169,26 +185,20 @@ function handleSeek(): void {
 </script>
 
 <template>
-  <!-- 背景层 -->
-  <ImmersiveBackground />
+  <!-- 背景层：恒为「几何」，不可改（倾诉没有背景设置） -->
+  <GeometricBackground />
 
-  <!-- 仅歌词模式顶部迷你歌曲信息 -->
-  <MiniSongInfo />
-
-  <!-- 内容层：全屏歌词；只有「仅封面」模式（或无歌词时的兜底）才让位给封面 -->
+  <!-- 内容层：整屏歌词舞台 -->
   <div class="immersive-content">
-    <div
-      v-if="effectiveDisplayMode === 'cover-only'"
-      class="immersive-cover-slot"
-      :class="[`cover-halign-${settings.coverHAlign}`, `cover-valign-${settings.coverVAlign}`]"
-    >
-      <ImmersiveCover />
-    </div>
-
-    <div v-else class="tilt-lyric">
+    <div class="tilt-lyric">
       <div ref="stageRef" class="tilt-stage">
         <div ref="panelRef" class="tilt-stage-inner" :style="stageStyle">
-          <p v-if="placeholder" class="tilt-placeholder">{{ placeholder }}</p>
+          <!-- 有歌、歌词还没出来：给歌名 + 歌手，而不是「等待」文案 -->
+          <div v-if="emptyState && emptyState.kind === 'song'" class="tilt-song-info">
+            <p class="tilt-song-title">{{ emptyState.title }}</p>
+            <p v-if="emptyState.artist" class="tilt-song-artist">{{ emptyState.artist }}</p>
+          </div>
+          <p v-else-if="emptyState" class="tilt-placeholder">{{ emptyState.text }}</p>
           <TiltLine
             v-else-if="model"
             :key="epoch"
@@ -199,8 +209,8 @@ function handleSeek(): void {
         </div>
       </div>
 
-      <!-- 底部副字幕（罗马音 / 译文）：对齐 Folia 副字幕层与经典皮肤的两行口径 -->
-      <div v-if="subtitleRows.length" class="tilt-subtitles" :style="subtitleStyle">
+      <!-- 底部副字幕（罗马音 / 译文）：字号档内置在 tilt.scss，不受设置面板影响 -->
+      <div v-if="subtitleRows.length" class="tilt-subtitles">
         <p
           v-for="row in subtitleRows"
           :key="row.kind"

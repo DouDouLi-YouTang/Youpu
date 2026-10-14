@@ -21,8 +21,12 @@
 
   position: absolute;
   inset: 0;
-  // 不要背景色：Folia 的几何层也是透明的，底色由应用/皮肤自己决定
-  background: transparent;
+  // 底色必须自铺，且取专辑提取的遮罩底色（与「纯色」背景同源）。
+  // Folia 这层确实是透明的，但它铺在「可视化页底色」上，而 Folia 的页面底色与文字色
+  // 同源（同一套明暗主题）；本项目的沉浸层明暗与 app 主题**相互独立**——
+  // 「沉浸深色 + app 浅色」是合法组合，透明就会露出 --color-bg-primary（浅色 #f5f7f6），
+  // 于是浅色形状落在浅底上、深色暗角只剩一圈灰边，整层看着「什么都没有」。
+  background-color: var(--rnp-accent-color-bg);
   overflow: hidden;
 }
 
@@ -36,7 +40,11 @@
   // 频带逐帧变 → 用 transition 把台阶磨平（Folia 用弹簧，等价效果）
   transition: scale 0.12s linear;
   will-change: translate, rotate, scale;
-  animation: rnp-geo-drift var(--g-dur, 40s) linear infinite;
+  // fill-mode: backwards 不能省 —— 延迟（--g-delay 最长 5s）期间元素要停在 **0% 关键帧**
+  // 的位移上；缺了它，元素停在基础位置（translate: none），动画一启动就「啪」地跳
+  // |(-15px,30px)| ≈ 33.5px，看上去就是形状突然瞬移（2026-10-10 实测复现）。
+  // Folia 用 framer-motion，delay 期间本就停在首个关键帧，补 fill-mode 才对得上。
+  animation: rnp-geo-drift var(--g-dur, 40s) linear infinite backwards;
   animation-delay: var(--g-delay, 0s);
 }
 
@@ -139,7 +147,8 @@
   position: absolute;
   border-radius: 50%;
   background-color: var(--rnp-accent-color, #aaa);
-  animation: rnp-geo-rise var(--g-dur, 20s) linear infinite;
+  // backwards 同形状：延迟期间取 0% 关键帧（透明），而不是让内联透明度先亮出来再灭掉
+  animation: rnp-geo-rise var(--g-dur, 20s) linear infinite backwards;
   animation-delay: var(--g-delay, 0s);
   will-change: translate, opacity;
 }
@@ -150,9 +159,13 @@
     opacity: 0;
   }
 
+  // 峰值透明度取该粒子自己的值（内联写进 --g-p-opacity）。
+  // 这里若直接写 opacity: 1，会把内联的每粒子透明度顶掉 —— 所有粒子都变成全亮，
+  // 而 Folia 的峰值就是 particle.opacity（≤ 0.3）。（内联 opacity 仍保留：
+  // prefers-reduced-motion 下 animation 被关掉时，它就退化成静态构图的不透明度。）
   50% {
     translate: 0 calc(var(--g-rise, 100px) * -1);
-    opacity: 1;
+    opacity: var(--g-p-opacity, 1);
   }
 
   100% {

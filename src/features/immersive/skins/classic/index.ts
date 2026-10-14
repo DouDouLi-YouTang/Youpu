@@ -6,5 +6,7 @@ export default defineSkin({
   name: '经典',
   desc: '左封面右歌词，界面与改造前一致',
   order: 0,
+  // 沉浸页设置（外观 / 封面 / 背景 / 歌词 / 字体）说的就是本面板 —— 见 types.ts 的说明
+  hasSettings: true,
   component: () => import('./SkinClassic.vue')
 })

@@ -48,7 +48,10 @@
   pointer-events: auto;
   -webkit-app-region: no-drag;
 
-  // 倾斜段：斜体 + 更细字重 + 更宽字间距 + 主色（笔记 §4）
+  // 倾斜段：斜体 + 更宽字间距 + 主色（笔记 §4）。
+  // ⚠️ 这里的 300 是**名义值**：内置字体只有 400 一个字面，浏览器不合成更细的字重，
+  // 实际回落到 400 —— 倾斜段与普通段的区分靠斜体 / 字间距 / 主色，不靠字重。
+  // 见 tilt-adapter.ts 的 FONT_WEIGHT_TILT 注释（含实测数据）。
   &.is-tilt {
     font-style: italic;
     font-weight: 300;
@@ -62,9 +65,12 @@
   display: block;
   // 保留字素里的空格宽度（文本按字素切过，空格也是独立的一个 span）
   white-space: pre;
+  // 缓动写死 `ease`（= CSS 默认值），**不读** `--lyric-timing-function`：
+  // 那是经典面板的「动画曲线」设置，倾诉没有设置、外壳也不给它的根元素注入该变量。
+  // 以前这里写成 `var(--lyric-timing-function, ease)` —— 变量恒不存在、永远走 fallback，
+  // 读起来却像「倾诉会跟随该设置」，是给后来者挖的坑。
   animation:
-    tilt-char-in var(--tilt-fade-dur, 400ms) var(--lyric-timing-function, ease)
-      var(--tilt-fade-delay, 0ms) both,
+    tilt-char-in var(--tilt-fade-dur, 400ms) ease var(--tilt-fade-delay, 0ms) both,
     tilt-char-pulse var(--tilt-pulse-dur, 900ms) linear var(--tilt-pulse-delay, 0ms) both;
 }
 

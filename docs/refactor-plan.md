@@ -28,19 +28,19 @@
 
 ## 1. 已确认的决策（用户拍板）
 
-| # | 决策项 | 结论 |
-|---|---|---|
-| 1 | 改造范围 | 按原文档做**完整皮肤系统**（封面 + 歌词 + 背景），控制条不参与换肤 |
-| 2 | 首批面板 | **只要「倾诉」（tilt）** + 现有面板作为「经典」 |
-| 3 | 切换入口 | 沉浸页悬浮切换条 **+** 设置面板 tab，两处同步 |
-| 4 | 音频响应 | **要**，做真实频谱 |
-| 5 | Folia 许可 | **重写**，不引入 Folia 任何源文件（AGPL-3.0 → 本项目 MIT 保持干净） |
-| 6 | 排版库 | **引入** `@chenglou/pretext`（MIT） |
-| 7 | 面板命名 | 用 Folia 的中文译名（倾诉） |
-| 8 | 开发方式 | 开子代理团队并行，协调者负责集成与验收 |
-| 9 | 队列持久化 | **删掉**，回到引入低内存前的行为（重启后队列为空） |
-| 10 | 设置面板拆分 | **先拆分**再加「样式」tab |
-| 11 | 现有面板 | **保留为「经典」**，不重写 |
+| #   | 决策项       | 结论                                                                |
+| --- | ------------ | ------------------------------------------------------------------- |
+| 1   | 改造范围     | 按原文档做**完整皮肤系统**（封面 + 歌词 + 背景），控制条不参与换肤  |
+| 2   | 首批面板     | **只要「倾诉」（tilt）** + 现有面板作为「经典」                     |
+| 3   | 切换入口     | 沉浸页顶部悬浮切换条（**唯一入口**，设置面板里没有切换入口）        |
+| 4   | 音频响应     | **要**，做真实频谱                                                  |
+| 5   | Folia 许可   | **重写**，不引入 Folia 任何源文件（AGPL-3.0 → 本项目 MIT 保持干净） |
+| 6   | 排版库       | **引入** `@chenglou/pretext`（MIT）                                 |
+| 7   | 面板命名     | 用 Folia 的中文译名（倾诉）                                         |
+| 8   | 开发方式     | 开子代理团队并行，协调者负责集成与验收                              |
+| 9   | 队列持久化   | **删掉**，回到引入低内存前的行为（重启后队列为空）                  |
+| 10  | 设置面板拆分 | **先拆分**；设置面板就是「经典」面板的，不承载面板切换              |
+| 11  | 现有面板     | **保留为「经典」**，不重写                                          |
 
 ---
 
@@ -48,15 +48,16 @@
 
 ### 2.1 整文件删除（5 个）
 
-| 文件 | 行数 | 说明 |
-|---|---|---|
-| `electron/main/audio-engine.ts` | 586 | 主进程音频编排层 |
-| `electron/main/bg-player.ts` | 332 | 隐藏播放窗口（内联 HTML） |
-| `electron/main/memory-mode.ts` | 287 | 低内存模式本体 |
-| `electron/preload/bg-player.ts` | 16 | `window.bgBridge` 暴露 |
-| `src/features/player/core/bg-advance.ts` | 50 | 后台切歌决策（唯一消费者是 audio-engine） |
+| 文件                                     | 行数 | 说明                                      |
+| ---------------------------------------- | ---- | ----------------------------------------- |
+| `electron/main/audio-engine.ts`          | 586  | 主进程音频编排层                          |
+| `electron/main/bg-player.ts`             | 332  | 隐藏播放窗口（内联 HTML）                 |
+| `electron/main/memory-mode.ts`           | 287  | 低内存模式本体                            |
+| `electron/preload/bg-player.ts`          | 16   | `window.bgBridge` 暴露                    |
+| `src/features/player/core/bg-advance.ts` | 50   | 后台切歌决策（唯一消费者是 audio-engine） |
 
 **连带删除**：
+
 - `src/features/player/use-low-memory-restore.ts`（212 行）
 - `src/features/player/low-memory-restore.test.ts`（320 行）
 - `src/features/player/core/bg-advance.test.ts`（99 行）
@@ -67,42 +68,43 @@
 
 ### 2.2 `electron/main/index.ts` 改动点
 
-| 行号区间 | 内容 | 处理 |
-|---|---|---|
-| `:33-52` | audio-engine 的 18 个符号 import | 删 |
-| `:53` | `registerBgPlayerProtocol` | 删 |
-| `:55-64` | memory-mode 的 8 个符号 import | 删 |
-| `:65-66` | `LowMemoryMode` / `QueueItem` 类型 import | 删 |
-| `:146-156` | `muice-bg` privileged scheme | 删 |
-| `:915-949` | `buildTrayMenu`，`:919-923` 的 `routeMediaAction` fallback | 简化为直接 send |
-| `:951-974` | `createTray`，`:963-970` 托盘左键走 `ensureWindowVisible()` | 改回 `win.show()/hide()` |
-| `:1042-1050` | `webPreferences` | **加 `backgroundThrottling: false`**（见 §2.5） |
-| `:1082-1085` | `attachLowMemoryWindow` | 删 |
-| `:1095-1098` | `teardownMainWindowReference` | 删 |
-| `:1100-1113` | `LOW_MEMORY_CONFIG_FILE` + `persistLowMemoryMode` | 删 |
-| `:1214-1219` | `player:state-push` 里的 `isEnginePlaying()` | 改回纯 `lastPlayerState` |
-| `:1221-1269` | audio IPC 全部 10 个 handle + payload 接口 | 删 |
-| `:1271-1281` | low-memory IPC 2 个 handle | 删 |
-| `:1608` | `registerBgPlayerProtocol()` | 删 |
-| `:1611-1645` | `initAudioEngine` / `attachAudioEngine` / `setEngineEventForwarder` / `onEngineStateChanged` / `setLowMemoryMode` / `initLowMemoryMode` | 删 |
-| `:1689-1693` | `app.on('activate')` 的 `ensureWindowVisible()` | 改回原版判断 |
-| `:1705-1715` | `before-quit` 的 `disposeLowMemoryMode()` / `destroyAudioEngine()` | 删 |
+| 行号区间     | 内容                                                                                                                                    | 处理                                            |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `:33-52`     | audio-engine 的 18 个符号 import                                                                                                        | 删                                              |
+| `:53`        | `registerBgPlayerProtocol`                                                                                                              | 删                                              |
+| `:55-64`     | memory-mode 的 8 个符号 import                                                                                                          | 删                                              |
+| `:65-66`     | `LowMemoryMode` / `QueueItem` 类型 import                                                                                               | 删                                              |
+| `:146-156`   | `muice-bg` privileged scheme                                                                                                            | 删                                              |
+| `:915-949`   | `buildTrayMenu`，`:919-923` 的 `routeMediaAction` fallback                                                                              | 简化为直接 send                                 |
+| `:951-974`   | `createTray`，`:963-970` 托盘左键走 `ensureWindowVisible()`                                                                             | 改回 `win.show()/hide()`                        |
+| `:1042-1050` | `webPreferences`                                                                                                                        | **加 `backgroundThrottling: false`**（见 §2.5） |
+| `:1082-1085` | `attachLowMemoryWindow`                                                                                                                 | 删                                              |
+| `:1095-1098` | `teardownMainWindowReference`                                                                                                           | 删                                              |
+| `:1100-1113` | `LOW_MEMORY_CONFIG_FILE` + `persistLowMemoryMode`                                                                                       | 删                                              |
+| `:1214-1219` | `player:state-push` 里的 `isEnginePlaying()`                                                                                            | 改回纯 `lastPlayerState`                        |
+| `:1221-1269` | audio IPC 全部 10 个 handle + payload 接口                                                                                              | 删                                              |
+| `:1271-1281` | low-memory IPC 2 个 handle                                                                                                              | 删                                              |
+| `:1608`      | `registerBgPlayerProtocol()`                                                                                                            | 删                                              |
+| `:1611-1645` | `initAudioEngine` / `attachAudioEngine` / `setEngineEventForwarder` / `onEngineStateChanged` / `setLowMemoryMode` / `initLowMemoryMode` | 删                                              |
+| `:1689-1693` | `app.on('activate')` 的 `ensureWindowVisible()`                                                                                         | 改回原版判断                                    |
+| `:1705-1715` | `before-quit` 的 `disposeLowMemoryMode()` / `destroyAudioEngine()`                                                                      | 删                                              |
 
 **保留不动**：
+
 - `:1565-1567` `app.setAppUserModelId` — SMTC 回归渲染进程后仍需要
 - `:104` `use-fake-ui-for-media-stream` 与 `:1600-1604` 权限放行 — 初始提交就有，与设备名显示有关
 - `playback-cache.ts` 全部 — 与低内存无关
 
 ### 2.3 `src/stores/player.store.ts` 改动点
 
-| 位置 | 处理 |
-|---|---|
-| `:29` | 删 remote-audio import |
-| `:239-271` `init()` | 改回无条件 `useAudioElement(getAudioElement(), callbacks)`，拆掉 `if (!remote)` 守卫 |
-| `:283-311` `updateMediaSessionMetadata()` | 删 remote 分支（`:287-297`），保留本地实现 |
-| `:318` | 删 `if (shouldUseRemoteAudio()) return` |
-| `:739-749` `syncPosition` | **保留**（`onPosition` 现在是 `useAudioElement` 的正式回调），改注释 |
-| `:501-527` `play()` | **保留** `!track && currentItem` 分支与 `expiresAt != null` 判断 — 前者在切歌瞬间也会命中，后者比真值判断更严谨 |
+| 位置                                      | 处理                                                                                                            |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `:29`                                     | 删 remote-audio import                                                                                          |
+| `:239-271` `init()`                       | 改回无条件 `useAudioElement(getAudioElement(), callbacks)`，拆掉 `if (!remote)` 守卫                            |
+| `:283-311` `updateMediaSessionMetadata()` | 删 remote 分支（`:287-297`），保留本地实现                                                                      |
+| `:318`                                    | 删 `if (shouldUseRemoteAudio()) return`                                                                         |
+| `:739-749` `syncPosition`                 | **保留**（`onPosition` 现在是 `useAudioElement` 的正式回调），改注释                                            |
+| `:501-527` `play()`                       | **保留** `!track && currentItem` 分支与 `expiresAt != null` 判断 — 前者在切歌瞬间也会命中，后者比真值判断更严谨 |
 
 ### 2.4 `src/stores/play-queue.store.ts` 改动点（回到旧行为）
 
@@ -125,6 +127,7 @@
 4. 而这些版本已发布并被正常使用（能最小化到托盘继续听歌）
 
 **推论**：
+
 - Chromium 不会因窗口不可见而中断媒体播放 —— 媒体事件（`timeupdate` 等）不受后台节流影响
 - 本项目 `src/` 下**没有任何** `visibilitychange` / `document.hidden` 监听（已 grep 确认），
   不存在「页面隐藏时自己暂停」的代码
@@ -133,10 +136,10 @@
 **那为什么还要加 `backgroundThrottling: false`**：隐藏窗口的**定时器**会被 Chromium 降频
 （后台约 1 分钟一次），受影响的是：
 
-| 位置 | 用途 | 受影响表现 |
-|---|---|---|
-| `player.store.ts:104` | 播放失败 3 秒自动跳过（`setInterval`） | 最小化时失败后卡住不跳，恢复窗口才跳 |
-| `ImmersivePlayer.vue:225` | 沉浸页时钟（`setInterval` 1000ms） | 最小化时时钟不走（沉浸页本身也不可见，影响极小） |
+| 位置                      | 用途                                   | 受影响表现                                       |
+| ------------------------- | -------------------------------------- | ------------------------------------------------ |
+| `player.store.ts:104`     | 播放失败 3 秒自动跳过（`setInterval`） | 最小化时失败后卡住不跳，恢复窗口才跳             |
+| `ImmersivePlayer.vue:225` | 沉浸页时钟（`setInterval` 1000ms）     | 最小化时时钟不走（沉浸页本身也不可见，影响极小） |
 
 **处理**：`electron/main/index.ts:1042-1050` 的 `webPreferences` 加 `backgroundThrottling: false`。
 这是**保险措施而非必需项** —— 加了不会有副作用，不加也不会导致音频中断。
@@ -163,18 +166,22 @@
 
 ```
 src/features/immersive/
-├── ImmersiveSettings.vue          # 壳：~140 行（Transition + 关闭 + tab 导航 + <component :is>）
+├── ImmersiveSettings.vue          # 壳：Transition + 关闭 + tab 导航 + 6 个 tab 子组件
 └── settings/
-    ├── SettingsAppearance.vue     # ~130 行
-    ├── SettingsCover.vue          # ~110 行
-    ├── SettingsBackground.vue     # ~190 行
-    ├── SettingsLyric.vue          # ~230 行
-    ├── SettingsFont.vue           # ~70 行
-    ├── SettingsAbout.vue          # ~60 行
-    ├── SettingsSkin.vue           # 新增（§4.4）
-    ├── options.ts                 # 共用 options 数组 + marks 常量
-    └── use-settings-draft.ts      # 条件显隐 computed
+    ├── AppearanceTab.vue          # 外观
+    ├── CoverTab.vue               # 封面
+    ├── BackgroundTab.vue          # 背景
+    ├── LyricTab.vue               # 歌词（**单一版本**，不按面板拆分）
+    ├── FontTab.vue                # 字体
+    ├── AboutTab.vue               # 关于
+    ├── SettingsSlider.vue         # 共用滑块行（reset 圆点）
+    ├── defaults.ts                # 各 slider 默认值（reset 用）
+    └── system-fonts.ts            # 系统字体查询（整会话缓存一次）
 ```
+
+设置只有一份、属于「经典」面板：**没有**「样式」tab，也**没有**按面板裁剪行的机制
+（曾经的 `LyricTabClassic.vue` / `LyricTabTilt.vue` / `settings/panel-capabilities.ts` 都已删除，
+歌词 tab 回到单一的 `LyricTab.vue`）。
 
 ### 3.2 现状对照
 
@@ -186,6 +193,7 @@ src/features/immersive/
 ### 3.3 已发现的既有问题（拆分时一并修正）
 
 `ImmersiveSettings.vue:41-57` 的 `DEFAULTS` 与 store 实际默认值有 3 处不符：
+
 - `albumSize`: DEFAULTS 400 vs store 800
 - `lyricFontWeight`: DEFAULTS 700 vs store 500
 - `fluidBlur`: DEFAULTS 6 vs store 7
@@ -207,7 +215,7 @@ src/features/immersive/
 ```
 src/features/immersive/
 ├── use-audio-bands.ts             # 真实频谱（§4.5）
-├── immersive-settings.store.ts    # +skin 字段 +applySkin
+├── immersive-settings.store.ts    # 扁平设置 + skin 字段 + applySkin（见 §6.3.1）
 └── skins/
     ├── types.ts                   # SkinId / SkinDefinition / SkinContext
     ├── registry.ts                # import.meta.glob 自动发现
@@ -215,14 +223,14 @@ src/features/immersive/
     ├── shared/
     │   ├── SkinShell.vue          # 拖拽带 + 窗口按钮 + 全屏时钟 + 演示提示 + ESC
     │   ├── SkinChromeButtons.vue  # 4 个窗口按钮（避免 SkinShell 超 400 行）
-    │   ├── SkinSwitcher.vue       # 悬浮切换条（§4.4）
+    │   ├── SkinSwitcher.vue       # 悬浮切换条（唯一入口，§4.4）
     │   ├── use-transport.ts       # seek/volume/rate/音质
-    │   └── use-backdrop.ts        # backgroundType → 渲染参数
-    ├── classic/                   # 现有布局 = 第一款皮肤
+    │   └── use-backdrop.ts        # 两档 rootClasses/CSS 变量：面板外观（hasSettings 才注入）+ 通用项
+    ├── classic/                   # 现有布局 = 第一款皮肤（hasSettings: true）
     │   ├── index.ts
     │   ├── SkinClassic.vue        # 复用 LyricLines.vue
     │   └── classic.scss
-    └── tilt/                      # Folia 倾诉
+    └── tilt/                      # Folia 倾诉（hasSettings: false —— 没有设置，§6.3.1）
         ├── index.ts
         ├── SkinTilt.vue
         ├── use-tilt-layout.ts     # 分行 + 倾斜选择 + 缩放
@@ -235,19 +243,23 @@ src/features/immersive/
 ```ts
 /** 音频频带能量，0–1。真实频谱（§4.5）驱动 */
 export interface AudioBands {
-  low: number    // 20–250Hz，驱动整体脉动
-  mid: number    // 250–2kHz，驱动文字呼吸
-  high: number   // 2k–8kHz，驱动粒子闪烁
-  power: number  // 全带能量
+  low: number // 20–250Hz，驱动整体脉动
+  mid: number // 250–2kHz，驱动文字呼吸
+  high: number // 2k–8kHz，驱动粒子闪烁
+  power: number // 全带能量
 }
 ```
 
-**`skin` 字段的持久化不用额外做**：`immersive-settings.store.ts` 末尾是 `persist: true`
-（整体持久化，`:176`），加进 state 即自动持久化。
+**`skin` 字段的持久化不用额外做**：`immersive-settings.store.ts` 里 `persist: { key, pick }`
+的 `pick` 由 `createDefaultSettings()` 的全部键 + `skin` 推导（`PERSISTED_KEYS`），
+加进 state 即自动持久化。
 （对比：`play-queue.store.ts` 的 `persist` 本次要**删掉**，见 §2.4 —— 两者方向相反，别搞混。）
 
 `SkinContext` 保持原文档 §3.1 的 getter 形态（`currentTime()` / `currentLineIndex()` /
 `isPlaying()` / `bands()` / `coverUrl()` / `songTitle()` / `songArtist()` / `songAlbum()` / `seekLyric()`）。
+`SkinDefinition` 上的面板开关是 `hasSettings: boolean`（见 §6.3.1）——
+原文档草拟的 `preset` / `hiddenFields` / `needsAudio` 均未保留（设置不按面板拆、
+皮肤不声明隐藏项）。
 
 ### 4.3 「倾诉」面板移植要点（从 Folia 源码重写为 Vue）
 
@@ -266,7 +278,9 @@ export interface AudioBands {
    随后 1.2 倍时长内**升到** 0.25 的余晖地板并保持（唱过的字永久略大 = 「已唱」状态）。
    注意：早期文档把这句写成「衰减到 0.25」，是错的，见 `tilt-porting-notes.md` §6 的订正说明
 6. **渲染**：非倾斜行用正常字重（400）+ `letterSpacing 0.08em` + 逐字淡入（`ci * 0.04s` 延迟）；
-   倾斜行用 italic + 字重 300 + `letterSpacing 0.15em` + 奇偶行上下交错（`±yOffset`）
+   倾斜行用 italic + 字重 300 + `letterSpacing 0.15em` + 奇偶行上下交错（`±yOffset`）。
+   注：字重 300 是声明值，2026-10-11 换成内置字体后**两段实际都渲染 400**
+   （内置字体只有 400 字面），倾斜段的区分靠斜体/字间距/主色 —— 见 `tilt-porting-notes.md` §8.3
 7. **外壳与配色**（2026-10-10 补齐，之前漏掉导致首版与 Folia 预览图不符）：
    - 歌词是**全屏舞台**（`w-full h-[70vh] flex items-center justify-center`），
      没有封面列、没有左右分栏 —— 这是一个独立面板，不是在经典骨架上换色
@@ -282,32 +296,50 @@ export interface AudioBands {
 
 **Vue 重写映射**：
 
-| Folia (React) | 本项目 (Vue) |
-|---|---|
+| Folia (React)                                      | 本项目 (Vue)                            |
+| -------------------------------------------------- | --------------------------------------- |
 | `MotionValue<number>` + `currentTime.on('change')` | `ctx.currentTime()` getter + 组件内 rAF |
-| `useMemo` 布局计算 | `computed` |
-| `useInsertionEffect` 订阅 | `watch` + `onBeforeUnmount` 清理 |
-| `motion.span` + `animate` | `:style` + CSS transition |
-| `Intl.Segmenter` 字素切分 | 相同（浏览器原生） |
-| `prepareWithSegments` / `layoutWithLines` | **相同**（引入 `@chenglou/pretext`） |
-| `SentenceLayout` | 自己实现（按上述 5 级规则，不抄源码） |
+| `useMemo` 布局计算                                 | `computed`                              |
+| `useInsertionEffect` 订阅                          | `watch` + `onBeforeUnmount` 清理        |
+| `motion.span` + `animate`                          | `:style` + CSS transition               |
+| `Intl.Segmenter` 字素切分                          | 相同（浏览器原生）                      |
+| `prepareWithSegments` / `layoutWithLines`          | **相同**（引入 `@chenglou/pretext`）    |
+| `SentenceLayout`                                   | 自己实现（按上述 5 级规则，不抄源码）   |
 
 **数据适配**：Folia 的 `Line` 是 `{ fullText, words: {text,startTime,endTime}[], startTime, endTime }`（秒），
 本项目是 `{ text, timeMs, words?: {word,timeMs,durationMs,trailing?}[] }`（毫秒）。
 需要一个适配层把毫秒转秒、`word`→`text`。
 
-### 4.4 切换入口（两处同步）
+### 4.4 切换入口（唯一入口：顶部悬浮胶囊）
 
-**① 沉浸页悬浮切换条** `shared/SkinSwitcher.vue`
-- 位置：歌词区右上角（与关闭按钮同侧的空白区），胶囊式
+**① 沉浸页悬浮切换条** `shared/SkinSwitcher.vue` —— **唯一入口**
+
+- 位置：顶部控制栏**第一排**，紧挨设置按钮左侧（不再是第二排的 `top:56px; right:20px`）——
+  非全屏 `top:11; right:184`（= 设置按钮 `right:140` + 36 宽 + 8 间距），全屏 `right:96`
 - 行为：点击展开面板列表 → 选择即切 → 自动收起
 - 跟随 `idle` 显隐（与关闭按钮一致）
 - 演示模式下隐藏
+- ⚠️ `z-index` 必须高于设置面板（8 > 面板的 7）：展开的列表向下挂，正好落在面板
+  所在高度，不压过它就会被盖住 —— 而它是唯一入口，盖住就等于切不了
+- 「倾诉」下没有设置按钮，胶囊**占住设置按钮那一格**（非全屏 `right:140`、全屏 `right:52`），
+  顶部那一排不留空洞（`hasSettings` 由外壳传入，见下条）
 
-**② 设置面板「样式」tab** `settings/SettingsSkin.vue`
-- 卡片网格，每张卡 = 缩略图 + 中文名 + 一句话描述
-- 点击即时生效（调 `settings.applySkin(id)`）
-- `TABS` 改为把 `{ key: 'skin', label: '样式' }` 放最前
+**② 设置面板「样式」tab** `settings/SettingsSkin.vue` —— **已废弃（2026-10-11）**
+
+第一版按本方案做了「样式」tab（卡片网格 + 页内面板切换条），用户反馈后**整体删除**：
+`SettingsSkin.vue` / `skin-tab.scss` / `PanelTargetSwitch.vue` 三个文件已删，
+面板主题只在外部（顶部胶囊）选，设置面板里不再有任何面板切换入口，也没有「样式」tab。
+
+设置也**不按面板拆**：只有一份，它属于「经典」—— store 是扁平结构
+（`{ ...createDefaultSettings(), skin }`），没有 `panels` / `active` / `settingsTarget`；
+曾经短暂试过的「按面板裁剪设置行」（`settings/panel-capabilities.ts` + `panel-capabilities.test.ts`）
+随同一轮反馈一并删除。理由：「倾诉」**没有设置** —— 背景恒为「几何」且不可改、永不显示封面、
+歌词排版与字体用内置值（字体是随包内置的「站酷快乐体 + 圆体假名兜底」，见
+`docs/tilt-porting-notes.md` §8.3），所以归属上根本没有第二个面板的配置可裁（详见 §6.3.1）。
+
+「倾诉」不显示设置按钮的判据是皮肤定义上的 `SkinDefinition.hasSettings`
+（`skins/types.ts`；经典 true、倾诉 false），由 `skins/shared/SkinShell.vue` 决定；
+倾诉下主题切换胶囊同时**占住设置按钮那一格**。
 
 ### 4.5 真实频谱实现（`use-audio-bands.ts`）
 
@@ -323,7 +355,7 @@ const analyser = ctx.createAnalyser()
 analyser.fftSize = 2048
 analyser.smoothingTimeConstant = 0.8
 source.connect(analyser)
-analyser.connect(ctx.destination)  // 必须连，否则静音
+analyser.connect(ctx.destination) // 必须连，否则静音
 ```
 
 #### ⚠️ 三个必须处理的真实问题（已实证，非推测）
@@ -341,6 +373,7 @@ analyser.connect(ctx.destination)  // 必须连，否则静音
 **解法**：改用 `AudioContext.setSinkId()`（Chrome 110+，本项目 Electron 42.4.1
 → Chromium ~140，**已支持**）。在 `useAudioElement.ts` 的 `setSinkId()`
 （`:362-368`）里同步切换两条路径：
+
 - 未建图 → `el.setSinkId(deviceId)`（现状）
 - 已建图 → `audioCtx.setSinkId(deviceId)`
 
@@ -348,11 +381,11 @@ analyser.connect(ctx.destination)  // 必须连，否则静音
 
 原 `folia-integration.md:290-303` 把 CORS 列为「最危险的坑」，但**现已实测澄清**：
 
-| 音源 | CORS 头 | 结论 |
-|---|---|---|
-| 网易云 CDN 直链 | **实测 200/206 响应带 `Access-Control-Allow-Origin: *`**（`curl -H "Range: bytes=0-1023"` 实测，2026-10-10） | ✅ 无需处理 |
-| `muice-file://`（已下载） | 有（`electron/main/index.ts:317`） | ✅ 无需处理 |
-| `muice-cache://`（缓存，**主播放路径**） | **没有** —— `serveAudioFile`（`:195`）的 206（`:235`）/200（`:248`）两个出口都缺 | ⚠️ **需补** |
+| 音源                                     | CORS 头                                                                                                      | 结论        |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ----------- |
+| 网易云 CDN 直链                          | **实测 200/206 响应带 `Access-Control-Allow-Origin: *`**（`curl -H "Range: bytes=0-1023"` 实测，2026-10-10） | ✅ 无需处理 |
+| `muice-file://`（已下载）                | 有（`electron/main/index.ts:317`）                                                                           | ✅ 无需处理 |
+| `muice-cache://`（缓存，**主播放路径**） | **没有** —— `serveAudioFile`（`:195`）的 206（`:235`）/200（`:248`）两个出口都缺                             | ⚠️ **需补** |
 
 **解法**（照 `serveDownloadedAudioFile` 的写法）：给 `serveAudioFile` 也提一个
 `commonHeaders`（含 `Access-Control-Allow-Origin: *`），一次覆盖 206/200/416 三个出口。
@@ -419,22 +452,30 @@ backgrounds/
 `geometric-model.ts` 复用 `skins/tilt/core/seeded-random`（同一 seed + index 恒等），
 不引入第二套随机源；索引区段从 1000 起，避开 tilt 排版占用的 100+/200 段。
 
-**与 Folia 的四处刻意差异**（对照表见 `app-test-checklist.md` §6.1）：
+**与 Folia 的五处刻意差异**（对照表见 `app-test-checklist.md` §6.1）：
 
-| 差异 | 原因 |
-|---|---|
-| `Math.random()` → 按 `Song.id` 的确定性种子 | 进页面/切皮肤/暂停不该让形状「跳一下」 |
-| framer-motion `useSpring` → CSS `transition: scale 0.12s` | 频带本就每帧刷新，再加 JS 弹簧只是多一层延迟 |
-| JS 逐帧写内联样式 → CSS keyframes 驱动漂移/自转 | 不与 60fps 流体背景抢性能预算 |
-| 暗角末色 `rgba(0,0,0,.6)` → `--rnp-accent-color-overlay` | 浅色主题下黑色暗角会「白底被压黑一圈」 |
+| 差异                                                      | 原因                                                                  |
+| --------------------------------------------------------- | --------------------------------------------------------------------- |
+| `Math.random()` → 按 `Song.id` 的确定性种子               | 进页面/切皮肤/暂停不该让形状「跳一下」                                |
+| framer-motion `useSpring` → CSS `transition: scale 0.12s` | 频带本就每帧刷新，再加 JS 弹簧只是多一层延迟                          |
+| JS 逐帧写内联样式 → CSS keyframes 驱动漂移/自转           | 不与 60fps 流体背景抢性能预算                                         |
+| 暗角末色 `rgba(0,0,0,.6)` → `--rnp-accent-color-overlay`  | 浅色主题下黑色暗角会「白底被压黑一圈」                                |
+| 底色自铺专辑遮罩色，而不是露 app 主题底色                 | 本项目沉浸层明暗与 app 主题相互独立，不能假定两者一致（见上文要点 3） |
 
-**两条实现要点（写错了不报错、只是静默失效，属于高危）**：
+**三条实现要点（写错了不报错、只是静默失效，属于高危）**：
 
 1. **用 `translate` / `rotate` / `scale` 三个独立 transform 属性**，不能合成一条 `transform`：
    keyframes 只驱动位移与自转，`scale` 由频带 CSS 变量独立控制，合成后会互相冲掉。
 2. **频带缩放绕开 Vue 的渲染管线**：`audioBands` 每帧一个新对象，在模板里读它会让整个组件
    每帧重渲染。改为 `watch([audioBands, isPlaying])` 里把四档缩放写成容器 CSS 变量
    （每帧 4 次 `style.setProperty`，零 VDOM）。
+3. **几何层必须自铺底色**（`background-color: var(--rnp-accent-color-bg)`，与「纯色」同源）。
+   Folia 的几何层确实是透明的，但它铺在「可视化页底色」上，而 Folia 的页面底色与文字色
+   同源（同一套明暗主题）；本项目沉浸层的明暗与 app 主题**相互独立**，「沉浸深色 + app 浅色」
+   是合法组合，透明就会露出 `--color-bg-primary`（浅色）——浅色形状落在浅底上、
+   黑色暗角只剩一圈灰边，整层看着「什么都没有」（2026-10-10 实际踩过）。
+   在六种背景类型里，它是唯一既不自带封面底图（fluid/blur/gradient）、
+   也不自铺底色（solid）的，透明就等于把底交给 app 主题。
 
 **新依赖**：`@lucide/vue`（1.55.0，MIT）。形状里有一型是图标（≤6 个），
 用官方 Vue 包而不是 `lucide-vue-next`（后者 1.0.0 已弃用）。按图标分文件，
@@ -447,16 +488,16 @@ backgrounds/
 考虑到「同文件修改的子代理必须串行」（否则延迟完成会覆盖后续改动），
 按**文件所有权**划分，而非按功能划分：
 
-| 阶段 | 负责范围 | 独占文件 | 依赖 |
-|---|---|---|---|
-| **A1** | 主进程音频链路移除 | `electron/main/*`、`electron/preload/*` | 无 |
-| **A2** | 渲染层音频回归 | `src/stores/player.store.ts`、`play-queue.store.ts`、`src/app/main.ts` | 无（与 A1 不同文件） |
-| **A3** | 类型与平台层清理 | `src/types/global.d.ts`、`src/platform/electron/*`、`src/domain/low-memory.ts` | **等 A1+A2**（要同步删除） |
-| **A4** | 设置页清理 | `src/pages/settings/*` | **等 A3** |
-| **B1** | 设置面板拆分 | `src/features/immersive/ImmersiveSettings.vue` + `settings/` | **等 A2**（store 要加 skin 字段） |
-| **C1** | 皮肤骨架 | `src/features/immersive/skins/**`、`immersive-settings.store.ts` | **等 B1** |
-| **C2** | 频谱 | `use-audio-bands.ts` | **等 A2** |
-| **C3** | tilt 面板 | `skins/tilt/**` | **等 C1** |
+| 阶段   | 负责范围           | 独占文件                                                                       | 依赖                              |
+| ------ | ------------------ | ------------------------------------------------------------------------------ | --------------------------------- |
+| **A1** | 主进程音频链路移除 | `electron/main/*`、`electron/preload/*`                                        | 无                                |
+| **A2** | 渲染层音频回归     | `src/stores/player.store.ts`、`play-queue.store.ts`、`src/app/main.ts`         | 无（与 A1 不同文件）              |
+| **A3** | 类型与平台层清理   | `src/types/global.d.ts`、`src/platform/electron/*`、`src/domain/low-memory.ts` | **等 A1+A2**（要同步删除）        |
+| **A4** | 设置页清理         | `src/pages/settings/*`                                                         | **等 A3**                         |
+| **B1** | 设置面板拆分       | `src/features/immersive/ImmersiveSettings.vue` + `settings/`                   | **等 A2**（store 要加 skin 字段） |
+| **C1** | 皮肤骨架           | `src/features/immersive/skins/**`、`immersive-settings.store.ts`               | **等 B1**                         |
+| **C2** | 频谱               | `use-audio-bands.ts`                                                           | **等 A2**                         |
+| **C3** | tilt 面板          | `skins/tilt/**`                                                                | **等 C1**                         |
 
 **串行链**：A1 ∥ A2 → A3 → A4 ∥ B1 → C1 → C3，C2 可全程并行。
 
@@ -490,8 +531,7 @@ backgrounds/
 
 ### 6.3 皮肤系统
 
-- [ ] 沉浸页悬浮切换条可切换面板
-- [ ] 设置面板「样式」tab 可切换面板
+- [ ] 沉浸页悬浮切换条可切换面板（**唯一入口**，设置面板里没有第二个）
 - [ ] 切换后刷新页面，选择被持久化
 - [ ] 「经典」面板与改造前**逐像素一致**
 - [ ] 「倾诉」面板在中文/日文/英文歌词下均正常分行
@@ -500,9 +540,58 @@ backgrounds/
 - [ ] 6 个原设置 tab 控件无遗漏
 - [ ] 「倾诉」是全屏歌词（无封面列），任一段用**专辑主色**、其余段近白色
 - [ ] 「倾诉」底部显示罗马音 + 译文两行，缺的行不出现空占位
-- [ ] 「倾诉」在「仅封面」模式整屏显示封面、且水平/垂直对齐设置生效
-- [ ] 「仅封面」往返后歌词**不重播**（`resyncNow` 生效）
+- [ ] 「倾诉」不读显示模式：始终全屏歌词（无封面列、无迷你歌曲信息条）
+- [ ] 「仅封面」往返后歌词**不重播**（经典侧 `LyricLines.resyncKaraoke()` 生效）
 - [ ] 纵向放不下时（窗口压到最小高度 / 字号拉满 / 4 段长句）字号自适应缩小，首尾段完整可见
+
+### 6.3.1 设置的归属：只有一份，属于「经典」（2026-10-11 定稿）
+
+**设置只有一份，它属于「经典」面板。** `src/features/immersive/immersive-settings.store.ts`
+是**扁平** store —— `{ ...createDefaultSettings(), skin }`，没有 `panels`、没有 `active`、
+没有 `settingsTarget` / `editing`；持久化 `pick` = 默认设置的全部键 + `skin`。
+
+> 历史：皮肤系统刚上线时曾短暂按面板分桶（`panels: Record<SkinId, ImmersiveSettings>`），
+> 该设计已被否决；旧分桶数据由 `immersive-settings.migrate.ts` 的 `settingsFromBucketed()`
+> **取出 classic 那一桶**还原成扁平，tilt 桶按设计丢弃。
+
+**「倾诉」面板没有设置。** 它的外观全部固定：背景恒为「几何」且不可改、永不显示封面、
+歌词排版与字体用内置值（字体 = 随包内置的站酷快乐体 + 圆体假名兜底，见
+`docs/tilt-porting-notes.md` §8.3）。因此**倾诉下没有设置按钮** —— 判据是 `SkinDefinition.hasSettings`
+（`skins/types.ts`）：经典 `true`、倾诉 `false`；`skins/shared/SkinShell.vue` 只在该面板
+`hasSettings` 时渲染右上角设置按钮，同时主题切换胶囊（`skins/shared/SkinSwitcher.vue`）
+在倾诉下**占住设置按钮那一格**。
+
+**倾诉仍生效的「沉浸页通用项」**（读的是同一份设置，不是另开一份）：明暗主题 `colorScheme`、
+专辑主色 `accentColorVariant`、底栏四项（`alwaysShowBottomBar` / `bottomProgressbar` /
+`enableProgressbarPreview` / `timeIndicator`）、演示模式 `presentationMode`、歌词偏移 `lyricOffset`。
+倾诉**不读**：`displayMode`、`centerLyric`、`autoHideMiniSongInfo`、`textShadow`、`textGlow`、
+全部 `cover*`、全部 `background*`（含 `staticFluid` / `gradientBgDynamic` / `bgBlur` / `bgDim*`）、
+全部 lyric 排版项、`customFont` / `customFontFamily`、`fluidMaxFramerate` / `fluidBlur`。
+实现方式：`skins/shared/use-backdrop.ts` 里面板外观那一套（`rootClasses` 的 `display-mode-*` /
+`rnp-bg-*` / 歌词排版 class / `custom-font`、`rootStyleVars` 的 `--bg-*` `--lyric-*`、
+`fontFamilyStyle`）只在 `hasSettings` 为真时注入；通用项无条件注入。
+
+**设置面板的 tab 仍是 6 个**：外观 / 封面 / 背景 / 歌词 / 字体 / 关于。**没有「样式」tab**，
+面板里**没有**任何面板切换入口 —— 面板主题的唯一入口是顶部控制栏那个悬浮胶囊。
+设置行**不**按面板裁剪（曾经的 `settings/panel-capabilities.ts` 与 `panel-capabilities.test.ts`
+已删除；曾经的 `LyricTabClassic.vue` / `LyricTabTilt.vue` 也已删除，歌词 tab 回到单一的 `LyricTab.vue`）。
+
+**倾诉的歌词舞台与曲目面板：** 倾诉不渲染顶部迷你歌曲信息条（原来只在「仅歌词」模式出现的那条），
+也不再渲染封面 —— 有歌词就是整屏歌词舞台，没有歌词时舞台中央显示歌名 + 歌手卡
+（纯音乐 / 无歌词 / 未选歌各自的中文提示保持不变）。倾诉的背景直接渲染
+`backgrounds/GeometricBackground.vue`（不再经过 `ImmersiveBackground.vue`）。
+
+上一轮给倾诉补的「动画曲线」设置行随倾诉的整个设置一起作废；倾诉逐字淡入的缓动改为内置固定值。
+
+- [ ] 「歌词」tab 回到单一版本（`settings/LyricTab.vue`），经典那一整套行都在，不因面板裁剪
+- [ ] 顶部胶囊换面板 → 画面切过去；设置面板内容**不变**（只有一份，没有第二个「编辑目标」）
+- [ ] 倾诉下右上角**没有**设置按钮；主题切换胶囊占住那一格，顶部排布不留空洞
+- [ ] 把面板切到倾诉后，设置里改背景类型 / 封面 / 歌词排版 → 倾诉画面**不受影响**
+      （背景恒为「几何」，封面色与字号仍按内置值）
+- [ ] 倾诉下不显示封面、不显示顶部迷你歌曲信息条；无歌词时舞台中央是歌名 + 歌手卡
+- [ ] 在设置面板里逐个 tab 翻一遍：没有「样式」tab，也没有任何面板切换条
+- [ ] 老版本（分桶结构）升级上来：**取 classic 桶**还原成扁平设置，看起来与升级前一致；tilt 桶丢弃
+- [ ] 旧数据的字体名是字符串时被收成数组（否则 `use-backdrop` 会抛 TypeError）
 
 ### 6.4 「几何」背景
 
@@ -527,7 +616,8 @@ backgrounds/
 
 ### 6.6 打包
 
-- [ ] `npm run build` 通过
+- [ ] `npm run build` 通过（⚠️ 这条**会真的打包**：electron-builder 全流程；
+      只想做构建检查请用 `npm run build:app` = typecheck + electron-vite build）
 - [ ] 打包后应用能切皮肤（验证 `file://` 下 chunk 路径）
 - [ ] 打包后「几何」背景的图标能加载（`@lucide/vue` 代码分割 chunk）
 - [ ] 打包后应用音频正常
@@ -546,3 +636,10 @@ backgrounds/
 4. `ImmersiveBackground.vue` 现在 6 种背景仍是硬编码 `v-if` 链，无注册表 —
    原文档 §4 把它列为 P3「背景注册表」，本次只把「几何」挂进了分支（见 §4.7），
    注册表化仍未做；皮肤系统只做歌词面板
+5. `ImmersiveBackground.vue` 已 **543 行**（超 400 行硬约束）。本次未拆（改动越多越容易
+   在这轮回归里混入噪声），但它该按背景类型拆成 `backgrounds/*.vue` ——
+   与第 4 条的背景注册表是同一件事，建议合并成一次重构
+6. 「无」背景类型（`backgroundType: 'none'`）与几何层有过**同样的透明性隐患**：
+   它自己不铺底色，露出来的就是 app 主题底色。几何层在 2026-10-10 已修（自铺
+   `--rnp-accent-color-bg`），「无」尚未处理 —— 它是「用户主动要求无背景」，是否算 bug
+   取决于预期。本次**未改动**，留待与用户确认（见 §4.7 同样的分析）
