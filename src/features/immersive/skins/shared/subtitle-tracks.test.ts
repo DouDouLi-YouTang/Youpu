@@ -10,9 +10,11 @@ import {
   buildSubtitleGlowGradient,
   buildSubtitleTextShadow,
   hasReadableText,
+  resolveSubtitleClampSize,
   resolveSubtitleFontSizes,
   resolveSubtitleTracks,
-  resolveUpcomingPreview
+  resolveUpcomingPreview,
+  scaleSubtitleFontSize
 } from './subtitle-tracks'
 
 /**
@@ -183,6 +185,31 @@ describe('副字幕字号 clamp', () => {
   it('非法 / 非正倍率退回 1（绝不生成 0rem 或 NaN）', () => {
     for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(resolveSubtitleFontSizes(bad)).toEqual(resolveSubtitleFontSizes(1))
+    }
+  })
+
+  it('三个锚点都由同一个拼装函数产出（浮名的另一套锚点复用它，数值不共用）', () => {
+    // 浮名的锚点与流光不同，但"三项都乘倍率"这条规则必须同源
+    expect(resolveSubtitleClampSize(1.05, 2.2, 1.2)).toBe('clamp(1.050rem, 2.200vw, 1.200rem)')
+  })
+})
+
+describe('次级轨道字号缩放', () => {
+  it('三项各自乘系数、单位与格式保持（对齐上游 scaleFontSize 的正则替换）', () => {
+    expect(scaleSubtitleFontSize('clamp(1.125rem, 2.600vw, 1.250rem)', 0.88)).toBe(
+      'clamp(0.990rem, 2.288vw, 1.100rem)'
+    )
+  })
+
+  it('倍率为 1 时是恒等变换（不会顺手改格式）', () => {
+    const size = 'clamp(1.050rem, 2.200vw, 1.200rem)'
+    expect(scaleSubtitleFontSize(size, 1)).toBe(size)
+  })
+
+  it('非法 / 非正倍率退回 1（绝不生成 0rem 或 NaN）', () => {
+    const size = 'clamp(1.050rem, 2.200vw, 1.200rem)'
+    for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(scaleSubtitleFontSize(size, bad)).toBe(size)
     }
   })
 })

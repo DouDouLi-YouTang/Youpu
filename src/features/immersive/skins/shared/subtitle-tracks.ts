@@ -85,6 +85,22 @@ export const SECONDARY_TRACK_FONT_WEIGHT_FALLBACK = 400
 export const SECONDARY_TRACK_GAP_EM = 0.25
 
 /**
+ * 把一个已经拼好的 clamp 字号串**再乘一个系数**（用于次级轨道）。
+ *
+ * 上游是在渲染时对 `translationFontSize` 字符串做一次正则替换
+ * （`VisualizerSubtitleOverlay.tsx` 的 `scaleFontSize`），所以这里也照做 ——
+ * 三项各自乘、单位原样保留。若改成"先算数值再拼串"，就得知道原始三个锚点，
+ * 而两个皮肤用的锚点并不相同（见 `resolveSubtitleFontSizes` 的说明）。
+ */
+export function scaleSubtitleFontSize(fontSize: string, factor = 1): string {
+  const safeFactor = Number.isFinite(factor) && factor > 0 ? factor : 1
+  return fontSize.replace(
+    /(-?\d*\.?\d+)(rem|vw|px)/g,
+    (_match, value: string, unit: string) => `${(Number(value) * safeFactor).toFixed(3)}${unit}`
+  )
+}
+
+/**
  * 副字幕整层的不透明度 —— 上游 `subtitleOverlayOpacity` 的默认值。
  *
  * 它作用在**整个字幕层**上（含辉光底），次级轨道的 `SECONDARY_TRACK_OPACITY` 再在
@@ -171,13 +187,36 @@ export function buildSubtitleTextShadow(
  * 本项目 Folia 系皮肤固定 `scale = 1`（没有设置面板），保留参数是为了与上游公式
  * 保持同样的形状，将来接设置时不用改公式。
  */
+export function resolveSubtitleClampSize(
+  minRem: number,
+  preferredVw: number,
+  maxRem: number,
+  scale = 1
+): string {
+  const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 1
+  return (
+    `clamp(${(minRem * safeScale).toFixed(3)}rem, ` +
+    `${(preferredVw * safeScale).toFixed(3)}vw, ` +
+    `${(maxRem * safeScale).toFixed(3)}rem)`
+  )
+}
+
+/**
+ * 副字幕字号的三锚点 —— **「流光」（classic）那一套**。
+ *
+ * ⚠️ 浮名用的是**另一套**（`clamp(1.05rem, 2.2vw, 1.2rem)`，见 `fume-adapter`）：
+ * 上游 `VisualizerFume.tsx` 自己拼了这组 clamp，没有走 `subtitleFontSizes.ts`。
+ * 两个面板的字幕字号在 Folia 里本来就不一样，**不要**为了"统一"把它们合并 ——
+ * 合并的结果必然是其中一个面板的字幕大小与上游对不上。
+ *
+ * 共用的是上面那个拼装函数（三项都乘倍率这条规则只有一份），不是锚点数值。
+ */
 export function resolveSubtitleFontSizes(scale = 1): {
   translation: string
   upcoming: string
 } {
-  const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 1
   const clampSize = (minRem: number, preferredVw: number, maxRem: number): string =>
-    `clamp(${(minRem * safeScale).toFixed(3)}rem, ${(preferredVw * safeScale).toFixed(3)}vw, ${(maxRem * safeScale).toFixed(3)}rem)`
+    resolveSubtitleClampSize(minRem, preferredVw, maxRem, scale)
 
   return {
     // 译文

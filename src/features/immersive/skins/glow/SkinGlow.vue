@@ -14,6 +14,7 @@ import { useSmoothClock } from '../shared/use-smooth-clock'
 import {
   SECONDARY_TRACK_SIZE_FACTOR,
   resolveSubtitleFontSizes,
+  scaleSubtitleFontSize,
   resolveSubtitleTracks,
   resolveUpcomingPreview,
   SUBTITLE_OVERLAY_OPACITY
@@ -174,12 +175,10 @@ const upcomingPreview = computed(() => {
 
 /** 副字幕字号（倍率固定 1）：译文档 + 预览档 */
 const subtitleFontSizes = resolveSubtitleFontSizes(1)
-/** 次级轨道的字号（在译文档基础上再乘降档系数），拼成 clamp 字符串交给组件 */
-const secondarySubtitleFontSize = computed(() =>
-  subtitleFontSizes.translation.replace(
-    /(-?\d*\.?\d+)(rem|vw|px)/g,
-    (_match, value, unit) => `${(Number(value) * SECONDARY_TRACK_SIZE_FACTOR).toFixed(3)}${unit}`
-  )
+/** 次级轨道的字号（在译文档基础上再乘降档系数）—— 缩放口径在共享层，见其说明 */
+const secondarySubtitleFontSize = scaleSubtitleFontSize(
+  subtitleFontSizes.translation,
+  SECONDARY_TRACK_SIZE_FACTOR
 )
 
 /**
