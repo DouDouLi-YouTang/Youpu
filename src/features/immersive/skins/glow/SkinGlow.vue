@@ -7,6 +7,8 @@ import { usePlayerStore } from '@/stores/player.store'
 import { resolveSkinEmptyState } from '../shared/empty-state'
 import { useFoliaSerifReady } from '../shared/folia-font'
 import { isGlowBlurQuantized } from '../shared/glow-blur-quantize'
+import SkinEmptyState from '../shared/SkinEmptyState.vue'
+import SkinSubtitle from '../shared/SkinSubtitle.vue'
 import { useFoliaPalette } from '../shared/use-folia-palette'
 import { useSmoothClock } from '../shared/use-smooth-clock'
 import {
@@ -29,9 +31,7 @@ import {
   resolveDisplayWords
 } from './glow-adapter'
 import GlowBackground from './GlowBackground.vue'
-import GlowEmptyState from './GlowEmptyState.vue'
 import GlowLine from './GlowLine.vue'
-import GlowSubtitle from './GlowSubtitle.vue'
 import { resolveGlowRenderProfile } from './glow-profile'
 import { setGlowQuantizedForm } from './glow-variants'
 import { useGlowActiveLine } from './use-glow-line'
@@ -44,7 +44,7 @@ import { useGlowViewport } from './use-glow-viewport'
  * ## 一句话结构
  *
  * 一个占 70vh 的居中舞台：舞台上有**一行**歌词（`GlowLine`），每个词自己散落、
- * 自己亮、唱完慢慢转；底栏是罗马音 / 译文副字幕（`GlowSubtitle`）。背景是 Folia
+ * 自己亮、唱完慢慢转；底栏是罗马音 / 译文副字幕（共享的 `SkinSubtitle`）。背景是 Folia
  * 自带的 `latent` 模式（`GlowBackground`，见那边的说明）。
  *
  * ## ⚠️ 本面板没有设置（用户 2026-08-14 拍板）
@@ -131,7 +131,8 @@ const fontSize = resolveGlowFontSize()
 const emptyFontSize = resolveGlowEmptyFontSize()
 
 /**
- * 空态：没有行可排时显示什么。判定全部在共享层（见 GlowEmptyState.vue 文件头）。
+ * 空态：没有行可排时显示什么。判定与外观全部在共享层
+ * （`shared/empty-state.ts` 判档、`shared/SkinEmptyState.vue` 出图）。
  *
  * ⚠️ `hasCurrentLine` 传的是**逐帧时钟算出来的**行下标，不是 store 的节流值 ——
  * 否则前奏结束的那一瞬间空态会多留最多 250ms。
@@ -201,7 +202,8 @@ setGlowQuantizedForm(isGlowBlurQuantized())
 const stageStyle = computed<Record<string, string>>(() => ({
   '--glow-line-max-width': `${GLOW_LINE_MAX_WIDTH_REM}rem`,
   '--glow-stage-height': `${GLOW_STAGE_HEIGHT_VH}vh`,
-  '--glow-empty-color': palette.value.secondary
+  // 空态字色：变量名归共享组件所有（`shared/SkinEmptyState.vue` 读它）
+  '--skin-empty-color': palette.value.secondary
 }))
 
 /** 点行跳转（对齐「倾诉」：点当前行 → seek 到行首） */
@@ -262,7 +264,7 @@ function handleSeek(): void {
           />
 
           <!-- 空态：没有行可排（或用同样的 key 占位，保证两态之间有过渡） -->
-          <GlowEmptyState
+          <SkinEmptyState
             v-else-if="emptyState"
             key="glow-empty"
             :state="emptyState"
@@ -272,7 +274,7 @@ function handleSeek(): void {
       </motion.div>
 
       <!-- 底部副字幕（罗马音 / 译文）或「接下来两句」预览：不吃事件 -->
-      <GlowSubtitle
+      <SkinSubtitle
         :rows="subtitleRows"
         :preview="upcomingPreview"
         :background="palette.background"

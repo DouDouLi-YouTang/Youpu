@@ -2,20 +2,19 @@
 import { computed } from 'vue'
 import { AnimatePresence, motion } from 'motion-v'
 
-import { colorWithAlpha } from '../shared/color-mix'
+import { colorWithAlpha } from './color-mix'
 import {
   buildSubtitleGlowGradient,
   buildSubtitleTextShadow,
   type SubtitleTrack
-} from '../shared/subtitle-tracks'
+} from './subtitle-tracks'
 
 /**
- * 「流光」底部副字幕（罗马音 / 译文）。
+ * 底部副字幕（罗马音 / 译文 / 下一句预览）—— **全部 Folia 系皮肤共享**。
  *
- * ## 为什么是独立组件
- *
- * AGENTS.md 的 400 行上限是一方面，更重要的是**职责边界**：副字幕与歌词舞台的
- * 生命周期不同 —— 舞台随行 key 重建，副字幕只跟着**当前行数据**变化。
+ * 上游就是**一个**组件（`VisualizerSubtitleOverlay.tsx`），「流光」（classic）与
+ * 「浮名」（fume）都直接渲染它。所以这里也只有一个组件：两个皮肤各抄一份的结果
+ * 必然是「一边 0.6 不透明度、一边忘了辉光底」这种口径漂移。
  *
  * ## 为什么只要 `rows` / `preview` / `background` 三个 prop
  *
@@ -39,6 +38,12 @@ import {
  *    整层的 `textShadow` 才是那个 `0 1px 2px rgba(bg, .24)`。
  *  - 整层不透明度是 `subtitleOverlayOpacity`，默认 **0.6**。
  *    漏掉它的观感差异很明显：字幕比上游"实"一档，在亮背景上会抢主舞台的注意力。
+ *
+ * ## 位置由宿主决定
+ *
+ * 本组件贴的是 `bottom: var(--skin-subtitle-bottom, 0)` —— 每个皮肤把那个变量设在
+ * **自己的定位容器**上（流光设在 70vh 的舞台上，浮名设在铺满的 canvas 宿主上），
+ * 于是同一个组件在两边的落点各自正确。写死一个值必然有一边是错的。
  */
 const props = defineProps<{
   /** 已解析好的轨道（罗马音在前、译文在后；可能只有一条，也可能为空） */
@@ -71,7 +76,7 @@ const textShadow = computed(() => buildSubtitleTextShadow(props.background, colo
   <AnimatePresence>
     <motion.div
       v-if="rows.length > 0 || (preview && preview.length > 0)"
-      class="glow-subtitles"
+      class="skin-subtitles"
       :style="{ textShadow, color }"
       :initial="{ opacity: 0, y: 20 }"
       :animate="{ opacity, y: 0 }"
@@ -82,14 +87,14 @@ const textShadow = computed(() => buildSubtitleTextShadow(props.background, colo
       }"
     >
       <!-- 辉光底：垫在文字后面的椭圆渐变，外扩 + 模糊见样式表 -->
-      <div class="glow-subtitle-glow" aria-hidden="true" :style="glowStyle" />
+      <div class="skin-subtitle-glow" aria-hidden="true" :style="glowStyle" />
 
-      <div class="glow-subtitle-stack">
+      <div class="skin-subtitle-stack">
         <template v-if="rows.length > 0">
           <p
             v-for="(row, index) in rows"
             :key="row.role"
-            class="glow-subtitle"
+            class="skin-subtitle"
             :class="index > 0 ? 'is-secondary' : 'is-primary'"
             :style="index > 0 ? { fontSize: secondaryFontSize } : undefined"
           >
@@ -101,7 +106,7 @@ const textShadow = computed(() => buildSubtitleTextShadow(props.background, colo
           <p
             v-for="(text, index) in preview"
             :key="index"
-            class="glow-subtitle is-upcoming"
+            class="skin-subtitle is-upcoming"
             :style="{ fontSize: upcomingFontSize }"
           >
             {{ text }}
@@ -112,4 +117,4 @@ const textShadow = computed(() => buildSubtitleTextShadow(props.background, colo
   </AnimatePresence>
 </template>
 
-<style scoped lang="scss" src="./glow-subtitle.scss"></style>
+<style scoped lang="scss" src="./skin-subtitle.scss"></style>

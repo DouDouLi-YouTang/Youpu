@@ -4,8 +4,8 @@
 //   .immersive-content         内容层（不吃事件，见下）
 //     .glow-stage              占宽满、高 70vh 的居中舞台（本面板的主体）
 //       .glow-stage-float      呼吸浮动层（跨行常驻，无限循环）
-//         <GlowLine> / <GlowEmptyState>（AnimatePresence 内含）
-//       .glow-subtitles        底部副字幕
+//         <GlowLine> / <SkinEmptyState>（AnimatePresence 内含）
+//       .skin-subtitles        底部副字幕（共享组件，见 shared/SkinSubtitle.vue）
 //       .glow-line-hit         整行跳转的透明按钮（最上层）
 //
 // 与「倾诉」同构：内容层 `pointer-events: none`，只有需要交互的元素单独放行。
@@ -45,7 +45,8 @@
   // 本项目控制条高 90px（--bottombar-height），故取它再加 22px 净空，
   // 与「倾诉」的 `padding-bottom: calc(var(--bottombar-height) + …)` 是同一个意图：
   // 让副字幕永远待在控制条上方，不会被它压住。
-  --glow-subtitle-bottom: calc(var(--bottombar-height, 90px) + 22px);
+  // 变量名归共享组件所有（`shared/SkinSubtitle.vue` 读它），浮名在自己那边设同样的值。
+  --skin-subtitle-bottom: calc(var(--bottombar-height, 90px) + 22px);
 }
 
 // 呼吸浮动层：跨行常驻（见 GlowLine.vue 文件头）。
