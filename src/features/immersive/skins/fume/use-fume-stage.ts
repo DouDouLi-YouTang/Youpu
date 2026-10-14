@@ -167,6 +167,23 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
   /** 实时绘制的可见区间（世界坐标），供裁剪用 */
   const visibleRect = { left: 0, top: 0, right: 0, bottom: 0 }
   const cameraStepInput: Partial<FumeCameraStepInput> = {}
+  /**
+   * 每帧复用的视口对象（§16.2）。
+   *
+   * `resolveFumeBackgroundView` 与 `isFumeBlockOnScreen` 都只要 `{width, height}`，
+   * 若在调用点写 `{ width, height }` 字面量就是**每帧两个新对象** —— 60fps 下每秒 120 个，
+   * 纯粹喂给 GC。它们只读、不持有引用，所以复用一个可变对象是安全的。
+   */
+  const viewportRef = { width: 0, height: 0 }
+  /**
+   * 唱过文字的渐隐总时长（§6.3）。
+   *
+   * ⚠️ **不在每帧算**：它只依赖「全篇时间线 + `textHoldRatio`」，两者都只在换文章时变，
+   * 而算它要遍历全部区块（`resolveFumePassedFadeDurationMs` 内部还会 `.map().sort()`）。
+   * 放在每帧就是每秒几十次几百条行的排序 —— 上游把它放在 effect 里算一次，
+   * 这里同样只在文章变化时重算（见 `draw` 里的 `article !== lastArticle` 分支）。
+   */
+  let passedFadeDurationMs = Number.POSITIVE_INFINITY
 
   let rafId: number | null = null
   let disposed = false
@@ -180,25 +197,64 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
   /**
    * 取一张快照：命中缓存直接返回，未命中现做一张。
    *
-   * 回调是**闭包外提的普通函数**（不是每次现包的箭头函数）：§16.2 明确要求
-   * 「不要闭包捕获整块 article，每次调用都新建闭包」。这里用模块级作用域的
-   * `snapshotInput` 复用对象，`getSnapshot` 才没有按次分配。
+   * ⚠️ 这里刻意**不复用 `acquireFumeSnapshot` 的返回结构**，而是复用「待建快照的入参」：
+   * 传入的回调必须是**外层建一次的同一个函数**，否则每次调用都会新建一个闭包。
+   * 一个在屏区块每帧问一次快照，闭包按次分配就是每秒上千个短命函数（§16.2）。
+   *
+   * 具体做法：把「这次要建什么」暂存到下面两个外层变量，回调从它们读。
+   * 变量名叫 `pending*` 是因为它们的语义就是「这一次 pending 的创建请求」。
    */
   function getSnapshot(
     spec: { key: string; fill: string; shadowBlur: number; shadowColor: string },
     block: FumeBlock,
     now: number
   ): FumeStaticBlockSnapshot | undefined {
-    return acquireFumeSnapshot(snapshotCache, spec.key, now, () => {
-      return createStaticBlockSnapshot({
-        block,
-        theme: options.theme.value,
-        fillStyle: spec.fill,
-        shadowBlur: spec.shadowBlur,
-        shadowColor: spec.shadowColor,
-        rasterScale: staticLayerInput.snapshotScale
-      })
+    pendingSnapshotBlock = block
+    pendingSnapshotSpec = spec
+    return acquireFumeSnapshot(snapshotCache, spec.key, now, createPendingSnapshot)
+  }
+
+  /**
+   * 建「这一次 pending 的快照」。它是外层建一次的**普通函数**，不是按次闭包，
+   * 状态从 `pendingSnapshot*` 读 —— 这也是 `acquireFumeSnapshot` 只在未命中时
+   * 才调它的前提（命中时这个函数根本不会被执行）。
+   */
+  function createPendingSnapshot(): FumeStaticBlockSnapshot | null {
+    const block = pendingSnapshotBlock
+    const spec = pendingSnapshotSpec
+    if (!block || !spec) return null
+    return createStaticBlockSnapshot({
+      block,
+      theme: options.theme.value,
+      fillStyle: spec.fill,
+      shadowBlur: spec.shadowBlur,
+      shadowColor: spec.shadowColor,
+      rasterScale: staticLayerInput.snapshotScale
     })
+  }
+
+  /** 这一次 pending 的快照入参（见 `getSnapshot` 的说明） */
+  let pendingSnapshotBlock: FumeBlock | null = null
+  let pendingSnapshotSpec: {
+    key: string
+    fill: string
+    shadowBlur: number
+    shadowColor: string
+  } | null = null
+  /** `resolveFumeStaticLayers` 的回调入参（见调用点的说明） */
+  let pendingGetSnapshotBlock: FumeBlock | null = null
+  let pendingGetSnapshotNow = 0
+
+  /** `resolveFumeStaticLayers` 的稳定回调：只把「当前块 + 当前帧号」转交给 `getSnapshot` */
+  function resolvePendingSnapshot(spec: {
+    key: string
+    fill: string
+    shadowBlur: number
+    shadowColor: string
+  }): FumeStaticBlockSnapshot | undefined {
+    const block = pendingGetSnapshotBlock
+    if (!block) return undefined
+    return getSnapshot(spec, block, pendingGetSnapshotNow)
   }
 
   /** 每帧入口 */
@@ -267,6 +323,11 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
       syncFumeCameraToArticle(cameraState, article)
       // 快照里烤了颜色 / 字体 / 尺寸，文章一换必须全清（§11.1）
       releaseFumeSnapshots(snapshotCache, Number.POSITIVE_INFINITY)
+      // 渐隐总时长只跟「全篇时间线 + textHoldRatio」有关，两者随文章一起换（§6.3）
+      passedFadeDurationMs = resolveFumePassedFadeDurationMs(
+        article.chronologicalBlocks.map((block) => block.line),
+        options.textHoldRatio
+      )
     }
 
     // ── ③ 首次打印回调（一次性） ──────────────────────────────────────────
@@ -284,7 +345,9 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
     cameraStepInput.nowMs = now
     cameraStepInput.dtMs = dtMs
     cameraStepInput.lineIndex = options.currentLineIndex()
-    cameraStepInput.viewport = { width, height }
+    viewportRef.width = width
+    viewportRef.height = height
+    cameraStepInput.viewport = viewportRef
     cameraStepInput.overviewCamera = options.overviewCamera.value
     cameraStepInput.overviewStartTimeMs = options.overviewStartTimeMs.value
     cameraStepInput.cameraSpeed = options.cameraSpeed
@@ -301,7 +364,7 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
 
     // ── ⑤ 背景层（§9.8 的视差视图） ───────────────────────────────────────
     if (backgroundScene) {
-      const view = resolveFumeBackgroundView(backgroundScene, camera, { width, height })
+      const view = resolveFumeBackgroundView(backgroundScene, camera, viewportRef)
       context.save()
       context.translate(viewportCenterX, viewportCenterY)
       context.scale(view.backgroundScale, view.backgroundScale)
@@ -336,10 +399,7 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
     staticLayerInput.timeMs = timeMs
     staticLayerInput.theme = theme
     staticLayerInput.passedGlowBase = passedGlowBase
-    staticLayerInput.passedFadeDurationMs = resolveFumePassedFadeDurationMs(
-      article.chronologicalBlocks.map((block) => block.line),
-      options.textHoldRatio
-    )
+    staticLayerInput.passedFadeDurationMs = passedFadeDurationMs
     staticLayerInput.overviewTextRestoreProgress = stepResult.overviewTextRestoreProgress
     staticLayerInput.snapshotScale = resolveSnapshotScale(dpr)
 
@@ -356,7 +416,7 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
     context.translate(-camera.x, -camera.y)
 
     for (const block of article.blocks) {
-      if (!isFumeBlockOnScreen(block, camera, { width, height })) continue
+      if (!isFumeBlockOnScreen(block, camera, viewportRef)) continue
 
       const timing = resolveFumeBlockTiming(
         block,
@@ -365,8 +425,16 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
         options.textHoldRatio
       )
 
-      const layers = resolveFumeStaticLayers(block, timing, staticLayerInput, (spec) =>
-        getSnapshot(spec, block, now)
+      // ⚠️ 传的必须是**外层建一次的普通函数**，不能写 `(spec) => getSnapshot(spec, block, now)`：
+      // 那个箭头函数会被每个在屏区块每帧新建一个（§16.2）。当前块与当前帧号改从
+      // `pendingGetSnapshot*` 读 —— 与 `getSnapshot` 内部那对变量同一套做法。
+      pendingGetSnapshotBlock = block
+      pendingGetSnapshotNow = now
+      const layers = resolveFumeStaticLayers(
+        block,
+        timing,
+        staticLayerInput,
+        resolvePendingSnapshot
       )
 
       if (layers && layers.length > 0) {
