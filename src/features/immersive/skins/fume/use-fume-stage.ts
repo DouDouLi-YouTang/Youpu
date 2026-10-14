@@ -73,6 +73,7 @@ import type {
 } from './core/fume-types'
 import { drawFumeBackground } from './render/background'
 import { createStaticBlockSnapshot } from './render/canvas-text'
+import { drawFumeLiveBlock, type FumeLiveBlockParams } from './render/canvas-text-live'
 import { resolveFumePassedFadeDurationMs } from './core/text-style'
 import {
   acquireFumeSnapshot,
@@ -148,7 +149,7 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
   let lastArticle: FumeArticleLayout | null = null
 
   // ── 每帧复用的入参对象（§16.2：不在 draw 里新建对象） ──────────────────────
-  const liveParams = {
+  const liveParams: FumeLiveBlockParams = {
     timeMs: 0,
     theme: options.theme.value,
     glowIntensity: options.glowIntensity,
@@ -452,13 +453,16 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
         continue
       }
 
-      // 正在打印的块：实时绘制（**F5 接入 `drawFumeLiveBlock`**）
+      // 正在打印的块：实时逐字素绘制（§10.4，含 §10.5 的打印印章）。
       //
-      // ⚠️ 这里刻意什么都不画，而不是留一个空函数：F4 的验收标准是
-      // 「已唱过的块稳定不闪」，而正在打印的那一块此时会短暂缺席 ——
-      // 那是预期中的中间状态（下一笔 F5 就补上），不是漏渲染。
-      // 落点已经明确：`render/canvas-text.ts` 的 `drawFumeLiveBlock(context, block, timing, params)`，
-      // 调用时 context 的变换已经是世界坐标 → 设备像素（本函数上方刚设好）。
+      // `layers === null` 有两条来源，两条都该走实时绘制：
+      //  1. §8.3 的 `staticState === null`（正在打印的那一块，主路径）；
+      //  2. 快照创建失败（离屏 canvas 拿不到）—— 上游同样在这里回落到实时绘制，
+      //     宁可多花点算力，也不要让那块字凭空消失。
+      //
+      // 调用时 context 的变换已经是「世界坐标 → 设备像素」（本函数上方刚设好），
+      // 所以这里传的是世界坐标，不要再自己 translate 到视口。
+      drawFumeLiveBlock(context, block, timing, liveParams)
     }
 
     context.restore()
