@@ -51,3 +51,42 @@
   font-weight: 400;
   font-display: swap;
 }
+
+// ── Folia 系皮肤（流光 / 浮名）的衬线内置字体 ────────────────────────────────
+//
+// 来源与 Folia 一致：`@fontsource/noto-serif-sc@5.2.9` 的
+// `noto-serif-sc-chinese-simplified-{400,500}-normal.woff2`（OFL-1.1）。
+// Folia 原本从 CDN 引这两个文件（它的 src/index.css 里 @font-face 的 src 就是
+// cdn.jsdmirror.cn/npm/@fontsource/noto-serif-sc@5.2.9/files/…），本项目**随包分发**：
+// Electron 离线也要能出字，不能依赖 CDN。
+//
+// ⚠️ 族名刻意写成 `'Folia Noto Serif SC'` 而不是上游的 `'Noto Serif SC'`：
+//  - 与 Folia 的字栈逐字对应（它的字体栈里就是这个族名），将来对照源码时不至于张冠李戴；
+//  - 不和系统里可能已装的 `Noto Serif SC` 撞名 —— 撞名会让"用户自己装的版本"参与进来，
+//    测量（canvas measureText）与最终渲染（CSS）就未必是同一套字形。
+//
+// ⚠️ 这个 "chinese-simplified" 子集**没有 unicode-range**（files/ 里那份 CSS 可证），
+// 意味着它对**所有**码位生效 —— 拉丁字母、标点、假名全部走它。这正是要的效果：
+// 日文歌词「假名 + 汉字 + 拉丁」混排时笔画风格统一，不会一半宋体一半黑体。
+// 代价是它不含 emoji 字形，那类字符仍由系统兜底（字体栈末端的衬线族）。
+//
+// 字重只有 400 / 500 两档（与 Folia 相同）。歌词正文用 700 时浏览器会从 500 合成，
+// 与 Folia 的表现一致，不要为了"更真"去补一个自造的 700。
+//
+// 许可证：OFL-1.1，原文见 `./Noto-Serif-SC-OFL.txt`（源码树）
+// 与 `public/licenses/Noto-Serif-SC-OFL.txt`（随包分发的那一份），两处内容必须一致。
+@font-face {
+  font-family: 'Folia Noto Serif SC';
+  src: url('./noto-serif-sc-400.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Folia Noto Serif SC';
+  src: url('./noto-serif-sc-500.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
