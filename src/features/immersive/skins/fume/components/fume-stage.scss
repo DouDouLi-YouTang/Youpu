@@ -1,0 +1,22 @@
+// 「浮名」canvas 宿主（由 FumeStage.vue <style scoped src> 引入）。
+//
+// 宿主铺满内容层：canvas 绝对定位在其上，<slot> 里的 DOM（字幕 / 提示卡）
+// 叠在 canvas 之上。⭐ 顺序由 DOM 顺序决定，不需要 z-index。
+
+.fume-stage-host {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  // 宿主本身不吃事件：交互元素（跳转按钮等）由外层单独放行
+  pointer-events: none;
+}
+
+.fume-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  // ⚠️ CSS 尺寸必须是 100%：位图尺寸是「逻辑 × dpr」，由 JS 设置，
+  // 若这里再写 px 就会把位图拉伸成错误比例
+  width: 100%;
+  height: 100%;
+}

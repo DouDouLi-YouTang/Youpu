@@ -24,7 +24,7 @@ export type { AudioBands }
  * 为什么需要：store **不能** import registry（registry → store，会形成循环），
  * 所以「合法 skin 有哪些」无法从注册表自动推导，只能靠这个中立常量 + 类型约束。
  */
-export const SKIN_IDS = ['classic', 'tilt', 'glow'] as const
+export const SKIN_IDS = ['classic', 'tilt', 'glow', 'fume'] as const
 
 /** 皮肤 id。新增皮肤时先加到 SKIN_IDS，并在 `<id>/index.ts` 注册（registry 自动发现）。 */
 export type SkinId = (typeof SKIN_IDS)[number]

@@ -1,0 +1,17 @@
+// 「浮名」皮肤主体（由 SkinFume.vue <style scoped src> 引入）。
+//
+// 结构（F3 阶段）：
+//   .fume-root               皮肤根：铺主题纯色底（Folia 的 backgroundColor 等价物）
+//     .fume-stage-host       FumeStage 的宿主（见 components/fume-stage.scss）
+//       canvas               背景 + 文字（文字在 F4/F5 接入）
+//       <slot>               字幕 / 提示卡（F7 接入）
+//
+// ⚠️ 背景的 z-index 是 0、内容层是 2 —— 与其他皮肤一致（沉浸页的层序约定）。
+
+.fume-root {
+  position: absolute;
+  inset: 0;
+  // 背景层：其他皮肤的内容层是 z-index: 2，这里保持一致
+  z-index: 0;
+  overflow: hidden;
+}
