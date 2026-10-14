@@ -60,6 +60,22 @@ export const FUME_SHOW_PRINT_STAMP = !FUME_TUNING.hidePrintSymbols
 export const FUME_BACKGROUND_OPACITY_MULTIPLIER = FUME_TUNING.backgroundObjectOpacity * 2
 
 /**
+ * 全局字号倍率（§14.1：本项目没有设置面板，一律取默认值）。
+ *
+ * 它与 `heroScale` 都参与 §7.1 的缓存键与 §4.10 的字号二分，所以**必须**是常量而不是
+ * 内联的 `1`：将来接设置面板时只有这一处要改（与 `FUME_HERO_SCALE` 同一考虑）。
+ */
+export const FUME_LYRICS_FONT_SCALE = 1
+
+/**
+ * hero 块的字号倍率（§14.1：默认 1，运行时钳在 `[0.82, 1.32]`）。
+ *
+ * ⚠️ 它是**唯一**参与排版的调参（§7.9 第 2 条）：其余调参（相机速度、辉光、透明度）
+ * 改了不该让整首诗重排。所以它单独存在这里，而不是混进 `FUME_TUNING` 之外的对象。
+ */
+export const FUME_HERO_SCALE = 1
+
+/**
  * 无文章（前奏 / 加载中）时背景自转的墙钟漂移系数（§12.7）。
  *
  * 上游是 `time + now * 0.00018`，`now` 是墙钟毫秒。**数值照抄**：

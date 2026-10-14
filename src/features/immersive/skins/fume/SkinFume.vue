@@ -1,21 +1,32 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 
+import { useLyricStore } from '@/stores/lyric.store'
 import { usePlayerStore } from '@/stores/player.store'
 import { useFoliaPalette } from '../shared/use-folia-palette'
 import { useSmoothClock, type SkinAudioBands } from '../shared/use-smooth-clock'
-import { FOLIA_SERIF_FAMILY } from '../shared/folia-font'
+import { FOLIA_SERIF_FAMILY, useFoliaSerifReady } from '../shared/folia-font'
+import { getLineRenderEndTimeMs } from '../shared/render-hints'
 import { colorWithAlpha } from '../shared/color-mix'
 import { toFoliaScale } from '../../backgrounds/folia/shared/audio-bands'
 import type { SkinContext } from '../types'
+import { resolveArticleOverviewCamera } from './core/camera'
 import type { FumeAudioLevels, FumeTheme } from './core/fume-types'
+import type { FumeLayoutThemeKey } from './core/layout-key'
 import {
   FUME_BACKGROUND_OPACITY_MULTIPLIER,
+  FUME_HERO_SCALE,
+  FUME_LYRICS_FONT_SCALE,
+  FUME_SHOW_PRINT_STAMP,
   FUME_TUNING,
-  resolveFumeBackgroundSeed
+  resolveFumeBackgroundSeed,
+  toFumeLines
 } from './fume-adapter'
+import { buildFumeBackgroundScene } from './render/background'
+import { clearSegmentMeasureCache } from './measure/text-measure'
+import { useFumeLayout } from './use-fume-layout'
+import { useFumeStage, type FumeStageSize } from './use-fume-stage'
 import FumeStage from './components/FumeStage.vue'
-import { useFumeBackground, type FumeStageSize } from './use-fume-background'
 
 /**
  * 「浮名」(fume) 皮肤 —— Folia `fume` 面板的 Vue 重写。
@@ -25,12 +36,13 @@ import { useFumeBackground, type FumeStageSize } from './use-fume-background'
  * 一整块 canvas（`FumeStage`）：背景是围绕文字纸张的手绘装饰形状，正文是
  * 逐字素"打印"出来的文章。相机跟着打印光标在世界里移动，唱到结尾会拉远看全貌。
  *
- * ## ⚠️ 本阶段（F3）只有背景
+ * ## 本文件只做**组装**
  *
- * 按规格书 §19 的实施顺序，F3 = `render/background.ts` + 一个**只有背景**的
- * 皮肤根。文章排版（F2，子代理在做）、静态快照（F4）、实时逐字绘制（F5）、
- * 相机步进（F6）、字幕与空态（F7）都不在这里 —— 所以现在看到的画面是
- * 「背景形状 + 主题纯色底」，**这是预期的中间状态**，不是缺渲染。
+ * 四个部分各有归宿，本层只负责把它们接起来（§15.1 的层划分）：
+ * - 数据归一化：`fume-adapter.ts`（`LyricLine` → `FumeLine`，毫秒口径统一）
+ * - 排版调度：`use-fume-layout.ts`（§7.9 的 rAF → 防抖 → 版本号，含缓存）
+ * - 每帧绘制：`use-fume-stage.ts`（§11.3 的七步流程，含相机与背景）
+ * - 主题与调参：`shared/use-folia-palette` + `fume-adapter.ts` 的 `FUME_*` 常量
  *
  * ## ⚠️ 本面板没有设置（用户 2026-10-14 拍板）
  *
@@ -52,12 +64,27 @@ import { useFumeBackground, type FumeStageSize } from './use-fume-background'
  * 根元素上变成 DOM 属性（`ctx="[object Object]"`）。F4 起相机与揭示会读
  * `ctx.currentLineIndex()` / `ctx.isPlaying()`，届时直接在这里调用即可。
  */
-defineProps<{ ctx: SkinContext }>()
+const props = defineProps<{ ctx: SkinContext }>()
 
 const player = usePlayerStore()
+const lyric = useLyricStore()
 const { palette, isDaylight } = useFoliaPalette()
 /** 逐帧时钟：相机跟随打印光标要求「每帧都有时间」，4Hz 的 store 值不够 */
 const clock = useSmoothClock()
+
+/**
+ * 内置衬线字体（`FOLIA_SERIF_FAMILY`）的就绪信号 —— 它一变就**清片段测量缓存**。
+ *
+ * 为什么必须清：`measureSegmentGlyphOffsets` 按 `(字体串, 文本)` 缓存，而字体文件
+ * 加载完成**不改变字体串**（同一个栈从兜底字形换成真字形）。不清的话这次重测只会
+ * 把同一个键再问一遍，拿回兜底字量出的旧宽度，排版永久按错误宽度摆着 ——
+ * 不报错、不白屏，只是字号一直偏小（与「倾诉」`use-tilt-layout.ts` 同源）。
+ *
+ * ⚠️ `flush: 'sync'`：清缓存必须发生在排版重算**之前**，否则这一轮又是空转。
+ * 重排本身不需要在这里触发 —— 就绪状态并进了 `layoutTheme`（见下）。
+ */
+const { fontState } = useFoliaSerifReady()
+watch(fontState, clearSegmentMeasureCache, { immediate: true, flush: 'sync' })
 
 /**
  * 本面板的主题视图（`FumeTheme`）。字段来源与「流光」同一套口径
@@ -78,6 +105,19 @@ const theme = computed<FumeTheme>(() => ({
   wordColors: []
 }))
 
+/**
+ * 参与排版缓存键的主题切片（§7.1）。**刻意不是整个 `theme`**：
+ * 数组里只有字体这一项，颜色与强度变化不会让整首诗重排
+ * （否则主题色过渡期间会每帧都命中不了缓存）。
+ */
+const layoutTheme = computed<FumeLayoutThemeKey>(() => ({
+  name: theme.value.name,
+  fontStyle: theme.value.fontStyle,
+  fontFamily: theme.value.fontFamily,
+  fontFamilyStack: theme.value.fontFamilyStack,
+  fontWeight: theme.value.fontWeight
+}))
+
 /** 舞台逻辑尺寸（由 `FumeStage` 的 resize 事件驱动） */
 const stageSize = ref<FumeStageSize>({ width: 0, height: 0 })
 /** canvas 上下文（挂载后由 `FumeStage` 交出，卸载时置回 null） */
@@ -87,48 +127,134 @@ const canvas = shallowRef<HTMLCanvasElement | null>(null)
 
 /**
  * 播放态 —— **必须是 ref**：暂停时绘制层会停止排帧（§16.4），
- * 靠它的变化把循环重新唤醒（见 `use-fume-background` 的 `schedule`）。
+ * 靠它的变化把循环重新唤醒（见 `use-fume-stage` 的 `schedule`）。
  */
 const isPlaying = computed(() => player.state === 'playing')
 
 /**
- * 文章世界尺寸 —— **还没有**（F2 的排版未接入）。
- * 按 §7.10 的兜底：视口 ×1.8。于是背景走「无文章」分支，
- * 时间轴叠墙钟漂移，相机停在世界中心。
+ * 归一化后的整首歌（`FumeLine[]`）。**下游全部读这一份**：
+ * 排版（§7.7 要看整篇）、缓存键（§7.1 的行指纹）、快照（§8.4 的 `renderHints`）。
+ *
+ * ⚠️ 依赖 `player.durationMs`：末行的结束时间用它推算（§15.2）。时长从 0 变成真实值
+ * 时会重算一次 —— 那次重排是必要的，否则末行的拖尾窗口按 5 秒兜底算，唱到曲末会提前变暗。
  */
-const world = ref<{ width: number; height: number } | null>(null)
-const paperBounds = ref<{ left: number; top: number; right: number; bottom: number } | null>(null)
+const fumeLines = computed(() => toFumeLines(lyric.lines, player.durationMs))
 
-/** 相机停在舞台中心：F3 还没有相机（F6 接管） */
-const cameraX = computed(() => stageSize.value.width / 2)
-const cameraY = computed(() => stageSize.value.height / 2)
+/**
+ * 文章排版（§7.9）。入参 `lines` 是 `fumeLines`，视口是舞台逻辑尺寸 ——
+ * 也就是排版与绘制用**同一个**尺寸来源（`FumeStage` 的 resize 事件），
+ * 不会出现「画布已按新尺寸画、排版还用旧尺寸」的帧。
+ */
+/**
+ * ⚠️ `isLayoutPending` 目前**故意不消费** —— 它驱动的是 F7 的「正在排版」加载卡
+ * （§7.9 / §14.2 的上游语义）。现在先不画卡，是因为 F4 的验收标准是
+ * 「已唱过的块稳定不闪」，此时多看一张卡反而会干扰对照。
+ * F7 落地时在这里解构它即可，hook 已经把它准备好了。
+ */
+const { article } = useFumeLayout({
+  lines: fumeLines,
+  viewport: stageSize,
+  layoutTheme,
+  lyricsFontScale: computed(() => FUME_LYRICS_FONT_SCALE),
+  heroScale: computed(() => FUME_HERO_SCALE),
+  fontKey: fontState
+})
 
-/** 背景种子：含主题名，换主题重掷一套形状（见 `fume-adapter`） */
-const seed = computed(() => resolveFumeBackgroundSeed(undefined, theme.value.name))
+/**
+ * 背景场景（§7.10）。`world` 就是文章尺寸；没有文章时用视口 ×1.8 兜底，
+ * 于是前奏期间背景照常转动（§16.4 的唯一空转场景）。
+ */
+const backgroundScene = computed(() =>
+  buildFumeBackgroundScene({
+    viewport: stageSize.value,
+    world: article.value
+      ? { width: article.value.width, height: article.value.height }
+      : {
+          width: Math.max(stageSize.value.width * 1.8, stageSize.value.width),
+          height: Math.max(stageSize.value.height * 1.8, stageSize.value.height)
+        },
+    paperBounds: article.value?.paperBounds,
+    seed: resolveFumeBackgroundSeed(undefined, theme.value.name)
+  })
+)
 
-useFumeBackground({
+/** 总览镜头（§9.4）：把整页区块装进视口；没有文章时为 null */
+const overviewCamera = computed(() =>
+  article.value ? resolveArticleOverviewCamera(article.value, stageSize.value) : null
+)
+
+/**
+ * 总览开始时刻（§7.10）：**最后一条可渲染行的起止中点**，不是唱完。
+ * 提前起飞让最后的字在镜头拉远的过程中继续打印 —— 这是浮名收尾的招牌动作。
+ */
+const overviewStartTimeMs = computed(() => {
+  const current = article.value
+  if (!current) return Number.POSITIVE_INFINITY
+  for (let index = current.chronologicalBlocks.length - 1; index >= 0; index -= 1) {
+    const line = current.chronologicalBlocks[index].line
+    if (line.fullText.trim().length === 0) continue
+    return line.startTimeMs + Math.max(getLineRenderEndTimeMs(line) - line.startTimeMs, 0) * 0.5
+  }
+  return Number.POSITIVE_INFINITY
+})
+
+/**
+ * 每帧绘制循环（§11.3）。它内部自己起 rAF，`playing` 的变化会唤醒它（§16.4）。
+ */
+useFumeStage({
   context,
   canvas,
   size: stageSize,
   theme,
-  world,
-  paperBounds,
-  seed,
-  cameraX,
-  cameraY,
-  originX: cameraX,
-  originY: cameraY,
+  article,
+  backgroundScene: computed(() => backgroundScene.value),
+  overviewCamera,
+  overviewStartTimeMs,
+  cameraSpeed: FUME_TUNING.cameraSpeed,
+  cameraTrackingMode: FUME_TUNING.cameraTrackingMode,
+  glowIntensity: FUME_TUNING.glowIntensity,
+  showPrintStamp: FUME_SHOW_PRINT_STAMP,
+  textHoldRatio: FUME_TUNING.textHoldRatio,
+  backgroundOpacityMultiplier: FUME_BACKGROUND_OPACITY_MULTIPLIER,
   currentTimeMs: () => clock.time(),
   audioLevels: () => toFumeAudioLevels(clock.bands()),
+  currentLineIndex: () => props.ctx.currentLineIndex(),
+  onPrintedContent: handlePrintedContent,
   playing: isPlaying,
-  opacityMultiplier: FUME_BACKGROUND_OPACITY_MULTIPLIER,
   /**
    * 恒定 `false`：`staticMode` 在上游是「OBS 静态截图 / 背景静止档」，
    * 本项目没有这条业务分支。**不要**拿演示模式（`presentationMode`）来接 ——
    * 那是「鼠标静止时隐藏控制条」，与背景动不动是两件事，接上会让用户一进
-   * 演示模式背景就整个消失。与「流光」的 `GlowBackground` 是同一条取舍。
+   * 演示模式整个画面就停住。与「流光」的 `GlowBackground` 是同一条取舍。
    */
   staticMode: computed(() => false)
+})
+
+/**
+ * 首个区块开始打印时的入场动画（§17.1 第 5 条）。
+ *
+ * `hasPrintedContent` 的标志位由 `use-fume-stage` 持有并在文章变化时重置，
+ * 本回调是**每次播放只触发一次**的那一侧 —— 所以这里只做视觉动作。
+ *
+ * ⚠️ 用 `requestAnimationFrame` 把类名切换推到下一帧：这是「CSS 过渡需要一个
+ * 不同的初始状态」的标准做法（元素先以 `is-printed=false` 渲染一帧，再切到 true，
+ * 过渡才会真的播）。同步切换的话浏览器会把两个状态合并成一次样式计算，动画不出现。
+ */
+const hasPrinted = ref(false)
+let printedFrameId: number | null = null
+
+function handlePrintedContent(): void {
+  // ⚠️ 裸调的 `requestAnimationFrame` 会被 no-undef 拦下（只有 `.ts` 文件里不会）
+  if (printedFrameId !== null) window.cancelAnimationFrame(printedFrameId)
+  printedFrameId = window.requestAnimationFrame(() => {
+    printedFrameId = null
+    hasPrinted.value = true
+  })
+}
+
+onBeforeUnmount(() => {
+  if (printedFrameId !== null) window.cancelAnimationFrame(printedFrameId)
+  printedFrameId = null
 })
 
 /**

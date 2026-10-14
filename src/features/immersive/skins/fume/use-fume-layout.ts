@@ -69,7 +69,22 @@ export const LAYOUT_REBUILD_DEBOUNCE_MS = 96
  * 键 = `buildLayoutCacheKey(...)`（§7.1），只留最近一条。切成两条以上会引入
  * 「哪条该淘汰」的策略问题，而这里根本没有第二个消费场景。
  */
-let lastFumeLayoutCache: { key: string; article: FumeArticleLayout | null } | null = null
+interface FumeLayoutCacheEntry {
+  /** §7.1 的排版缓存键 */
+  key: string
+  /**
+   * 建这一版时的字体就绪信号（见 `UseFumeLayoutOptions.fontKey`）。
+   *
+   * ⚠️ 它**不参与** §7.1 的键，因为那个键的字段集合是上游定的契约（字体栈 / 倍率 / 行指纹）。
+   * 但本项目必须额外看这一项：字体栈字符串不变、字宽却变了，只查 `key` 会命中旧文章。
+   * 所以它是缓存条目的**第二个判据**，而不是键的一部分 —— 这样也就不会出现
+   * 「字体就绪后缓存键变化」这种对调试日志有误导的表象。
+   */
+  fontKey: unknown
+  article: FumeArticleLayout | null
+}
+
+let lastFumeLayoutCache: FumeLayoutCacheEntry | null = null
 
 /** 排程函数集合：注入是为了让单测能确定性地推进 rAF / 定时器 */
 export interface FumeLayoutScheduler {
@@ -115,6 +130,21 @@ export interface UseFumeLayoutOptions {
   lyricsFontScale: Ref<number>
   /** hero 字号倍率（本项目恒为 1；**唯一**参与排版的调参） */
   heroScale: Ref<number>
+  /**
+   * 「字体可能已经变了」的信号（取值本身不参与排版，只用来建立响应式依赖）。
+   *
+   * ⚠️ 这是本项目相对上游**多加的一条依赖**，理由是 §7.1 的键**抓不到**字体加载：
+   * 内嵌字体从「兜底字形」换成「真字形」时，字体栈字符串一个字都没变，
+   * 于是键也不变、缓存照常命中 —— 排版就永久按兜底字的宽度摆着。
+   *
+   * 之所以不用「把状态并进 `layoutTheme.name`」这种取巧写法：那个字段是**背景种子**的
+   * 一部分（`${seed}:${theme.name}`），掺进一个非主题字段会让「字体加载完成 → 背景重掷形状」
+   * 这种莫名其妙的副作用发生。依赖显式列出来，语义就只有一个。
+   *
+   * 清测量缓存由调用方在**同一个时刻**做（`SkinFume.vue` 的 watch，`flush: 'sync'`），
+   * 顺序不能反：先清缓存、再重排，否则重排问到的还是旧值。
+   */
+  fontKey: Ref<unknown>
   /** 排程器（仅单测注入） */
   scheduler?: FumeLayoutScheduler
 }
@@ -184,8 +214,10 @@ export function useFumeLayout(options: UseFumeLayoutOptions): UseFumeLayoutResul
 
     const key = buildLayoutCacheKey(lines, viewport, layoutTheme, lyricsFontScale, { heroScale })
 
+    const fontKey = options.fontKey.value
+
     let next: FumeArticleLayout | null
-    if (lastFumeLayoutCache?.key === key) {
+    if (lastFumeLayoutCache?.key === key && lastFumeLayoutCache.fontKey === fontKey) {
       next = lastFumeLayoutCache.article
     } else {
       try {
@@ -215,7 +247,7 @@ export function useFumeLayout(options: UseFumeLayoutOptions): UseFumeLayoutResul
     // ⚠️ 第二道复核：上面那次排版是同步长任务，期间用户可能已经切歌
     if (version !== requestVersion) return
 
-    lastFumeLayoutCache = { key, article: next }
+    lastFumeLayoutCache = { key, fontKey, article: next }
     hasResolvedArticle = next !== null
     article.value = next
     isLayoutPending.value = false
@@ -271,7 +303,8 @@ export function useFumeLayout(options: UseFumeLayoutOptions): UseFumeLayoutResul
       options.layoutTheme,
       options.lines,
       options.lyricsFontScale,
-      options.viewport
+      options.viewport,
+      options.fontKey
     ],
     schedule,
     { immediate: true, flush: 'sync' }

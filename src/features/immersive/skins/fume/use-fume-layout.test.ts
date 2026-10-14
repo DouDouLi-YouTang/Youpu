@@ -110,6 +110,8 @@ const THEME: FumeLayoutThemeKey = { name: 'folia', fontStyle: 'serif' }
 
 function mountLayout(lines: Ref<FumeLine[]> = ref([makeLine()])) {
   const viewport = ref<FumeViewportSize>({ ...VIEWPORT })
+  /** 字体就绪信号：默认恒为 'ready'；需要测「就绪后重排」的用例显式传 ref */
+  const fontKey = ref<unknown>('ready')
   const scheduler = createScheduler()
   const result = useFumeLayout({
     lines,
@@ -117,6 +119,7 @@ function mountLayout(lines: Ref<FumeLine[]> = ref([makeLine()])) {
     layoutTheme: ref<FumeLayoutThemeKey>(THEME),
     lyricsFontScale: ref(1),
     heroScale: ref(1),
+    fontKey,
     scheduler: scheduler.scheduler
   })
   // ⚠️ 不能直接 `...scheduler`：那会把 getter 求值成快照，`pendingDelayMs` 永远是 null
@@ -124,6 +127,7 @@ function mountLayout(lines: Ref<FumeLine[]> = ref([makeLine()])) {
     ...result,
     lines,
     viewport,
+    fontKey,
     flush: (): void => scheduler.flush(),
     flushFrame: (): void => scheduler.flushFrame(),
     get pendingDelayMs(): number | null {
@@ -171,6 +175,7 @@ describe('useFumeLayout 调度（§7.9）', () => {
       layoutTheme: ref(THEME),
       lyricsFontScale: ref(1),
       heroScale: ref(1),
+      fontKey: ref('pending'),
       scheduler: scheduler.scheduler
     })
     expect(layout.isLayoutPending.value).toBe(false)

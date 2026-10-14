@@ -10,7 +10,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
  *
  * 上游把尺寸复查放进每帧流程的第一条（§11.3 ①）：跨屏拖动会让 `devicePixelRatio`
  * 在**没有 resize 事件**的情况下变化，只在挂载与 resize 时设一次就会画糊。
- * 所以位图尺寸与 `setTransform` 的唯一权威在绘制层（`use-fume-background`），
+ * 所以位图尺寸与 `setTransform` 的唯一权威在绘制层（`use-fume-stage` 的每帧流程第一条），
  * 本组件只提供「逻辑尺寸变了」这个信号与上下文 —— 两处都写 `canvas.width`
  * 是明确的 bug 来源（谁后写谁生效，且改尺寸会清空画布）。
  */
