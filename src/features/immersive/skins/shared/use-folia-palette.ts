@@ -78,10 +78,19 @@ function readAccentVar(root: Element | null): string | null {
  * ⚠️ 明暗档由**沉浸页通用项** `settings.colorScheme` 决定（不是面板外观设置）——
  * 两个 Folia 系皮肤都没有设置面板，但明暗是这一页的行为，两边都跟随。
  * `'auto'` 按系统偏好解析，与外壳的 class 一致。
+ *
+ * ## 为什么把 `isDaylight` 也返回出去
+ *
+ * 不只是「怕调用方猜错」：`isLight` 是**明暗档的解析结果**（三态 `'dark' | 'light' | 'auto'`
+ * 加系统偏好），而 `palette.background` 只是它的一个**产物**。调用方若拿底色去反推
+ * （例如 `palette.background !== '#09090b'`），等于把「上游那两个十六进制字面量」
+ * 变成第二个契约点：将来改动主题色值就会静默破坏这一判断。
+ * 背景系统（`FoliaBackground`）需要的是语义上的「是不是浅色」，所以在这里给出。
  */
-export function useFoliaPalette(): { palette: Ref<FoliaPalette> } {
+export function useFoliaPalette(): { palette: Ref<FoliaPalette>; isDaylight: Ref<boolean> } {
   const settings = useImmersiveSettingsStore()
   const palette = ref<FoliaPalette>({ ...DARK_PALETTE })
+  const isDaylight = ref(false)
 
   /** 系统偏好（只在 `colorScheme === 'auto'` 时被读） */
   let systemDark = true
@@ -102,6 +111,7 @@ export function useFoliaPalette(): { palette: Ref<FoliaPalette> } {
   function refresh(): void {
     const isLight =
       settings.colorScheme === 'light' || (settings.colorScheme === 'auto' && !systemDark)
+    isDaylight.value = isLight
     const base = isLight ? LIGHT_PALETTE : DARK_PALETTE
     // 专辑主色优先（见文件头）；读不到（无封面 / 还没提取完）时用上游字面量
     const accent = readAccentVar(document.querySelector('.immersive-root')) ?? base.accent
@@ -117,5 +127,5 @@ export function useFoliaPalette(): { palette: Ref<FoliaPalette> } {
   watch(() => [settings.colorScheme, settings.accentColorVariant], refresh, { immediate: true })
   onMounted(refresh)
 
-  return { palette }
+  return { palette, isDaylight }
 }

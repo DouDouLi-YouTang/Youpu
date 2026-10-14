@@ -75,7 +75,7 @@ const lyric = useLyricStore()
 const player = usePlayerStore()
 
 /** 面板配色（Folia `Theme` 字段 → 本项目 CSS 变量，口径见 shared/use-folia-palette） */
-const { palette } = useFoliaPalette()
+const { palette, isDaylight } = useFoliaPalette()
 /** 内置衬线字体的就绪信号：变化即重测词宽（见 use-glow-layout） */
 const { fontState } = useFoliaSerifReady()
 
@@ -217,7 +217,7 @@ function handleSeek(): void {
   <GlowBackground
     :cover-url="ctx.coverUrl()"
     :palette="palette"
-    :is-daylight="palette.background !== '#09090b'"
+    :is-daylight="isDaylight"
     :paused="!ctx.isPlaying()"
     :clock="clock"
   />
