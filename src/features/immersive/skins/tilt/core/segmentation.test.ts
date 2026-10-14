@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countGraphemes, graphemeOffsets, isWhitespaceOnly } from './graphemes'
+import { countGraphemes, graphemeOffsets, isWhitespaceOnly } from '../../shared/graphemes'
 import { splitIntoSentences } from './segmentation'
 
 /** 贴近真实歌词的语料：中英混排、括号引号、省略号、emoji、多空格、首尾空白 */

@@ -11,7 +11,7 @@
  * 纯函数，可在 node 环境单测。
  */
 
-import { isWhitespaceOnly, segmentGraphemes } from './graphemes'
+import { isWhitespaceOnly, segmentGraphemes } from '../../shared/graphemes'
 
 /** 一个字素的时间片（单位与入参一致） */
 export interface CharTiming {

@@ -11,7 +11,7 @@
  * 本文件不碰时间。纯函数，可在 node 环境单测。
  */
 
-import { countGraphemes } from './graphemes'
+import { countGraphemes } from '../../shared/graphemes'
 import { seededRandom } from './seeded-random'
 
 /** 成段倾斜的概率默认值（移植笔记 §2.3） */

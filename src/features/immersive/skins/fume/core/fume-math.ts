@@ -11,13 +11,15 @@
  * 两者都是确定性的，但换用会让所有排版/背景形状**整体变位**：
  * `seeded('世界:0') !== seededRandom(0, 0)`。所以必须各留一份，不能互相替代。
  *
- * 字素切分**复用**「倾诉」的 `core/graphemes.ts`（规格书 §15.6 / §17.3 明确要求
+ * 字素切分**复用** `skins/shared/graphemes.ts`（规格书 §15.6 / §17.3 明确要求
  * 「只保留一份 Intl.Segmenter 实例」）：本文件只做一层 `map` 适配，不新建 Segmenter。
- * 代价是 fume → tilt 的一条单向依赖；若将来有第三个皮肤也要切字素，
- * 正确的做法是把 `graphemes.ts` 提到 `skins/shared/`，而不是各抄一份。
+ *
+ * 该文件原本长在「倾诉」目录下，子代理第一版让 fume 直接 import `tilt/core/graphemes`，
+ * 于是「浮名」与「倾诉」之间多出一条**跨皮肤依赖**（两个平级皮肤不该互相依赖）。
+ * 已按规格书的建议提到 `skins/shared/`：两边都引用共享层，任一皮肤被删除都不影响对方。
  */
 
-import { segmentGraphemes } from '../../tilt/core/graphemes'
+import { segmentGraphemes } from '../../shared/graphemes'
 
 /** FNV-1a 32 位偏移基准 */
 const FNV_OFFSET_BASIS = 2166136261

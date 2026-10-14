@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { CharTiming } from './char-timing'
 import { buildCharTimings, buildCharTimingsFromWords } from './char-timing'
-import { segmentGraphemes } from './graphemes'
+import { segmentGraphemes } from '../../shared/graphemes'
 
 const THUMB = '👍🏽'
 const COMBINING = 'é'

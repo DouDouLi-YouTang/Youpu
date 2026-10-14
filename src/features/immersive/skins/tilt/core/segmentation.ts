@@ -23,7 +23,7 @@ import {
   isWhitespaceOnly,
   segmentGraphemes,
   snapToGraphemeBoundary
-} from './graphemes'
+} from '../../shared/graphemes'
 import { seededRandom } from './seeded-random'
 
 /** 级别 1：标点（移植笔记 §2.2 表格） */

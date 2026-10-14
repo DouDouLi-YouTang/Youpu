@@ -33,7 +33,7 @@ import {
 
 import { measureNaturalWidth, prepareWithSegments, clearCache } from '@chenglou/pretext'
 
-import { countGraphemes } from './core/graphemes'
+import { countGraphemes } from '../shared/graphemes'
 import { determineLineCount } from './core/line-count'
 import { splitIntoSentences } from './core/segmentation'
 import { pickTiltSegment } from './core/tilt-pick'
