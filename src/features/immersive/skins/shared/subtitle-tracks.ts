@@ -85,6 +85,75 @@ export const SECONDARY_TRACK_FONT_WEIGHT_FALLBACK = 400
 export const SECONDARY_TRACK_GAP_EM = 0.25
 
 /**
+ * 「下一句预览」最多显示几行 —— 上游 `nextLines` 取 2 行。
+ *
+ * 多于此值会把底栏堆成一小段歌词列表，反而抢走主舞台的注意力。
+ */
+export const UPCOMING_PREVIEW_LIMIT = 2
+
+/**
+ * 取「接下来几句」作为预览。
+ *
+ * 上游的完整语义是：**当前行有可读的副字幕就不显示预览**，没有才显示接下来的行
+ * （`VisualizerSubtitleOverlay` 里 `subtitleText ? [] : previewLines`）。
+ * 这个前置条件不在这里判 —— 本函数只负责"从候选里挑出可读的前 N 行"，
+ * 是否该显示由调用方按副字幕轨道是否为空来决定（两件事分开，各自可测）。
+ *
+ * 同样过一遍可读性门槛：`//`、`●●●` 这类占位行不能进预览（与副字幕同一条规矩）。
+ */
+export function resolveUpcomingPreview(
+  lines: readonly (Pick<LyricLine, 'text'> | null | undefined)[],
+  limit = UPCOMING_PREVIEW_LIMIT
+): string[] {
+  if (!Number.isFinite(limit) || limit <= 0) return []
+  const result: string[] = []
+  for (const line of lines) {
+    if (result.length >= limit) break
+    const text = line?.text
+    if (!text || !hasReadableText(text)) continue
+    result.push(text)
+  }
+  return result
+}
+
+/** 首行（罗马音 / 单条译文）的字重兜底 —— 上游是 500 */
+export const PRIMARY_TRACK_FONT_WEIGHT_FALLBACK = 500
+
+/**
+ * 副字幕辉光底：铺在文字后面的椭圆径向渐变，给文字一个离背景的"垫子"。
+ *
+ * 三档透明度与形状逐字对齐上游（`VisualizerSubtitleOverlay` 的 `subtitleGlowStyle`）：
+ * 中心 0.96、62% 处 0.78、边缘透明。底色取主题的 `backgroundColor`。
+ *
+ * ⚠️ 尺寸（`ellipse 115% 130%`）是**相对那层自己的盒子**，不是相对视口 ——
+ * 所以调用方必须把它铺在一个略大于文字的层上（上游用 `-inset-x-10 -inset-y-6` 外扩）。
+ */
+export function buildSubtitleGlowGradient(
+  background: string,
+  withAlpha: (color: string, alpha: number) => string
+): string {
+  return (
+    `radial-gradient(ellipse 115% 130% at center, ` +
+    `${withAlpha(background, 0.96)} 0%, ` +
+    `${withAlpha(background, 0.78)} 62%, ` +
+    `transparent 100%)`
+  )
+}
+
+/**
+ * 副字幕的文字阴影：`0 1px 2px` 的主题底色 24%。
+ *
+ * 极浅（0.24）是刻意的：它只在文字与辉光底边缘相接的那一两个像素上起作用，
+ * 目的是把上下描边从背景里"抠"出来，不是做投影。调大会在浅色主题上变成脏边。
+ */
+export function buildSubtitleTextShadow(
+  background: string,
+  withAlpha: (color: string, alpha: number) => string
+): string {
+  return `0 1px 2px ${withAlpha(background, 0.24)}`
+}
+
+/**
  * 副字幕字号的 clamp 三锚点（对齐 Folia `subtitleFontSizes.ts`），倍率已乘进去。
  *
  * ⚠️ 三项**都**要乘 `scale`：只乘中间项是常见的移植错误 —— 那样缩放到触到

@@ -1,44 +1,102 @@
 <script setup lang="ts">
-import type { SubtitleTrack } from '../shared/subtitle-tracks'
+import { computed } from 'vue'
+import { AnimatePresence, motion } from 'motion-v'
+
+import { colorWithAlpha } from '../shared/color-mix'
+import {
+  buildSubtitleGlowGradient,
+  buildSubtitleTextShadow,
+  type SubtitleTrack
+} from '../shared/subtitle-tracks'
 
 /**
  * 「流光」底部副字幕（罗马音 / 译文）。
  *
- * ## 为什么是独立组件而不是塞进 `SkinGlow.vue` 的模板
+ * ## 为什么是独立组件
  *
  * AGENTS.md 的 400 行上限是一方面，更重要的是**职责边界**：副字幕与歌词舞台的
- * 生命周期完全不同 —— 舞台随行 key 重建，副字幕只跟着**当前行数据**变化。
- * 混在一个模板里，换行时的 diff 会把两者一起带上。
+ * 生命周期不同 —— 舞台随行 key 重建，副字幕只跟着**当前行数据**变化。
  *
- * ## 为什么只要一个 `rows` prop
+ * ## 为什么只要 `rows` / `preview` / `background` 三个 prop
  *
  * 轨道解析（哪一档、可读性门槛、去重）全部在 `shared/subtitle-tracks.ts` ——
- * 那是三个 Folia 系皮肤**共用**的口径，不能在这一层再判一次。本组件只负责
- * 「把已经决定好的行画出来」，所以它没有 mode / 行对象 / 语言开关这些入参。
+ * 那是三个 Folia 系皮肤**共用**的口径，不能在这一层再判一次。
+ * 「有副字幕就不显示预览」这条互斥也由调用方决定（`resolveUpcomingPreview` 的说明），
+ * 所以本组件只关心"给我什么就画什么"。
  *
- * ## 两行的降档
+ * ## 辉光底与文字阴影
  *
- * 首行（罗马音）是"跟着唱的那个"，第二行（译文）是注解，故第二行按
- * `SECONDARY_TRACK_*` 降一档（小 12%、不透明度 0.82）。降档值本身也取自共享层，
- * 保证与「浮名」的副字幕是同一套相对关系。
+ * 两者都从 `shared/subtitle-tracks` 的公式来（形状与透明度逐字对齐上游），
+ * 底色取当前主题的 `background`。辉光底铺在一个**外扩的模糊层**上
+ * （上游 `-inset-x-10 -inset-y-6 blur-2xl`），所以它比文字盒子大一圈 ——
+ * 内联给渐变、样式表给尺寸与模糊，两边各管一件事。
  */
-defineProps<{
+const props = defineProps<{
   /** 已解析好的轨道（罗马音在前、译文在后；可能只有一条，也可能为空） */
   rows: readonly SubtitleTrack[]
+  /** 没有副字幕时显示的「接下来几句」（已过可读性门槛）；有副字幕时应传空数组 */
+  preview?: readonly string[]
+  /** 主题底色（辉光底与文字阴影都从它派生） */
+  background: string
+  /** 次级轨道的字号（clamp 字符串，已乘降档系数） */
+  secondaryFontSize: string
+  /** 预览行的字号（clamp 字符串） */
+  upcomingFontSize: string
 }>()
+
+/** 辉光底的内联背景（形状在共享层，尺寸 / 模糊在样式表） */
+const glowStyle = computed(() => ({
+  background: buildSubtitleGlowGradient(props.background, colorWithAlpha)
+}))
+
+/** 文字阴影（极浅的 0.24 底色，见共享层的说明） */
+const textShadow = computed(() => buildSubtitleTextShadow(props.background, colorWithAlpha))
 </script>
 
 <template>
-  <div v-if="rows.length" class="glow-subtitles">
-    <p
-      v-for="(row, index) in rows"
-      :key="row.role"
-      class="glow-subtitle"
-      :class="index > 0 ? 'is-secondary' : 'is-primary'"
+  <!-- 外层：进出场由 AnimatePresence 驱动（当前行有副字幕 / 有预览时才存在） -->
+  <AnimatePresence>
+    <motion.div
+      v-if="rows.length > 0 || (preview && preview.length > 0)"
+      class="glow-subtitles"
+      :style="{ textShadow }"
+      :initial="{ opacity: 0, y: 20 }"
+      :animate="{ opacity: 1, y: 0 }"
+      :exit="{ opacity: 0, y: 20 }"
+      :transition="{
+        opacity: { duration: 0.24, ease: 'easeOut' },
+        y: { duration: 0.24, ease: 'easeOut' }
+      }"
     >
-      {{ row.text }}
-    </p>
-  </div>
+      <!-- 辉光底：垫在文字后面的椭圆渐变，外扩 + 模糊见样式表 -->
+      <div class="glow-subtitle-glow" aria-hidden="true" :style="glowStyle" />
+
+      <div class="glow-subtitle-stack">
+        <template v-if="rows.length > 0">
+          <p
+            v-for="(row, index) in rows"
+            :key="row.role"
+            class="glow-subtitle"
+            :class="index > 0 ? 'is-secondary' : 'is-primary'"
+            :style="index > 0 ? { fontSize: secondaryFontSize } : undefined"
+          >
+            {{ row.text }}
+          </p>
+        </template>
+
+        <template v-else>
+          <p
+            v-for="(text, index) in preview"
+            :key="index"
+            class="glow-subtitle is-upcoming"
+            :style="{ fontSize: upcomingFontSize }"
+          >
+            {{ text }}
+          </p>
+        </template>
+      </div>
+    </motion.div>
+  </AnimatePresence>
 </template>
 
 <style scoped lang="scss" src="./glow-subtitle.scss"></style>

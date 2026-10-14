@@ -9,7 +9,12 @@ import { resolveSkinEmptyState } from '../shared/empty-state'
 import { useFoliaSerifReady } from '../shared/folia-font'
 import { useFoliaPalette } from '../shared/use-folia-palette'
 import { useSmoothClock } from '../shared/use-smooth-clock'
-import { resolveSubtitleTracks } from '../shared/subtitle-tracks'
+import {
+  SECONDARY_TRACK_SIZE_FACTOR,
+  resolveSubtitleFontSizes,
+  resolveSubtitleTracks,
+  resolveUpcomingPreview
+} from '../shared/subtitle-tracks'
 import type { SkinContext } from '../types'
 import { buildLineFloat } from './core/word-layout'
 import {
@@ -143,8 +148,38 @@ const emptyState = computed(() =>
   })
 )
 
-/** 底部副字幕轨道（罗马音在前、译文在后；可读性门槛与去重在共享层） */
+/**
+ * 底部副字幕轨道（罗马音在前、译文在后；可读性门槛与去重在共享层）。
+ *
+ * ⚠️ 与「倾诉」的一处**刻意差异**：流光的字幕档位是固定的 `'both'`
+ * （没有设置面板，不考虑"只看译文"这类开关），与上游 `classic` 的默认表现一致。
+ */
 const subtitleRows = computed(() => resolveSubtitleTracks(activeLine.line.value, 'both'))
+
+/**
+ * 「下一句」预览。
+ *
+ * 上游语义：**当前行有可读副字幕就不显示预览**，没有才显示接下来的两行
+ * （见 `shared/subtitle-tracks.resolveUpcomingPreview` 的说明）。
+ * 行源取自 store 原始行数组的下两行 —— 用 `activeLine.index`（逐帧时钟算出来的）
+ * 而不是 store 的节流下标，否则预览会比主舞台晚最多 250ms 切换。
+ */
+const upcomingPreview = computed(() => {
+  if (subtitleRows.value.length > 0) return []
+  const index = activeLine.index.value
+  if (index < 0) return []
+  return resolveUpcomingPreview(lyric.lines.slice(index + 1, index + 3))
+})
+
+/** 副字幕字号（倍率固定 1）：译文档 + 预览档 */
+const subtitleFontSizes = resolveSubtitleFontSizes(1)
+/** 次级轨道的字号（在译文档基础上再乘降档系数），拼成 clamp 字符串交给组件 */
+const secondarySubtitleFontSize = computed(() =>
+  subtitleFontSizes.translation.replace(
+    /(-?\d*\.?\d+)(rem|vw|px)/g,
+    (_match, value, unit) => `${(Number(value) * SECONDARY_TRACK_SIZE_FACTOR).toFixed(3)}${unit}`
+  )
+)
 
 /**
  * 辉光形态（`text-shadow` 还是降级的 `drop-shadow`）。
@@ -241,8 +276,14 @@ watch(
         </AnimatePresence>
       </motion.div>
 
-      <!-- 底部副字幕（罗马音 / 译文）：不吃事件，字号档在 glow-subtitle.scss -->
-      <GlowSubtitle :rows="subtitleRows" />
+      <!-- 底部副字幕（罗马音 / 译文）或「接下来两句」预览：不吃事件 -->
+      <GlowSubtitle
+        :rows="subtitleRows"
+        :preview="upcomingPreview"
+        :background="palette.background"
+        :secondary-font-size="secondarySubtitleFontSize"
+        :upcoming-font-size="subtitleFontSizes.upcoming"
+      />
 
       <!--
         整行点击跳转：舞台铺一层透明按钮（上游是 pointer-events-none，行跳转在外侧桥接层）。

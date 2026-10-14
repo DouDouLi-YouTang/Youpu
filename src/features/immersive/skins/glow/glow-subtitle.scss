@@ -1,47 +1,80 @@
 // 「流光」底部副字幕（由 GlowSubtitle.vue <style scoped src> 引入）。
 //
-// 字号 = Folia 的副字幕 clamp（`shared/subtitle-tracks.resolveSubtitleFontSizes`）
-// × 该行的降档系数。本项目流光没有设置面板，倍率固定 1（见 glow-adapter 的 GLOW_FONT_SCALE）。
+// 结构：
+//   .glow-subtitles        定位层（absolute，贴底栏上方）
+//     .glow-subtitle-glow  辉光底（外扩 + 模糊的椭圆渐变，颜色由内联注入）
+//     .glow-subtitle-stack 文字栈（罗马音 / 译文，或"接下来几句"预览）
 //
-// ⚠️ 三锚点 1.125rem / 2.6vw / 1.25rem 与 resolveSubtitleFontSizes 同源：
-// 那边是 TS 的公式，这边是它的静态展开。改一边必须改另一边
-// （靠 glow-subtitle.scss 里的数字与共享层常量同值来保证）。
+// ⚠️ 字号**不写在这里**：轨道字号由调用方按 `shared/subtitle-tracks` 的 clamp 与
+// 降档系数算好、以行内 style 传进来（次级轨道 0.88 倍、预览的 0.875rem 档）。
+// 写死在这里会让"同一首歌在流光/浮名两边字号不同"。本文件只管排布与质感。
 
 .glow-subtitles {
   position: absolute;
-  bottom: var(--glow-subtitle-bottom, 12vh);
-  left: 50%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  // 不换行、超长省略：副字幕是"跟着唱"的辅助信息，折成多行会把舞台压扁
-  // ⚠️ max-width 必须给，否则 absolute 定位的收缩宽度按内容撑开，省略号永不触发
-  max-width: min(88vw, 64rem);
-  transform: translateX(-50%);
+  right: 0;
+  bottom: var(--glow-subtitle-bottom, 0);
+  left: 0;
+  z-index: 20;
+  // 居中：文字栈是 inline-block，靠 text-align 居中（与外扩的辉光底不冲突）
+  padding: 0 1rem;
   text-align: center;
   pointer-events: none;
 }
 
+// 文字栈：`space-y-2` + `max-w-4xl mx-auto`
+.glow-subtitle-stack {
+  position: relative;
+  z-index: 10;
+  display: inline-block;
+  // max-w-4xl = 56rem；配 .glow-subtitles 的 text-align:center 实现居中
+  max-width: 56rem;
+  // 注意：不能加 `text-align: left`，否则上面的居中失效
+}
+
+// 辉光底：铺在文字下面的一层椭圆渐变。
+// ⚠️ 尺寸 / 模糊**不能**与 color-mix 的语法混写：颜色在 TS 侧算好（共享层公式），
+// 这里只负责"多大、多糊、在哪"。`-inset-*` 是相对 .glow-subtitles 的外扩量。
+.glow-subtitle-glow {
+  position: absolute;
+  inset: -1.5rem -2.5rem;
+  z-index: 0;
+  // `blur-2xl` = 40px：辉光底的边缘必须完全糊掉，否则能看到一个椭圆轮廓
+  filter: blur(40px);
+  pointer-events: none;
+}
+
+// 副字幕行：`truncate`（单行省略）+ 字重兜底 500（首行）/ 400（次级与预览）
 .glow-subtitle {
-  margin: 0;
+  position: relative;
+  z-index: 10;
+  margin: 0 auto;
+  // max-w-2xl = 42rem（上游对预览行就是这个宽度）
+  max-width: 42rem;
   overflow: hidden;
   font-weight: 500;
   letter-spacing: 0.02em;
   text-overflow: ellipsis;
   white-space: nowrap;
+
+  // 行间距 `space-y-2` = 0.5rem；次级轨道另有自己的 em 间距（见下）
+  & + & {
+    margin-top: 0.5rem;
+  }
 }
 
-// 首行：罗马音（跟着唱的那一档）
-.glow-subtitle.is-primary {
-  font-size: clamp(1.125rem, 2.6vw, 1.25rem);
-  opacity: 0.9;
-}
-
-// 第二行：译文，在首行基础上再降一档（见 GlowSubtitle.vue 文件头）。
-// gap 用 em：这个间距随字号缩放，窗口变小时间距跟着变小（`SECONDARY_TRACK_GAP_EM`）。
+// 次级轨道（译文）：在首行基础上降一档。
+// 字号由行内 style 给（调用方乘了 SECONDARY_TRACK_SIZE_FACTOR），
+// 这里只降字重与不透明度 —— 与上游 `subtitleTrackStyle` 的分工一致。
 .glow-subtitle.is-secondary {
-  margin-top: 0.25em;
-  font-size: calc(clamp(1.125rem, 2.6vw, 1.25rem) * 0.88);
   font-weight: 400;
   opacity: 0.82;
+  // ⚠️ 次级轨道的间距是 0.25em（相对**它自己**字号），覆盖上面的 0.5rem
+  margin-top: 0.25em;
+}
+
+// 预览行：`blur-[1px]` + 字重 400
+.glow-subtitle.is-upcoming {
+  font-weight: 400;
+  // 1px 的模糊：足够提示"这不是正在唱的那句"，又不影响读
+  filter: blur(1px);
 }

@@ -1,13 +1,18 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  PRIMARY_TRACK_FONT_WEIGHT_FALLBACK,
   SECONDARY_TRACK_FONT_WEIGHT_FALLBACK,
   SECONDARY_TRACK_GAP_EM,
   SECONDARY_TRACK_OPACITY,
   SECONDARY_TRACK_SIZE_FACTOR,
+  UPCOMING_PREVIEW_LIMIT,
+  buildSubtitleGlowGradient,
+  buildSubtitleTextShadow,
   hasReadableText,
   resolveSubtitleFontSizes,
-  resolveSubtitleTracks
+  resolveSubtitleTracks,
+  resolveUpcomingPreview
 } from './subtitle-tracks'
 
 /**
@@ -107,6 +112,57 @@ describe('次级轨道降档常数', () => {
     expect(SECONDARY_TRACK_OPACITY).toBe(0.82)
     expect(SECONDARY_TRACK_FONT_WEIGHT_FALLBACK).toBe(400)
     expect(SECONDARY_TRACK_GAP_EM).toBe(0.25)
+  })
+
+  it('首行字重兜底 500（与次级轨道的 400 拉开一档）', () => {
+    expect(PRIMARY_TRACK_FONT_WEIGHT_FALLBACK).toBe(500)
+  })
+})
+
+describe('下一句预览', () => {
+  it('最多取两行（上游 nextLines 取 2）', () => {
+    expect(UPCOMING_PREVIEW_LIMIT).toBe(2)
+    const lines = [{ text: 'a' }, { text: 'b' }, { text: 'c' }]
+    expect(resolveUpcomingPreview(lines)).toEqual(['a', 'b'])
+  })
+
+  it('同样过可读性门槛：占位行被跳过而不是占掉名额', () => {
+    const lines = [{ text: '//' }, { text: '●●●' }, { text: '第一句' }, { text: '第二句' }]
+    expect(resolveUpcomingPreview(lines)).toEqual(['第一句', '第二句'])
+  })
+
+  it('空行 / null / undefined 都跳过，不抛', () => {
+    expect(resolveUpcomingPreview([null, undefined, { text: '' }, { text: '有字' }])).toEqual([
+      '有字'
+    ])
+  })
+
+  it('limit 非法（0 / 负数 / NaN）时返回空数组，不做兜底成"显示一行"', () => {
+    const lines = [{ text: 'a' }]
+    expect(resolveUpcomingPreview(lines, 0)).toEqual([])
+    expect(resolveUpcomingPreview(lines, -3)).toEqual([])
+    expect(resolveUpcomingPreview(lines, Number.NaN)).toEqual([])
+  })
+
+  it('候选不足时给多少算多少（不补空档）', () => {
+    expect(resolveUpcomingPreview([{ text: '只有一句' }])).toEqual(['只有一句'])
+    expect(resolveUpcomingPreview([])).toEqual([])
+  })
+})
+
+describe('辉光底与文字阴影', () => {
+  /** 假的 withAlpha：只为断言形状，不引入真实颜色解析 */
+  const withAlpha = (color: string, alpha: number) => `rgba(${color},${alpha})`
+
+  it('辉光底三档：中心 0.96 / 62% 处 0.78 / 边缘透明', () => {
+    expect(buildSubtitleGlowGradient('#09090b', withAlpha)).toBe(
+      'radial-gradient(ellipse 115% 130% at center, ' +
+        'rgba(#09090b,0.96) 0%, rgba(#09090b,0.78) 62%, transparent 100%)'
+    )
+  })
+
+  it('文字阴影是 0 1px 2px 的底色 24%', () => {
+    expect(buildSubtitleTextShadow('#f5f5f4', withAlpha)).toBe('0 1px 2px rgba(#f5f5f4,0.24)')
   })
 })
 

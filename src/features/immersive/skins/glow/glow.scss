@@ -40,6 +40,12 @@
   font-family: 'Folia Noto Serif SC', serif;
   // 行/词可能被放大或旋转超出舞台，不裁切（上游也没裁）
   overflow: visible;
+
+  // 副字幕的底距：Folia 的基线 32px + 控制条净空 80px = 112px。
+  // 本项目控制条高 90px（--bottombar-height），故取它再加 22px 净空，
+  // 与「倾诉」的 `padding-bottom: calc(var(--bottombar-height) + …)` 是同一个意图：
+  // 让副字幕永远待在控制条上方，不会被它压住。
+  --glow-subtitle-bottom: calc(var(--bottombar-height, 90px) + 22px);
 }
 
 // 呼吸浮动层：跨行常驻（见 GlowLine.vue 文件头）。
