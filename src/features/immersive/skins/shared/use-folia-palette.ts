@@ -1,41 +1,37 @@
 /**
- * Folia 系皮肤（「流光」「浮名」）的**配色取值** —— Folia `Theme` 字段 → 本项目 CSS 变量。
+ * Folia 系皮肤（「流光」「浮名」）的**配色取值** —— 逐歌主题 → 皮肤要的四个字段。
  *
- * ## 为什么需要这一层
+ * ## 这一层现在的职责
  *
- * Folia 的两个面板都从一个 `Theme` 对象取色：
- * `backgroundColor` / `primaryColor` / `accentColor` / `secondaryColor`。
- * 本项目没有这个对象 —— 配色分散在「全局 token」与「专辑主色（沉浸层注入的 CSS 变量）」两处。
- * 两个皮肤各自去读 = 同一首歌在两个面板里颜色不一样，所以口径收在这里。
+ * 只有一件：把 `use-song-theme` 推出来的四个颜色（`backgroundColor` 命名是上游口径，
+ * 本项目内部叫 `background`）整理成两个皮肤用的 `FoliaPalette`，
+ * 并**把明暗档解析的结果一并给出**（`isDaylight`）。
  *
- * ## 映射表（`docs/luminous-porting-notes.md` §10.4 / `fume-porting-notes.md` §14）
+ * ## 为什么不再自己算颜色
  *
- * | Folia 字段 | 本项目的来源 | 用途 |
- * | --- | --- | --- |
- * | `backgroundColor` | 深色 `#09090b` / 浅色 `#f5f5f4` | 底色、副字幕辉光底 |
- * | `primaryColor` | 深色 `#f4f4f5` / 浅色 `#1c1917` | 未唱 / 唱过的字色 |
- * | `accentColor`   | 深色 `#f4f4f5` / 浅色 `#ea580c` | 正在唱的字色（无逐词配色时） |
- * | `secondaryColor`| 深色 `#71717a` / 浅色 `#44403c` | 副字幕、空态等次级文字 |
+ * 这里以前把 `background` / `primary` / `secondary` 写成上游基础主题的**字面量**，
+ * 只让 `accent` 跟随封面 —— 于是「每首歌主题色都一样」。
+ * 现在四个颜色都由 `shared/song-theme/` 从封面推出来（每首歌不同、两档配套），
+ * 本层只做字段改名与明暗解析，不再持有任何颜色常量。
  *
- * ⚠️ `backgroundColor` / `primaryColor` / `secondaryColor` 取的是**上游那两套基础主题的字面量**
- * （`services/baseThemes.ts` 的 `DEFAULT_THEME` / `DAYLIGHT_THEME`），不是本项目的全局 token：
- * 上游那两个值直接决定 shader 的底色与文字的对比关系，换成项目的 `--color-bg-primary`
- * 会让「同一首歌在两边不是一个颜色」。
+ * ⚠️ 中性兜底值仍在（`song-theme/neutral-theme.ts`），但它的身份变了：
+ * 以前是**最终值**，现在只是「封面还没解码完」那几十毫秒的占位（见那边的说明）。
  *
- * `accentColor` 是唯一**跟随本项目**的一项：本项目有「专辑主色」（每首歌从封面提取），
- * 而 Folia 的默认主题里 accent 等于 primary（纯白/纯黑）—— 直接用会让高亮完全看不出颜色。
- * 所以这里读沉浸层注入的 `--rnp-accent-color`，读不到才回退到上游字面量。
+ * ## 为什么还要返回 `isDaylight`
  *
- * ## 为什么要读 CSS 变量而不是读 store
- *
- * 主色的最终值由 `use-color-extraction` 写进**根元素的内联 style**（含浅色档的翻转），
- * store 里只有"变体名"。读 computed style 才是"当前真正生效的颜色"，
- * 与「倾诉」读 `--rnp-accent-color-shade-2` 是同一种做法。
+ * 不只是「怕调用方猜错」：`isLight` 是**明暗档的解析结果**（三态 `'dark' | 'light' | 'auto'`
+ * 加系统偏好），而 `palette.background` 只是它的一个**产物**。调用方若拿底色去反推
+ * （例如判断底色是不是某个具体十六进制值），等于把具体色值变成第二个契约点：
+ * 将来改动主题生成就会静默破坏这一判断。背景系统（`FoliaBackground`）需要的是
+ * 语义上的「是不是浅色」，所以在这里给出。
  */
 
-import { onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch, type ComputedRef, type Ref } from 'vue'
 
 import { useImmersiveSettingsStore } from '../../immersive-settings.store'
+import type { KeywordSourceLine } from './song-theme/keyword-colors'
+import { useSongTheme } from './song-theme/use-song-theme'
+import type { WordColorEntry } from './word-coloring'
 
 /** 面板配色（全部是 CSS 颜色字符串） */
 export interface FoliaPalette {
@@ -49,27 +45,16 @@ export interface FoliaPalette {
   secondary: string
 }
 
-/** 上游 `DEFAULT_THEME`（午夜墨染）里的三个字面量 */
-const DARK_PALETTE = {
-  background: '#09090b',
-  primary: '#f4f4f5',
-  secondary: '#71717a',
-  accent: '#f4f4f5'
-} as const
-
-/** 上游 `DAYLIGHT_THEME`（日光素白）里的三个字面量 */
-const LIGHT_PALETTE = {
-  background: '#f5f5f4',
-  primary: '#1c1917',
-  secondary: '#44403c',
-  accent: '#ea580c'
-} as const
-
-/** 拿不到 computed style 时的兜底（非浏览器环境 / 元素已卸载） */
-function readAccentVar(root: Element | null): string | null {
-  if (!root) return null
-  const value = getComputedStyle(root).getPropertyValue('--rnp-accent-color').trim()
-  return value || null
+/** 两个皮肤消费的输入：封面、歌曲 id、歌词行 */
+export interface FoliaPaletteSources {
+  /** 当前封面 URL（为空时仍然会按歌曲 id 生成一套随机主题） */
+  coverUrl: Ref<string | null | undefined> | ComputedRef<string | null | undefined>
+  /** 当前歌曲 id：主题种子，决定「这首歌是什么颜色」 */
+  songId: Ref<number | null | undefined> | ComputedRef<number | null | undefined>
+  /** 当前歌词纯文本行：只用于挑关键词（逐词配色） */
+  lyricLines:
+    | Ref<readonly (KeywordSourceLine | string)[]>
+    | ComputedRef<readonly (KeywordSourceLine | string)[]>
 }
 
 /**
@@ -87,10 +72,16 @@ function readAccentVar(root: Element | null): string | null {
  * 变成第二个契约点：将来改动主题色值就会静默破坏这一判断。
  * 背景系统（`FoliaBackground`）需要的是语义上的「是不是浅色」，所以在这里给出。
  */
-export function useFoliaPalette(): { palette: Ref<FoliaPalette>; isDaylight: Ref<boolean> } {
+export function useFoliaPalette(sources: FoliaPaletteSources): {
+  palette: ComputedRef<FoliaPalette>
+  isDaylight: Ref<boolean>
+  /** 逐词配色（关键词着色）；为空数组时逐词渲染退化成整行同色 */
+  wordColors: ComputedRef<WordColorEntry[]>
+} {
   const settings = useImmersiveSettingsStore()
-  const palette = ref<FoliaPalette>({ ...DARK_PALETTE })
   const isDaylight = ref(false)
+
+  const { colors, wordColors } = useSongTheme(sources)
 
   /** 系统偏好（只在 `colorScheme === 'auto'` 时被读） */
   let systemDark = true
@@ -109,23 +100,25 @@ export function useFoliaPalette(): { palette: Ref<FoliaPalette>; isDaylight: Ref
   }
 
   function refresh(): void {
-    const isLight =
+    isDaylight.value =
       settings.colorScheme === 'light' || (settings.colorScheme === 'auto' && !systemDark)
-    isDaylight.value = isLight
-    const base = isLight ? LIGHT_PALETTE : DARK_PALETTE
-    // 专辑主色优先（见文件头）；读不到（无封面 / 还没提取完）时用上游字面量
-    const accent = readAccentVar(document.querySelector('.immersive-root')) ?? base.accent
-    palette.value = {
-      background: base.background,
-      primary: base.primary,
-      secondary: base.secondary,
-      accent
-    }
   }
 
-  // 明暗档、主色变体都会换颜色；主色是异步提取的，所以还要在挂载后补读一次
+  /**
+   * 明暗档变化只影响 `isDaylight`（以及 `colors` 选哪一档，那一侧由 `useSongTheme` 自己监听）。
+   * `accentColorVariant` **刻意不再监听**：本面板的四个颜色是「这首歌的颜色」，
+   * 不是用户选的全局主色变体（全局变体由控制条的 `--rnp-accent-color` 承担，
+   * 见 `use-color-extraction`）。两套东西服务的对象不同，混在一起会让
+   * 「每首歌的颜色」被用户的全局偏好覆盖掉。
+   */
   watch(() => [settings.colorScheme, settings.accentColorVariant], refresh, { immediate: true })
-  onMounted(refresh)
 
-  return { palette, isDaylight }
+  const palette = computed<FoliaPalette>(() => ({
+    background: colors.value.backgroundColor,
+    primary: colors.value.primaryColor,
+    accent: colors.value.accentColor,
+    secondary: colors.value.secondaryColor
+  }))
+
+  return { palette, isDaylight, wordColors }
 }

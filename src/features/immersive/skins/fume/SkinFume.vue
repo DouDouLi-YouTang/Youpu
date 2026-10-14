@@ -72,7 +72,21 @@ const props = defineProps<{ ctx: SkinContext }>()
 
 const player = usePlayerStore()
 const lyric = useLyricStore()
-const { palette, isDaylight } = useFoliaPalette()
+/**
+ * 面板配色 —— 逐歌主题（从封面推出来，每首歌不同；口径见 `shared/use-folia-palette`）。
+ * `lyricLines` 只用于挑**关键词**（逐词配色），封面色盘与歌词无关。
+ */
+const { palette, isDaylight, wordColors } = useFoliaPalette({
+  coverUrl: computed(() => props.ctx.coverUrl()),
+  songId: computed(() => player.currentItem?.song.id ?? null),
+  // 带上逐词数据：有 YRC 的歌直接用品词边界，比在渲染层重新猜准（见 keyword-colors）
+  lyricLines: computed(() =>
+    lyric.lines.map((line) => ({
+      text: line.text,
+      words: line.words?.map((word) => word.word)
+    }))
+  )
+})
 /** 逐帧时钟：相机跟随打印光标要求「每帧都有时间」，4Hz 的 store 值不够 */
 const clock = useSmoothClock()
 
@@ -96,8 +110,13 @@ watch(fontState, clearSegmentMeasureCache, { immediate: true, flush: 'sync' })
  * 它参与背景种子与排版缓存键。
  *
  * `animationIntensity` 固定 `'normal'`：本面板没有设置面板，而强度档只影响
- * 辉光基量（§8.1）。`wordColors` 恒为空（本项目不做逐词配色，见
- * `shared/word-coloring.ts`）。
+ * 辉光基量（§8.1）。
+ *
+ * `wordColors` 来自逐歌主题（`useFoliaPalette` 的第三个返回值）——
+ * 关键词由本地规则从整首歌的歌词里挑出，颜色跟着封面走（见
+ * `shared/song-theme/keyword-colors.ts`）。上游这一项来自 AI 主题生成，
+ * 本项目用确定性规则替代，外观契约不变：命中关键词的词用它的颜色，
+ * 未命中回退到 `accentColor`。
  */
 const theme = computed<FumeTheme>(() => ({
   name: isDaylight.value ? 'daylight' : 'midnight',
@@ -106,7 +125,7 @@ const theme = computed<FumeTheme>(() => ({
   secondaryColor: palette.value.secondary,
   fontStyle: 'serif',
   animationIntensity: 'normal',
-  wordColors: []
+  wordColors: wordColors.value
 }))
 
 /**

@@ -7,6 +7,7 @@ import type { AnimationIntensity, GlowLineConfig, GlowWordConfig } from './core/
 import type { GlowWordTimingProfile } from './core/word-timing'
 import { buildGlowLayoutVariants, resolveContainerMotionSeconds } from './glow-variants'
 import type { SmoothClock } from '../shared/use-smooth-clock'
+import { resolveWordColor, type WordColorEntry } from '../shared/word-coloring'
 import GlowWord from './GlowWord.vue'
 
 /**
@@ -51,8 +52,19 @@ const props = defineProps<{
   fontSize: string
   /** 未唱 / 唱过的字色 */
   baseColor: string
-  /** 正在唱的字色 */
+  /** 正在唱的字色（**未命中关键词**时的回退色） */
   activeColor: string
+  /**
+   * 逐词配色（关键词着色）。
+   *
+   * 上游在逐词 map 里对每个词调一次 `resolveWordColor(word.text, theme.wordColors,
+   * theme.accentColor)`（`classic/Visualizer.tsx:325`），所以「正在唱的字」颜色
+   * **不是整行同一个**：命中关键词的词用它自己的颜色，其余回退到 `accentColor`。
+   * 本组件因此不再把 `activeColor` 直接下传，而是逐词解析（见 `wordActiveColor`）。
+   *
+   * 为空数组时所有词都回退到 `activeColor`，与加这个功能之前的表现完全一致。
+   */
+  wordColors?: readonly WordColorEntry[]
   /** 是否合唱行（本项目恒为 false，见 `GlowWord.vue` 文件头） */
   isChorus: boolean
 }>()
@@ -77,6 +89,18 @@ const containerMotion = computed(() =>
 const layoutVariants = computed(() =>
   buildGlowLayoutVariants(props.intensity, props.enableWordRotation)
 )
+
+/**
+ * 每个词自己的「正在唱」颜色。
+ *
+ * 逐词解析是**上游的原样分工**：关键词着色只改颜色，不参与逐字 timing、
+ * 行状态或副歌效果（见官网文档的「关键词着色」一节）。放在这里而不是
+ * `GlowWord` 内部，是因为一行只需解析一次 —— 逐词组件内部再算一遍
+ * 就是同一件事有两个答案，且会让每个词各自订阅 `wordColors`。
+ */
+const wordActiveColors = computed(() =>
+  props.words.map((word) => resolveWordColor(word.text, props.wordColors, props.activeColor))
+)
 </script>
 
 <template>
@@ -99,7 +123,7 @@ const layoutVariants = computed(() =>
       :layout-variants="layoutVariants"
       :font-size="fontSize"
       :base-color="baseColor"
-      :active-color="activeColor"
+      :active-color="wordActiveColors[index] ?? activeColor"
       :is-chorus="isChorus"
     />
   </motion.div>

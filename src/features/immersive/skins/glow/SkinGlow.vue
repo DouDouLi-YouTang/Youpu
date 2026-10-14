@@ -74,8 +74,25 @@ const props = defineProps<{ ctx: SkinContext }>()
 const lyric = useLyricStore()
 const player = usePlayerStore()
 
-/** 面板配色（Folia `Theme` 字段 → 本项目 CSS 变量，口径见 shared/use-folia-palette） */
-const { palette, isDaylight } = useFoliaPalette()
+/**
+ * 面板配色 —— 逐歌主题（从封面推出来，每首歌不同；口径见 `shared/use-folia-palette`）。
+ *
+ * 三个输入全部来自当前播放的歌：
+ *  - `coverUrl`：主题的颜色来源；
+ *  - `songId`：主题种子（决定随机色相，保证同一首歌颜色稳定）；
+ *  - `lyricLines`：只用于挑**关键词**（逐词配色，见下）。
+ */
+const { palette, isDaylight, wordColors } = useFoliaPalette({
+  coverUrl: computed(() => props.ctx.coverUrl()),
+  songId: computed(() => player.currentItem?.song.id ?? null),
+  // 带上逐词数据：有 YRC 的歌直接用品词边界，比在渲染层重新猜准（见 keyword-colors）
+  lyricLines: computed(() =>
+    lyric.lines.map((line) => ({
+      text: line.text,
+      words: line.words?.map((word) => word.word)
+    }))
+  )
+})
 /** 内置衬线字体的就绪信号：变化即重测词宽（见 use-glow-layout） */
 const { fontState } = useFoliaSerifReady()
 
@@ -252,6 +269,7 @@ function handleSeek(): void {
             :font-size="fontSize"
             :base-color="palette.primary"
             :active-color="palette.accent"
+            :word-colors="wordColors"
             :is-chorus="false"
           />
 
