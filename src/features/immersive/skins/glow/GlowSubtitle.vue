@@ -30,6 +30,15 @@ import {
  * 底色取当前主题的 `background`。辉光底铺在一个**外扩的模糊层**上
  * （上游 `-inset-x-10 -inset-y-6 blur-2xl`），所以它比文字盒子大一圈 ——
  * 内联给渐变、样式表给尺寸与模糊，两边各管一件事。
+ *
+ * ## 字色与整层不透明度
+ *
+ * 两处**都不是**从正文继承来的，必须显式给：
+ *  - 字色是主题的 `secondaryColor`（正文是 `primaryColor`，次级色更灰）；
+ *    上游把 `color` 写在每一行上（`VisualizerSubtitleOverlay`），所以这里也写在每行上，
+ *    整层的 `textShadow` 才是那个 `0 1px 2px rgba(bg, .24)`。
+ *  - 整层不透明度是 `subtitleOverlayOpacity`，默认 **0.6**。
+ *    漏掉它的观感差异很明显：字幕比上游"实"一档，在亮背景上会抢主舞台的注意力。
  */
 const props = defineProps<{
   /** 已解析好的轨道（罗马音在前、译文在后；可能只有一条，也可能为空） */
@@ -38,6 +47,10 @@ const props = defineProps<{
   preview?: readonly string[]
   /** 主题底色（辉光底与文字阴影都从它派生） */
   background: string
+  /** 副字幕字色（主题 `secondaryColor`，**不是**正文色；见文件头） */
+  color: string
+  /** 整层的不透明度（上游 `subtitleOverlayOpacity`，默认 0.6） */
+  opacity: number
   /** 次级轨道的字号（clamp 字符串，已乘降档系数） */
   secondaryFontSize: string
   /** 预览行的字号（clamp 字符串） */
@@ -59,9 +72,9 @@ const textShadow = computed(() => buildSubtitleTextShadow(props.background, colo
     <motion.div
       v-if="rows.length > 0 || (preview && preview.length > 0)"
       class="glow-subtitles"
-      :style="{ textShadow }"
+      :style="{ textShadow, color }"
       :initial="{ opacity: 0, y: 20 }"
-      :animate="{ opacity: 1, y: 0 }"
+      :animate="{ opacity, y: 0 }"
       :exit="{ opacity: 0, y: 20 }"
       :transition="{
         opacity: { duration: 0.24, ease: 'easeOut' },

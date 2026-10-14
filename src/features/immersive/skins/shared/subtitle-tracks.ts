@@ -85,6 +85,15 @@ export const SECONDARY_TRACK_FONT_WEIGHT_FALLBACK = 400
 export const SECONDARY_TRACK_GAP_EM = 0.25
 
 /**
+ * 副字幕整层的不透明度 —— 上游 `subtitleOverlayOpacity` 的默认值。
+ *
+ * 它作用在**整个字幕层**上（含辉光底），次级轨道的 `SECONDARY_TRACK_OPACITY` 再在
+ * 它之上叠一层不透明度 —— 两个系数是相乘关系，不是二选一。
+ * 上游取值链：`resolvedOpacity = subtitleOverlayOpacity ?? 0.6`。
+ */
+export const SUBTITLE_OVERLAY_OPACITY = 0.6
+
+/**
  * 「下一句预览」最多显示几行 —— 上游 `nextLines` 取 2 行。
  *
  * 多于此值会把底栏堆成一小段歌词列表，反而抢走主舞台的注意力。

@@ -13,7 +13,8 @@ import {
   SECONDARY_TRACK_SIZE_FACTOR,
   resolveSubtitleFontSizes,
   resolveSubtitleTracks,
-  resolveUpcomingPreview
+  resolveUpcomingPreview,
+  SUBTITLE_OVERLAY_OPACITY
 } from '../shared/subtitle-tracks'
 import type { SkinContext } from '../types'
 import { buildLineFloat } from './core/word-layout'
@@ -275,6 +276,8 @@ function handleSeek(): void {
         :rows="subtitleRows"
         :preview="upcomingPreview"
         :background="palette.background"
+        :color="palette.secondary"
+        :opacity="SUBTITLE_OVERLAY_OPACITY"
         :secondary-font-size="secondarySubtitleFontSize"
         :upcoming-font-size="subtitleFontSizes.upcoming"
       />
