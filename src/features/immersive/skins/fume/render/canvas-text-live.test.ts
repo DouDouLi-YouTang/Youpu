@@ -18,10 +18,11 @@
  * 计数就不再是 0。
  */
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { drawFumeLiveBlock, type FumeLiveBlockParams } from './canvas-text-live'
 import { resolveFumeFontSpec } from './canvas-text'
+import { setGlowBlurQuantized } from '../../shared/glow-blur-quantize'
 import { resolveFumeBlockTiming, type FumeBlockTiming } from '../core/block-frame'
 import { makeFumeBlock, makeFumeLine, makeFumeTheme } from '../core/fume-test-fixtures'
 import type { FumeBlock, FumeRenderLineSlice, FumeWordRange } from '../core/fume-types'
@@ -29,6 +30,22 @@ import type { FumeBlock, FumeRenderLineSlice, FumeWordRange } from '../core/fume
 const GRAPHEMES = ['一', '二', '三', '四']
 const ACCENT = 'rgb(234, 88, 12)'
 const PRIMARY = 'rgb(244, 244, 245)'
+
+/**
+ * 显式关掉 Linux 的字形缓存降级开关。
+ *
+ * node 环境本来就判定为非 Linux（`detectLinux` 先看 `window`），所以默认值已经是关；
+ * 但这里**显式**关一次是有意义的：降级模式下 `fillGlowText` 会走「测量包围盒 + 裁剪」
+ * 那条分支，多出一次 `rect`，而下面「合并 run」的断言正是按 `rect` 次数数的。
+ * 不写这一行的话，将来平台判定一变，这批断言会在某个平台上**静默换成另一套语义**。
+ */
+beforeEach(() => {
+  setGlowBlurQuantized(false)
+})
+
+afterEach(() => {
+  setGlowBlurQuantized(false)
+})
 
 /** 造一条渲染行：4 个字素、每字素 50px，全部在同一个片段里 */
 function makeLiveRenderLine(): FumeRenderLineSlice {
