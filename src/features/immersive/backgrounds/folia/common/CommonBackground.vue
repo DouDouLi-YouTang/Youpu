@@ -31,15 +31,30 @@ import FluidCoverLayer from './FluidCoverLayer.vue'
  * ## 几何层用的是本仓库已有的独立重写（规格 §10.5）
  *
  * `backgrounds/GeometricBackground.vue`（+ `geometric-model.ts`）是 common 几何层的
- * **既有重写**：确定性种子、CSS keyframes 而非 framer-motion、暂停时不冻结、暗角末色
- * 取 `--rnp-accent-color-overlay`。这些差异是**有意为之，不要「修正」**。
- * 它不声明 props（自己读 player store 与全局 `audioBands`），所以这一层只做两件事：
+ * **既有重写**：确定性种子、CSS keyframes 而非 framer-motion、暂停时不冻结。
+ * 这些差异是**有意为之，不要「修正」**。它自己读 player store 与全局 `audioBands`，
+ * 所以这一层只做三件事：
  *
  *  1. `disableGeometricBackground` → **整层不挂载**（对应它的 `hideShapes` 语义）；
  *  2. `disableVignette` → 用 `:deep()` 关掉它内部那个 `.rnp-geo-vignette` 元素。
  *     这是本文件唯一一处「依赖对方类名」的耦合：对方组件没有暴露这个开关，
  *     而 `common.disableVignette` 是本模式契约的一部分，只能这样落位。
  *     如果对方改名或换结构，这条规则会静默失效 —— 排查暗角关不掉时先看这里。
+ *  3. **把逐歌主题交给它，并让它别自铺底色**（`theme` / `:paint-background="false"`）。
+ *
+ * ## 为什么几何层不能自铺底色（2026-10-14 修正）
+ *
+ * Folia 的几何层是**透明**的 —— 底色一律由外壳的主题底色层负责（就是上面第 2 层）。
+ * 本仓库的几何层却自铺了 `--rnp-accent-color-bg`（**全局主色系**的底色），那是给
+ * 「几何背景」皮肤用的（那一层确实没有独立的底色层）。
+ *
+ * 于是 common 层出现了「每首歌底色都一样」：几何层那块全局主色底把上面第 2 层的
+ * **逐歌主题底色**整块盖住了。实测同一首歌里 `.folia-common-background` 是
+ * `rgb(45,33,17)`（歌曲主题）、`.rnp-background-geometric` 却是 `rgb(52,49,23)`
+ * （全局主色），用户看到的是后者。
+ *
+ * 同一个原因还让形状/粒子的取色错位：它们取的是全局主色，不是这首歌的主题色，
+ * 于是「形状与底色不配套」。传 `theme` 之后两者都跟着歌曲走。
  */
 const props = defineProps<{
   theme: FoliaTheme
@@ -96,7 +111,15 @@ defineExpose({ plan, defaultOpacity: DEFAULT_COMMON_BACKGROUND_OPACITY })
       class="folia-common-geometric"
       :class="{ 'is-vignette-off': !plan.showVignette }"
     >
-      <GeometricBackground />
+      <!--
+        `paint-background=false`：底色归上面第 2 层（逐歌主题），几何层必须透明，
+        否则会把主题底色整块盖掉（见文件头）。
+        `vignette-color` 固定黑：Folia 的暗角末色是 `rgba(0,0,0,.6)`，不跟随明暗翻转
+        —— 那套翻转是「几何背景」皮肤为了浅色底才加的。
+        这里给不透明黑而不是 `rgba(...,.6)`：样式表上那层已经有 `opacity: .6`，
+        两处都写 0.6 会相乘成 0.36，暗角会明显偏淡。
+      -->
+      <GeometricBackground :theme="theme" :paint-background="false" vignette-color="rgb(0, 0, 0)" />
     </div>
   </div>
 </template>

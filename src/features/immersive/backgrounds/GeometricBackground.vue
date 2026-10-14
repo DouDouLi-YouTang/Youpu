@@ -30,10 +30,25 @@ import {
 } from './geometric-model'
 
 /**
- * 几何背景（`backgroundType = 'geometric'`）—— Folia `GeometricBackground.tsx` 的独立重写。
+ * 几何背景 —— Folia `GeometricBackground.tsx` 的独立重写。两个宿主共用：
+ *
+ *  1. 「几何背景」皮肤（`ImmersiveBackground.vue`，`backgroundType = 'geometric'`）
+ *     —— 不传 props，取色走全局主色系 CSS 变量；
+ *  2. Folia 的 `common` 背景层（`backgrounds/folia/common/CommonBackground.vue`）
+ *     —— 传 `theme` 让它跟随**这首歌**的主题四色。
  *
  * 构成：底色 + 15 个缓慢漂移自转的几何形状 + 20 个上浮粒子 + 一层径向暗角。
- * 形状取次要色（`shade-2`，跟随明暗主题自动翻转），粒子与暗角取专辑主色系。
+ * 形状取次要色、粒子取强调色 —— 与 Folia 的 `secondaryColor` / `accentColor` 分工一致。
+ *
+ * ## 为什么取色要能从外面传进来
+ *
+ * 本组件的默认取色是**全局主色系**（`--rnp-accent-color-*`），那是给「几何背景」皮肤用的
+ * —— 那一层没有逐歌主题。但 Folia 的 `common` 层拿的是**当前歌曲的主题**（四色都跟着封面走），
+ * 两者不是一回事：不传 `theme` 时形状会是全局主色，而底色层已经是歌曲主题色，
+ * 于是「形状与底色不配套」，浅色封面上还会出现「深色形状压在浅色主题底上」。
+ *
+ * 所以取色做成 props 覆盖（不传 = 沿用 CSS 变量的既有行为），而不是在组件内部读 store ——
+ * 组件不该知道「谁在用它」，更不该猜。
  *
  * **与 Folia 的三点差异（都是刻意的）**：
  *  1. 随机源换成确定性种子（同一首歌恒定同一套布局），见 geometric-model.ts 文件头；
@@ -52,6 +67,34 @@ import {
  */
 
 const player = usePlayerStore()
+
+/**
+ * 取色与铺底的覆盖项。**全部可选** —— 不传时沿用全局主色系 CSS 变量（既有行为）。
+ */
+const props = defineProps<{
+  /**
+   * 主题四色（Folia `Theme` 的字段名）。传了就用它取色：
+   * 形状 ← `secondaryColor`、粒子 ← `accentColor`、底色 ← `backgroundColor`。
+   */
+  theme?: {
+    backgroundColor?: string
+    accentColor?: string
+    secondaryColor?: string
+  } | null
+  /**
+   * 是否自铺底色。**Folia 的几何层本身是透明的**，底色由外壳的主题底色层负责 ——
+   * 所以 `common` 层必须传 `false`，否则几何层会把它上面那层逐歌主题底色整块盖掉
+   * （表现是「每首歌的底色都一样」，因为盖上来的是全局主色）。
+   *
+   * 「几何背景」皮肤那一层没有独立的主题底色层，所以默认 `true`（自铺）。
+   */
+  paintBackground?: boolean
+  /**
+   * 暗角末色。Folia 恒为 `rgba(0,0,0,0.6)`；不传时沿用 `--rnp-accent-color-overlay`
+   * （随明暗翻转，供「几何背景」皮肤在浅色下用）。
+   */
+  vignetteColor?: string
+}>()
 
 // 种子：按歌曲折叠。**不含播放进度** —— 背景不该随每一句歌词重掷
 const seed = computed(() => resolveGeometricSeed(player.currentItem?.song.id ?? null))
@@ -128,10 +171,40 @@ function particleStyle(p: (typeof particles.value)[number]): Record<string, stri
     '--g-rise': `${PARTICLE_RISE_PX}px`
   }
 }
+
+/**
+ * 取色覆盖 → 容器上的 CSS 变量。
+ *
+ * 走 CSS 变量而不是把颜色写进每个形状的内联样式：形状是 35 个节点，
+ * 颜色进内联样式就得在 `shapeStyle` / `particleStyle` 里各拼一次，
+ * 而它们现在是纯几何的（与主题无关）。变量只在容器上写一次。
+ *
+ * 未提供的项**不写空值**：写 `undefined` 会让 CSS 变量变成空串，
+ * 于是 `var(--g-shape-color, 兜底)` 取到空而不是兜底 —— 形状会整层消失。
+ */
+const colorVars = computed<Record<string, string>>(() => {
+  const vars: Record<string, string> = {}
+  const theme = props.theme
+  if (theme?.secondaryColor) vars['--g-shape-color'] = theme.secondaryColor
+  if (theme?.accentColor) vars['--g-particle-color'] = theme.accentColor
+  if (theme?.backgroundColor && props.paintBackground !== false) {
+    vars['--g-bg-color'] = theme.backgroundColor
+  }
+  if (props.vignetteColor) vars['--g-vignette-color'] = props.vignetteColor
+  return vars
+})
+
+/** 是否自铺底色。Folia 的几何层透明，见 props 的说明 */
+const paintsBackground = computed(() => props.paintBackground !== false)
 </script>
 
 <template>
-  <div ref="rootRef" class="rnp-background-geometric">
+  <div
+    ref="rootRef"
+    class="rnp-background-geometric"
+    :class="{ 'is-background-transparent': !paintsBackground }"
+    :style="colorVars"
+  >
     <div
       v-for="shape in shapes"
       :key="shape.id"

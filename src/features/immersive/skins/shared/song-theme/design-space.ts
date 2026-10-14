@@ -69,22 +69,38 @@ export const SECONDARY_MIN_CONTRAST = 4.5
  */
 export const MIN_BACKGROUND_SATURATION = 0.04
 
-/** 三档气质各自的明度/饱和度区间（暗色档在前，亮色档在后） */
+/**
+ * 三档气质各自的明度/饱和度区间（暗色档在前，亮色档在后）。
+ *
+ * ⚠️ **暗色档的明度区间是照着上游的实测值定的，不要「顺手调亮」**。
+ * 上游 AI 主题接口给的样例与官网定妆照（`screens/preview-lumi.png`）实测：
+ *  - 接口样例 `#101217`（L≈0.076）、`#0f172a`（L≈0.11）；
+ *  - 内置默认 `#09090b`（L≈0.037）；
+ *  - 定妆照边缘最暗 10% 是 `rgb(7,11,20)`（L≈0.053）。
+ *
+ * 也就是**上游的深色底几乎都在 L 0.04–0.11 这一段**。第一版把 `rich` 开到 0.14、
+ * `tinted` 开到 0.11，实测生成 `#2d2111`（L≈0.12，一块橄榄绿）——
+ * 与定妆照那种「近黑、只透一点色相」的观感完全不是一回事，
+ * 而且底色一亮，正文与强调色的对比度地板就被推着一起变，整页看着发灰。
+ *
+ * 饱和度**不跟着压**：上游那几张的 HSL 饱和度是 0.1–0.48，
+ * 「低明度 + 中高饱和」正是它「近黑但有色调」的来源（压掉饱和度会变成纯灰黑）。
+ */
 export const BACKGROUND_TONES: Record<PaletteTone, BackgroundTone> = {
   ink: {
-    darkLightness: [0.055, 0.085],
+    darkLightness: [0.035, 0.06],
     darkSaturation: [0.1, 0.22],
     lightLightness: [0.94, 0.965],
     lightSaturation: [0.05, 0.12]
   },
   tinted: {
-    darkLightness: [0.075, 0.11],
+    darkLightness: [0.05, 0.075],
     darkSaturation: [0.2, 0.36],
     lightLightness: [0.92, 0.95],
     lightSaturation: [0.1, 0.2]
   },
   rich: {
-    darkLightness: [0.095, 0.14],
+    darkLightness: [0.065, 0.095],
     darkSaturation: [0.32, 0.5],
     lightLightness: [0.9, 0.935],
     lightSaturation: [0.18, 0.3]

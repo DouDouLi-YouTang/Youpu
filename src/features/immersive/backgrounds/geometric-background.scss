@@ -18,6 +18,10 @@
   --g-band-power: 0.95;
   // 形状的公共颜色：次要色（Folia 的 secondaryColor）
   --g-shape-color: var(--rnp-accent-color-shade-2, #f4f7f5);
+  // 粒子颜色：强调色（Folia 的 accentColor）
+  --g-particle-color: var(--rnp-accent-color, #aaa);
+  // 暗角末色：深色主题是黑、浅色主题是白（外壳已翻转）
+  --g-vignette-color: var(--rnp-accent-color-overlay, rgba(0, 0, 0, 1));
 
   position: absolute;
   inset: 0;
@@ -26,8 +30,16 @@
   // 同源（同一套明暗主题）；本项目的沉浸层明暗与 app 主题**相互独立**——
   // 「沉浸深色 + app 浅色」是合法组合，透明就会露出 --color-bg-primary（浅色 #f5f7f6），
   // 于是浅色形状落在浅底上、深色暗角只剩一圈灰边，整层看着「什么都没有」。
-  background-color: var(--rnp-accent-color-bg);
+  // 变量链：外部传入的逐歌主题色（`common` 层）优先，否则回退到全局主色系
+  background-color: var(--g-bg-color, var(--rnp-accent-color-bg));
   overflow: hidden;
+
+  // Folia 的几何层**本身是透明的**，底色由外壳的主题底色层负责。
+  // `common` 层用这一档：它上面那层底色是**逐歌主题**，几何层再自铺一层全局主色底
+  // 会把它整块盖掉（表现是「每首歌的底色都一样」）。见组件 props 的说明。
+  &.is-background-transparent {
+    background-color: transparent;
+  }
 }
 
 // ── 形状 ──
@@ -146,7 +158,7 @@
 .rnp-geo-particle {
   position: absolute;
   border-radius: 50%;
-  background-color: var(--rnp-accent-color, #aaa);
+  background-color: var(--g-particle-color);
   // backwards 同形状：延迟期间取 0% 关键帧（透明），而不是让内联透明度先亮出来再灭掉
   animation: rnp-geo-rise var(--g-dur, 20s) linear infinite backwards;
   animation-delay: var(--g-delay, 0s);
@@ -183,11 +195,7 @@
   inset: 0;
   pointer-events: none;
   opacity: 0.6;
-  background: radial-gradient(
-    circle,
-    transparent 40%,
-    var(--rnp-accent-color-overlay, rgba(0, 0, 0, 1)) 100%
-  );
+  background: radial-gradient(circle, transparent 40%, var(--g-vignette-color) 100%);
 }
 
 // 无障碍：跟随系统「减少动态效果」时停掉漂移与上浮（保留静态构图）
