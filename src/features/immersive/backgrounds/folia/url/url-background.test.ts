@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   mergeUrlBackgroundList,
   normalizeUrlBackgroundUrl,
+  resolveSelectedUrlBackgroundItem,
   sanitizeUrlBackgroundItem,
   sanitizeUrlBackgroundList
 } from './url-background'
@@ -79,5 +80,40 @@ describe('sanitizeUrlBackgroundList', () => {
       { id: 'c', url: 'https://c.test/', note: 'C' }
     ])
     expect(sanitizeUrlBackgroundList('nope')).toEqual([])
+  })
+})
+
+describe('resolveSelectedUrlBackgroundItem', () => {
+  const items = [
+    { id: 'a', url: 'https://a.test/', note: 'A' },
+    { id: 'b', url: 'https://b.test/', note: 'B' }
+  ]
+
+  it('命中时返回清洗后的项', () => {
+    expect(resolveSelectedUrlBackgroundItem(items, 'b')).toEqual({
+      id: 'b',
+      url: 'https://b.test/',
+      note: 'B'
+    })
+  })
+
+  it('未命中 / 缺 id / 列表非法都返回 null（调用方连遮罩都不渲染）', () => {
+    expect(resolveSelectedUrlBackgroundItem(items, 'missing')).toBeNull()
+    expect(resolveSelectedUrlBackgroundItem(items, null)).toBeNull()
+    expect(resolveSelectedUrlBackgroundItem(items, '')).toBeNull()
+    expect(resolveSelectedUrlBackgroundItem(null, 'a')).toBeNull()
+    expect(resolveSelectedUrlBackgroundItem('nope' as never, 'a')).toBeNull()
+  })
+
+  it('列表里混进非白名单 url 时会被这一层再次拦下（最后检查点）', () => {
+    expect(
+      resolveSelectedUrlBackgroundItem([{ id: 'x', url: 'file:///C:/secret.txt' } as never], 'x')
+    ).toBeNull()
+    expect(
+      resolveSelectedUrlBackgroundItem(
+        [{ id: 'x', url: 'javascript:alert(1)', note: 'x' } as never],
+        'x'
+      )
+    ).toBeNull()
   })
 })

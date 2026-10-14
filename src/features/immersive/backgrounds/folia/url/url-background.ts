@@ -89,3 +89,21 @@ export function sanitizeUrlBackgroundList(items: unknown): FoliaUrlBackgroundIte
   }
   return next
 }
+
+/**
+ * 从列表里取出当前选中项，**并且再清洗一次**。
+ *
+ * 为什么要重复清洗（列表已经是 sanitize 过的）：选中 id 是持久化值，
+ * 可能与列表不同步；而这里的返回值**直接决定 iframe 的 `src`**。
+ * 在「即将把 URL 交给渲染进程」的最后一个点上再校验一次白名单，
+ * 是这条链路上唯一能兜住「上游被绕过」的位置。
+ *
+ * 未命中 / 清洗失败返回 null（调用方据此**连遮罩一起不渲染**，与 Folia 一致）。
+ */
+export function resolveSelectedUrlBackgroundItem(
+  items: readonly FoliaUrlBackgroundItem[] | null | undefined,
+  selectedId: string | null | undefined
+): FoliaUrlBackgroundItem | null {
+  if (!Array.isArray(items) || !selectedId) return null
+  return sanitizeUrlBackgroundItem(items.find((item) => item.id === selectedId))
+}
