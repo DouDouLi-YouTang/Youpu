@@ -77,10 +77,11 @@ describe('fonts.scss 注册的族名与常量一致', () => {
     const sources = [...fontsScssNoComments.matchAll(/url\(['"]\.\/([^'"]+\.woff2)['"]\)/g)].map(
       (m) => m[1]
     )
-    expect(
-      sources.length,
-      `fonts.scss 里的 woff2 引用数（${sources.length}）应等于内置字体族数（${TILT_LYRIC_FONT_FAMILIES.length}）`
-    ).toBe(TILT_LYRIC_FONT_FAMILIES.length)
+    // ⚠️ 这里**不**断言「引用数 === 倾诉字体族数」：fonts.scss 是全部内置字体的注册表，
+    // 除了倾诉的两个族，还注册了「流光 / 浮名」的衬线字体（同一族的 400 / 500 两条）。
+    // 数量相等只在「只有倾诉用内置字体」的那段时间成立，钉死它会让新增字体必然误报。
+    // 真正要守的是下面两条：倾诉的两个族各有引用、每个引用都指向真实文件。
+    expect(sources.length).toBeGreaterThanOrEqual(TILT_LYRIC_FONT_FAMILIES.length)
     // 真去读文件：文件名打错时，构建能过（Vite 会当资源引用处理），但测试拦下来
     for (const file of sources) {
       expect(
@@ -99,7 +100,11 @@ describe('OFL 许可证原文的两份副本保持同步', () => {
    * 带的是一份过期/不匹配的许可证」—— 这正是 OFL 要求附带原文想避免的事，
    * 而且不会有任何构建或运行期报错来提醒。所以用测试把两份钉成必须一致。
    */
-  const LICENSES = ['ZCOOL-KuaiLe-OFL.txt', 'M-PLUS-Rounded-1c-OFL.txt'] as const
+  const LICENSES = [
+    'ZCOOL-KuaiLe-OFL.txt',
+    'M-PLUS-Rounded-1c-OFL.txt',
+    'Noto-Serif-SC-OFL.txt'
+  ] as const
 
   it.each(LICENSES)('%s：src 与 public 两份逐字相同，且都是 OFL 原文', (file) => {
     const inSrc = readSource(`../../../../assets/fonts/${file}`)
@@ -110,9 +115,31 @@ describe('OFL 许可证原文的两份副本保持同步', () => {
   })
 
   it('每个内置字体都有一份对应的许可证文件（新增字体时别漏）', () => {
-    // 字体文件数 === 许可证文件数：加字体不加许可证会被这里拦下
-    const fontFiles = [...fontsScss.matchAll(/url\('\.\/([^']+\.woff2)'\)/g)].length
-    expect(LICENSES.length).toBe(fontFiles)
+    /*
+     * 校验的是「每个字体**族**都有许可证」，不是「woff2 文件数 === 许可证数」：
+     * 一个族可以有多个字面（Noto Serif SC 就是 400 / 500 两个 woff2 共用一份 OFL），
+     * 按文件数比对会在加字面的那一刻误报。按族比对才对应 OFL 的实际要求。
+     */
+    const fontFamilySlugs = [
+      ...new Set(
+        [...fontsScss.matchAll(/url\(['"]\.\/([^'"]+?)-\d+\.woff2['"]\)/g)].map((m) =>
+          m[1].toLowerCase().replace(/[^a-z0-9]/g, '')
+        )
+      )
+    ]
+    expect(fontFamilySlugs.length, 'fonts.scss 里没扫到任何 woff2 引用').toBeGreaterThan(0)
+
+    const licenseSlugs = LICENSES.map((file) => ({
+      file,
+      slug: file.toLowerCase().replace(/[^a-z0-9]/g, '')
+    }))
+
+    for (const slug of fontFamilySlugs) {
+      expect(
+        licenseSlugs.some((license) => license.slug.includes(slug)),
+        `字体族 ${slug} 没有对应的 OFL 许可证文件（新增字体时别漏）`
+      ).toBe(true)
+    }
   })
 })
 
