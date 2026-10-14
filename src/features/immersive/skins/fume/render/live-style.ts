@@ -59,6 +59,11 @@ const LINE_GLOW_ENVELOPE_PEAK = 0.8
 /** 阴影色相对字色 alpha 的倍率（§10.4b 的 1.35） */
 const LINE_GLOW_SHADOW_ALPHA_SCALE = 1.35
 
+/** 造一个空的整行辉光容器（调用方复用一个实例，见文件头） */
+export function createFumeLiveLineGlow(): FumeLiveLineGlow {
+  return { alpha: 0, blur: 0, fillStyle: '', shadowColor: '' }
+}
+
 /**
  * 整行辉光的参数（§10.4b）。
  *
