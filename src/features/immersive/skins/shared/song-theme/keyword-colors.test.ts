@@ -43,35 +43,47 @@ describe('pickKeywords', () => {
   })
 
   it('频次高的词排在前面', () => {
-    const keywords = pickKeywords(['星も 星も 星も 夕陽も'], 4)
-    expect(keywords[0]).toBe('星も')
-  })
-
-  it('频次相同时更长的词优先', () => {
-    // 带上逐词数据，从而绕开「兜底路径要求重复出现」那条闸门，
-    // 本条用例要断言的是排序规则本身
-    const keywords = pickKeywords([{ text: '银河 星', words: ['银河', '星'] }], 2)
+    // 两个候选词都是 2 字（长度闸门放行），只差频次
+    const keywords = pickKeywords(['银河 银河 银河 星空'], 4)
     expect(keywords[0]).toBe('银河')
   })
 
-  it('有逐词数据时直接用词边界（不做滑窗、不要求重复）', () => {
-    const keywords = pickKeywords(
-      [{ text: '零れ落ちそうな星も', words: ['零れ落ち', 'そうな', '星も'] }],
-      10
-    )
-
-    expect(keywords).toContain('零れ落ち')
-    expect(keywords).toContain('星も')
-    // 滑窗的产物不该出现：这些片段只在「按字符重新切分」时才会产生
-    // （`そうな` 不在此列 —— 它是歌词层给出的真实词边界，本就该入选）
-    for (const fragment of ['れ落ち', '落ちそ', 'ちそう']) {
-      expect(keywords).not.toContain(fragment)
-    }
+  it('频次相同时更长的词优先', () => {
+    // 两个候选词频次相同（都出现一次），长词该排在前面
+    const keywords = pickKeywords(['星尘 银河'], 2)
+    expect(keywords[0]).toBe('银河')
   })
 
-  it('兜底路径要求重复出现：只出现一次的片段不算关键词', () => {
-    // 没有任何重复的两行，滑窗产物全部只出现一次 → 一个关键词都不该选出
-    expect(pickKeywords(['あいうえお かきくけこ'], 10)).toEqual([])
+  it('候选词来自 Intl.Segmenter 的词边界，而不是滑窗碎片', () => {
+    const keywords = pickKeywords([{ text: '零れ落ちそうな星も' }], 10)
+
+    // 滑窗路径的产物（这些碎片只在按固定窗口切分时才会产生）不该出现
+    for (const fragment of ['れ落ち', '落ちそ', 'ちそう', 'そうな']) {
+      expect(keywords).not.toContain(fragment)
+    }
+    // 真实词边界才该入选
+    expect(keywords).toContain('落ち')
+  })
+
+  it('⚠️ 回归：网易云 YRC 那种「逐字符 words」不再让关键词列表变空', () => {
+    // 这条用例钉的是 2026-10-15 修掉的真 bug：原先候选词直接取 `line.words`，
+    // 而 YRC 的 words 是按字符切的 → 每个候选词都短于 2 字 → 恒为空数组。
+    // 现在切分口径收进本模块，与传不传 words 无关。
+    const yrcLike = [
+      { text: '爱你孤身走暗巷' },
+      { text: '爱你不跪的模样' },
+      { text: '爱你对峙过绝望' }
+    ]
+    const keywords = pickKeywords(yrcLike, 12)
+
+    expect(keywords.length).toBeGreaterThan(0)
+    // 「爱」是单字，会被 MIN_KEYWORD_LENGTH 挡掉；「孤身」「暗巷」这类真词该留下
+    expect(keywords).toContain('孤身')
+    expect(keywords).toContain('暗巷')
+  })
+
+  it('单字仍然不选（长度闸门对词粒度同样生效）', () => {
+    expect(pickKeywords(['我爱你 的 了 和 在'], 20).every((w) => w.length >= 2)).toBe(true)
   })
 
   it('limit 生效，且 0 / 负数得到空数组', () => {

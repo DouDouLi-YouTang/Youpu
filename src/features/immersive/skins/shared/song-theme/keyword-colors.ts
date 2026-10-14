@@ -260,29 +260,29 @@ const STOP_WORDS = new Set([
   'i'
 ])
 
-/** 传给 `pickKeywords` 的一行歌词 */
+/**
+ * 传给 `pickKeywords` 的一行歌词。
+ *
+ * ⚠️ **只有一个字段，且刻意如此**：这里曾经还有一个可选的 `words`
+ * （把 `LyricLine.words` 的文本传进来当候选词）。那个设计在 2026-10-15 被证明
+ * 是错的 —— 网易云 YRC 的 `words` 是按字符切的，传进来只会让每个候选词都撞上
+ * 「长度 ≥ 2」的闸门，关键词列表恒为空。切分口径收进本模块之后，
+ * 调用方**不需要**（也不能）再传词边界，见 `tokenize` 的说明。
+ */
 export interface KeywordSourceLine {
-  /** 整行文本（没有逐词数据时从这里切候选词） */
+  /** 整行歌词文本 */
   text: string
-  /**
-   * 逐词切分（本项目 `LyricLine.words` 里各 `word` 的文本）。
-   *
-   * ⚠️ **这一项是首选来源**：本项目从网易云拿到的 YRC 歌词自带词级时间戳，
-   * 那些 `word` 就是解析器认定的词边界 —— 用它比在渲染层重新猜词边界准确得多，
-   * 官网文档也要求 renderer 不要自行按字符重新切分（见「字符时间轴」一节）。
-   */
-  words?: readonly string[]
 }
 
 /**
  * CJK 连续文本的**兜底切分**：按 3 字与 2 字窗口滑出短片段。
  *
- * 只在「这一行没有逐词数据」时使用（老歌只有行级 LRC）。没有词边界信息时，
- * 把整段当一个候选最省事，但那会让整行每个字都命中同一个关键词、全行同色 ——
- * 所以退而求其次：滑窗切出短片段，让**重复出现的**片段靠频次浮上来。
+ * ⚠️ **只有在 `Intl.Segmenter` 也不可用时才轮到它**（见 `tokenize`）：
+ * 滑窗切出来的碎片（「れ落ち」「ちそう」）没有词边界含义，只能靠
+ * `MIN_REQUIRED_OCCURRENCES` 把只出现一次的碎片筛掉。
  *
- * ⚠️ 滑窗本身会产出大量无意义的碎片（「零れ落ちそうな」会切出「れ落ち」这种）。
- * 靠的是 `MIN_REQUIRED_OCCURRENCES` 把它们筛掉（见下），不是靠滑窗本身聪明。
+ * 用 Intl.Segmenter 得到的真实词边界（「零れ落ち」「暗巷」）替代它之后，
+ * 关键词质量会有量级差别 —— 见 `tokenize` 的说明。
  */
 function slidingCjkWindows(run: string): string[] {
   if (run.length <= 3) return [run]
@@ -297,21 +297,65 @@ function slidingCjkWindows(run: string): string[] {
 }
 
 /**
- * 没有逐词数据时，一个候选片段至少要在整首歌里出现**两次**才算关键词。
+ * 只有滑窗兜底路径才生效：一个候选片段至少要在整首歌里出现**两次**才算关键词。
  *
- * 这条门槛是兜底路径的质量闸门：滑窗会切出「么是这」这类碎片，而它们的特点是
+ * 这条门槛是滑窗的质量闸门：滑窗会切出「么是这」这类碎片，而它们的特点是
  * **只出现在一个地方**；真正的情绪词（副歌里的「零れ落ち」「星も」）天然会重复。
- * 用「重复」换「准确」，代价是**一首完全不重复用词的歌在无逐词数据时不会有
+ * 用「重复」换「准确」，代价是**一首完全不重复用词的歌在极端环境里不会有
  * 关键词着色** —— 那比满屏随机碎片好。
- *
- * 有逐词数据时不需要这条（词边界本身就是解析器的判断），见 `pickKeywords`。
  */
 const MIN_REQUIRED_OCCURRENCES = 2
 
-/** 一行歌词 → 候选词（优先用逐词数据，没有才滑窗） */
+/**
+ * 词粒度切分器。**与 `glow/core/cjk-layout` 用同一套标准内建对象** ——
+ * 官方文档「字符时间轴」一节把 `Intl.Segmenter` 定为取显示字符 / 词的入口
+ * （「可以为了布局用 Intl.Segmenter 或 Array.from 取得显示字符」）。
+ *
+ * 缺失时（极老环境）返回 null，调用方退回滑窗。
+ */
+const WORD_SEGMENTER =
+  typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
+    ? new Intl.Segmenter(undefined, { granularity: 'word' })
+    : null
+
+/**
+ * 一行歌词 → 候选词。
+ *
+ * ## ⚠️ 为什么不直接用 `line.words`
+ *
+ * 这是 2026-10-15 修掉的一个真 bug。原先的实现把 `LyricLine.words` 里的
+ * **原始解析器词**直接当候选词，理由是「那些 word 就是解析器认定的词边界」。
+ * 但网易云 YRC 的 `words` 是**按字符**切的：
+ *
+ * ```
+ * "爱你孤身走暗巷" → ["爱","你","孤","身","走","暗","巷"]
+ * ```
+ *
+ * 而候选词要求长度 ≥ {@link MIN_KEYWORD_LENGTH}（2），于是**每一个候选词都被
+ * 长度闸门拒掉，关键词列表恒为空** —— 逐词配色在真实歌曲上从来没有生效过。
+ * 实测：`孤勇者` / `ロスト・シルフィード` / `Lemon` 全部返回 `[]`。
+ *
+ * 官网文档对这件事有两句直接的话：
+ *  - 「words 不保证是单字符；……**words 的切分粒度依赖歌词内容和来源**」；
+ *  - 「可以为了布局用 `Intl.Segmenter` 或 `Array.from` 取得显示字符」。
+ *
+ * 所以候选词走 `Intl.Segmenter` 的**词粒度**切分：它与 YRC 的真实词边界一致
+ * （`爱你孤身走暗巷` → `爱/你/孤身/走/暗巷`），且不依赖某个音源恰好给的是词。
+ * `line.words` 仍然保留在类型里（调用方不必改），但**不再作为候选来源** ——
+ * 两种来源混用会让「有词数据的歌」和「没词数据的歌」走进两条不同的候选表。
+ */
 function tokenize(line: KeywordSourceLine): string[] {
-  const fromWords = (line.words ?? []).map((word) => word.trim()).filter(Boolean)
-  if (fromWords.length > 0) return fromWords
+  if (WORD_SEGMENTER) {
+    const tokens: string[] = []
+    for (const part of WORD_SEGMENTER.segment(line.text)) {
+      // `isWordLike` 在部分实现里缺失，缺了当 false（与「非词性」同义），
+      // 与 `glow/core/cjk-layout` 的口径一致。
+      if ((part as { isWordLike?: boolean }).isWordLike !== true) continue
+      const text = part.segment.trim()
+      if (text) tokens.push(text)
+    }
+    if (tokens.length > 0) return tokens
+  }
 
   const tokens: string[] = []
   const cjkRuns = line.text.match(/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]+/g) ?? []
@@ -358,18 +402,16 @@ export function pickKeywords(
   const stats = new Map<string, { count: number; firstIndex: number }>()
   let order = 0
   /**
-   * 有没有任何一行带了逐词数据。
+   * 候选词是否来自**真实词边界**（`Intl.Segmenter`）。
    *
-   * 它是整首歌级别的判断（不是逐行）：只要歌词层给了词边界，
-   * 那些边界就是可信的，`MIN_REQUIRED_OCCURRENCES` 那条质量闸门就没有必要 ——
-   * 要真的逐行判断，会出现「有词数据的行取词、没词数据的行滑窗」两套候选混在一起，
-   * 结果反而更难解释。
+   * 整首歌级别判断：只要切分器可用，候选词就全部是词粒度的，
+   * `MIN_REQUIRED_OCCURRENCES` 那条为滑窗碎片设的质量闸门就没有必要。
+   * 与逐行判断的区别在于「有没有混进滑窗碎片」—— 混进来就整体收紧。
    */
-  let hasWordData = false
+  const hasWordBoundaries = WORD_SEGMENTER !== null
 
   for (const line of lines) {
     const source: KeywordSourceLine = typeof line === 'string' ? { text: line } : line
-    if (source.words && source.words.some((word) => word.trim())) hasWordData = true
     for (const token of tokenize(source)) {
       if (!isCandidate(token)) continue
       const key = token.trim()
@@ -385,8 +427,8 @@ export function pickKeywords(
 
   return (
     [...stats.entries()]
-      // 兜底路径（没有逐词数据）才要求重复出现；有词数据时词边界可信，直接放行
-      .filter(([, stat]) => hasWordData || stat.count >= MIN_REQUIRED_OCCURRENCES)
+      // 滑窗兜底路径才要求重复出现；词边界可信时直接放行
+      .filter(([, stat]) => hasWordBoundaries || stat.count >= MIN_REQUIRED_OCCURRENCES)
       .sort((a, b) => {
         if (b[1].count !== a[1].count) return b[1].count - a[1].count
         if (b[0].length !== a[0].length) return b[0].length - a[0].length

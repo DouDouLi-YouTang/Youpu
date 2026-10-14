@@ -80,13 +80,9 @@ const lyric = useLyricStore()
 const { palette, isDaylight, wordColors } = useFoliaPalette({
   coverUrl: computed(() => props.ctx.coverUrl()),
   songId: computed(() => player.currentItem?.song.id ?? null),
-  // 带上逐词数据：有 YRC 的歌直接用品词边界，比在渲染层重新猜准（见 keyword-colors）
-  lyricLines: computed(() =>
-    lyric.lines.map((line) => ({
-      text: line.text,
-      words: line.words?.map((word) => word.word)
-    }))
-  )
+  // 只给整行文本：候选词的切分口径收在 keyword-colors 里
+  // （⚠️ 别把 `line.words` 传进去 —— 那是按字符切的，见那边的说明）
+  lyricLines: computed(() => lyric.lines.map((line) => ({ text: line.text })))
 })
 /**
  * 行源：store 的原始行 + 长空窗里补出的插曲行（`......`）。
