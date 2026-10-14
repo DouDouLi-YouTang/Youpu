@@ -32,6 +32,20 @@ export const GLOW_WORD_SPACING = 0.7
 export const GLOW_BREATHING_FLOAT_MULTIPLIER = 1
 
 /**
+ * 字重 —— **测量与渲染共用的唯一出处**。
+ *
+ * 逐词几何要用 canvas 量词宽（见 `glow-measure.ts`），而量宽时给 canvas 的字重必须与
+ * 渲染时完全一致，否则量出的宽度与浏览器排出的宽度不是一回事，精确右边距会整体偏
+ * （表现是词放大时互相压住，或间距大得离谱）。所以这里出一个常量，
+ * `glow-word.scss` 的 `font-weight` 与测量调用都读它 —— 那边是 SCSS，无法 import TS，
+ * 靠 `glow-adapter.test.ts` 锁住两边同值。
+ *
+ * Folia 的 700 是「主题字重」的兜底（`resolveThemeFontWeight(theme, 700)`）：
+ * 本项目的 Folia 系皮肤不读设置面板，所以直接取兜底值。
+ */
+export const GLOW_FONT_WEIGHT = 700
+
+/**
  * 主行字号倍率 —— **恒为 1**。
  *
  * 与「倾诉」的 `TILT_FONT_SCALE` 同理：流光的字号是它自己那套

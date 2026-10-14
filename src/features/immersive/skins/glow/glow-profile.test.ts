@@ -2,15 +2,24 @@ import { describe, expect, it } from 'vitest'
 
 import { resolveGlowRenderProfile } from './glow-profile'
 
-/** 造一行：起点 / 结束时间（毫秒）与可选的「最后一个词的结束时间」 */
+/**
+ * 造一行：起点 / 结束时间（毫秒）与可选的「最后一个词的结束时间」。
+ *
+ * 形状是 `GlowProfileLine`（`timeMs` + `endMs` + 逐词毫秒戳）——
+ * 即 `useGlowActiveLine` 产出的行源去掉 `text` / `nextLineStartMs` 之后的那三个字段。
+ * `lastWordEndTimeMs` 用「起点 + 时长」表达，与 `LyricWord` 的字段口径一致。
+ */
 function line(startTimeMs: number, endTimeMs: number, lastWordEndTimeMs?: number) {
   return {
-    startTimeMs,
-    endTimeMs,
+    timeMs: startTimeMs,
+    endMs: endTimeMs,
     words:
       lastWordEndTimeMs === undefined
         ? undefined
-        : [{ endTimeMs: startTimeMs }, { endTimeMs: lastWordEndTimeMs }]
+        : [
+            { word: 'a', timeMs: startTimeMs, durationMs: 0 },
+            { word: 'b', timeMs: lastWordEndTimeMs, durationMs: 0 }
+          ]
   }
 }
 

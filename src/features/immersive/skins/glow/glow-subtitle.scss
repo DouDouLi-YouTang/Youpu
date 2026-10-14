@@ -1,0 +1,47 @@
+// 「流光」底部副字幕（由 GlowSubtitle.vue <style scoped src> 引入）。
+//
+// 字号 = Folia 的副字幕 clamp（`shared/subtitle-tracks.resolveSubtitleFontSizes`）
+// × 该行的降档系数。本项目流光没有设置面板，倍率固定 1（见 glow-adapter 的 GLOW_FONT_SCALE）。
+//
+// ⚠️ 三锚点 1.125rem / 2.6vw / 1.25rem 与 resolveSubtitleFontSizes 同源：
+// 那边是 TS 的公式，这边是它的静态展开。改一边必须改另一边
+// （靠 glow-subtitle.scss 里的数字与共享层常量同值来保证）。
+
+.glow-subtitles {
+  position: absolute;
+  bottom: var(--glow-subtitle-bottom, 12vh);
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  // 不换行、超长省略：副字幕是"跟着唱"的辅助信息，折成多行会把舞台压扁
+  // ⚠️ max-width 必须给，否则 absolute 定位的收缩宽度按内容撑开，省略号永不触发
+  max-width: min(88vw, 64rem);
+  transform: translateX(-50%);
+  text-align: center;
+  pointer-events: none;
+}
+
+.glow-subtitle {
+  margin: 0;
+  overflow: hidden;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// 首行：罗马音（跟着唱的那一档）
+.glow-subtitle.is-primary {
+  font-size: clamp(1.125rem, 2.6vw, 1.25rem);
+  opacity: 0.9;
+}
+
+// 第二行：译文，在首行基础上再降一档（见 GlowSubtitle.vue 文件头）。
+// gap 用 em：这个间距随字号缩放，窗口变小时间距跟着变小（`SECONDARY_TRACK_GAP_EM`）。
+.glow-subtitle.is-secondary {
+  margin-top: 0.25em;
+  font-size: calc(clamp(1.125rem, 2.6vw, 1.25rem) * 0.88);
+  font-weight: 400;
+  opacity: 0.82;
+}

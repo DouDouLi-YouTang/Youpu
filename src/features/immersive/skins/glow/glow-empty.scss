@@ -1,0 +1,53 @@
+// 「流光」空态（由 GlowEmptyState.vue <style scoped src> 引入）。
+//
+// 上游的空态是「居中绝对定位的一句提示」：`text-2xl opacity-50 absolute`，
+// 颜色取主题的 secondaryColor，字号取空态 clamp。
+//
+// ⚠️ 颜色不在这里写死：由 `SkinGlow.vue` 把 `--glow-empty-color` 注入到舞台根节点
+// （取自 `useFoliaPalette` 的 secondary）—— 本文件是 scoped 样式，拿不到调色板对象，
+// 而"用哪个颜色"是皮肤层的决定，不该是样式层的第二处答案。
+
+.glow-empty {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(8px, 1.4vh, 18px);
+  align-items: center;
+  // 500：与 Folia 的 `resolveThemeFontWeight(theme, 500)` 一致（副字幕同档）
+  font-weight: 500;
+  // 上游 `opacity-50` 的等价物。用 color-mix 而不是整体 opacity：
+  // 整体 opacity 会让歌名与歌手**各自**半透明叠在一起，重叠处颜色更深；
+  // 这里只淡最终颜色，两张 p 的叠加关系保持正确。
+  color: color-mix(in srgb, var(--glow-empty-color, currentcolor) 50%, transparent);
+  text-align: center;
+  pointer-events: none;
+}
+
+// 歌名卡：歌名与歌手用同一套 clamp，靠比例分档（与倾诉的 .tilt-song-* 同构）
+.glow-empty-song-title,
+.glow-empty-song-artist {
+  // 长歌名 / 多歌手打省略号 —— 前提是 .glow-empty 是 flex 列且子项 max-width:100%
+  max-width: 100%;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.glow-empty-song-title {
+  font-size: 1em;
+  letter-spacing: 0.04em;
+}
+
+.glow-empty-song-artist {
+  font-size: 0.45em;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  // 在已降过一档的颜色上再淡一点，与歌名拉开层次（不靠字号单打独斗）
+  opacity: 0.7;
+}
+
+.glow-empty-text {
+  margin: 0;
+  letter-spacing: 0.06em;
+}

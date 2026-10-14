@@ -1,0 +1,65 @@
+// 「流光」行容器（由 GlowLine.vue <style scoped src> 引入）。
+//
+// 结构：.glow-line（整行出入场 + flex 排版）> GlowWord × N。样式表里**不写
+// transform / filter / opacity** —— 三者的动画全部由 motion-v 内联驱动，
+// 写在样式表会与它抢同一个属性（输的一方随机，表现为动画偶尔不生效）。
+//
+// 尺寸口径全部对齐 Folia 的 Tailwind 类名（注释里逐条给出对应项），不引入 Tailwind：
+// 本项目其余皮肤都是手写 SCSS，混用会让「同一个值有两处出处」。
+
+.glow-line {
+  // `flex flex-wrap w-full max-w-6xl content-center` + 行种子决定的 justify/align
+  display: flex;
+  flex-wrap: wrap;
+  width: 100%;
+  // max-w-6xl = 72rem（由 max-width 限制，不是 width，窄屏仍然满宽）
+  max-width: 72rem;
+  // content-center：折行后多行整体在交叉轴居中
+  align-content: center;
+  // Folia 的 minHeight: '300px' —— 换行 / 单行时舞台高度不跳
+  min-height: 300px;
+  // margin: 0 auto 是上游父级 justify-center 的等价物（行容器自己在舞台里居中）
+  margin: 0 auto;
+  // pointer-events-none：行本身不吃事件（整行点击 seek 由舞台层的覆盖按钮承担，
+  // 见 SkinGlow.vue —— 词之间有大量空隙，挂在词上会让点空隙落空）
+  pointer-events: none;
+  // 单个词放大 / 旋转时可能超出容器，不裁切（上游也没裁）
+  overflow: visible;
+}
+
+// ── 行种子的对齐档（与 core/word-layout 的候选表逐一对应）──
+// 用独立的 class 而不是内联 style：内联 style 会被 motion 的 transform 覆写重排，
+// 而 class 与 motion 完全不冲突。名字与 Tailwind 一致，方便与规格书对照。
+.glow-line {
+  &.justify-start {
+    justify-content: flex-start;
+  }
+
+  &.justify-center {
+    justify-content: center;
+  }
+
+  &.justify-end {
+    justify-content: flex-end;
+  }
+
+  &.justify-around {
+    justify-content: space-around;
+  }
+
+  &.justify-between {
+    justify-content: space-between;
+  }
+
+  &.items-start {
+    align-items: flex-start;
+  }
+
+  &.items-center {
+    align-items: center;
+  }
+
+  &.items-end {
+    align-items: flex-end;
+  }
+}

@@ -12,12 +12,12 @@ import {
   type GlowWordTimingProfile
 } from './core/word-timing'
 import {
-  buildGlowLayoutVariants,
   glowBodyVariants,
   wordGlowVariants,
   type GlowBodyCustom,
   type GlowGraphemeCustom,
-  type GlowLayoutCustom
+  type GlowLayoutCustom,
+  type MotionVariants
 } from './glow-variants'
 import { useGlowWordStatus } from './use-glow-word-status'
 
@@ -63,7 +63,12 @@ const props = defineProps<{
   /** 逐帧时钟（共享，整行一个） */
   clock: SmoothClock
   intensity: AnimationIntensity
-  enableWordRotation: boolean
+  /**
+   * 容器层 variants —— **由行容器构建一次并向下传**（见 `GlowLine.vue` 的说明）。
+   * 本组件不自己构建：一行十几个词各构建一份是纯浪费，且"整行共用同一份"这件事
+   * 在类型上就应该是显式的。
+   */
+  layoutVariants: MotionVariants<GlowLayoutCustom>
   /** 主行字号（clamp 字符串，由 `glow-adapter.resolveGlowFontSize` 拼好） */
   fontSize: string
   /** 未唱到 / 唱过时的字色 */
@@ -97,11 +102,6 @@ const graphemes = computed<GraphemeTiming[]>(() =>
     startTime: props.word.startTime,
     endTime: props.word.endTime
   })
-)
-
-/** 整行共用的容器层 variants（`custom` 才带每个词自己的几何） */
-const layoutVariants = computed(() =>
-  buildGlowLayoutVariants(props.intensity, props.enableWordRotation)
 )
 
 const layoutCustom = computed<GlowLayoutCustom>(() => ({

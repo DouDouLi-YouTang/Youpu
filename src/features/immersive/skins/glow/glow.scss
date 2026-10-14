@@ -1,0 +1,75 @@
+// 「流光」皮肤主体（由 SkinGlow.vue <style scoped src> 引入）。
+//
+// 结构：
+//   .immersive-content         内容层（不吃事件，见下）
+//     .glow-stage              占宽满、高 70vh 的居中舞台（本面板的主体）
+//       .glow-stage-float      呼吸浮动层（跨行常驻，无限循环）
+//         <GlowLine> / <GlowEmptyState>（AnimatePresence 内含）
+//       .glow-subtitles        底部副字幕
+//       .glow-line-hit         整行跳转的透明按钮（最上层）
+//
+// 与「倾诉」同构：内容层 `pointer-events: none`，只有需要交互的元素单独放行。
+// 这样舞台上的字全部不可选、不可拖，鼠标事件照常落到下层的窗口拖拽带与控制条上。
+//
+// ⚠️ 背景的 z-index 是 0，本层是 2 —— 与「经典」「倾诉」一致（沉浸页的层序约定）。
+
+.immersive-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  // 内容层不吃事件（见文件头），只有 .glow-line-hit 单独放行
+  pointer-events: none;
+}
+
+.glow-stage {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  // 高度：Folia 的 `h-[70vh]`（由 SkinGlow 把 --glow-stage-height 注入到这里）
+  height: var(--glow-stage-height, 70vh);
+  box-sizing: border-box;
+  // Folia 的 `p-8`：舞台四周留白，窄窗口上大字不至于贴边
+  padding: 2rem;
+  // 内置衬线字体（Folia 系皮肤的正文族；族名常量在 shared/folia-font.ts）
+  font-family: 'Folia Noto Serif SC', serif;
+  // 行/词可能被放大或旋转超出舞台，不裁切（上游也没裁）
+  overflow: visible;
+}
+
+// 呼吸浮动层：跨行常驻（见 GlowLine.vue 文件头）。
+// ⚠️ 这里不写 transform —— 由 motion 内联驱动，写在样式表会互相抢属性。
+.glow-stage-float {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  // 提示浏览器这一层每帧都在动
+  will-change: transform;
+}
+
+// 整行点击跳转：铺满舞台的透明按钮。
+// ⚠️ `pointer-events: auto` 是必需的：父级 .immersive-content 关掉了事件，
+// 否则这个按钮永远收不到点击（表现是"点了没反应"，且很难查）。
+.glow-line-hit {
+  position: absolute;
+  inset: 0;
+  // 透明但仍在布局里；用 background: transparent 而不是 opacity: 0，
+  // 后者在部分 Chromium 版本上会让元素退出命中测试
+  padding: 0;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  pointer-events: auto;
+
+  // 键盘可达性：聚焦时给一圈可见的提示（默认 outline 在透明元素上看不见位置）
+  &:focus-visible {
+    outline: 2px solid var(--rnp-accent-color, currentcolor);
+    outline-offset: -4px;
+  }
+}
