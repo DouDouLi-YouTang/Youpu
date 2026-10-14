@@ -113,6 +113,21 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 /**
+ * 基线相对**行顶**的下移量（§10.1）。
+ *
+ * 两个消费方必须用同一个值：§8.3 的逐帧时序（实时绘制的 `baseY`）与
+ * `render/canvas-text.ts` 的静态快照。各写一份的话，同一个块在「正在打印」
+ * 与「已唱过」两种态之间切换的那一帧，文字会**垂直跳 0.02 行高** ——
+ * 肉眼看得出来，但很难联想到是基线公式分叉。
+ *
+ * CJK 用 0.52 而不是 0.5：中文字面的视觉重心略低于 em 方框的几何中心，
+ * 这 0.02 的修正让中英混排落在同一条视线上。
+ */
+export function resolveFumeBaselineOffset(lineHeight: number, fullText: string): number {
+  return lineHeight * (isCjk(fullText) ? 0.52 : 0.5)
+}
+
+/**
  * 辉光基量（§8.1）。
  *
  * 两个基量各自对应「正在唱」与「唱过」：`chaotic` 让亮点更亮、余辉更久，
@@ -218,7 +233,7 @@ export function resolveFumeBlockTiming(
   const effectiveTextHoldStyle: FumeTextHoldStyle = textHoldRatio >= 1 ? 'standard' : 'dimmed'
   const passedStyle = resolvePassedTextStyle(block.variant, effectiveTextHoldStyle)
   const transitionPassedStyle = resolvePassedTextStyle(block.variant, 'standard')
-  const baselineOffset = block.lineHeight * (isCjk(block.line.fullText) ? 0.52 : 0.5)
+  const baselineOffset = resolveFumeBaselineOffset(block.lineHeight, block.line.fullText)
   const lineEndTimeMs = getLineRenderEndTimeMs(block.line)
   const linePassCutoffTimeMs = resolveLinePassCutoffTime(block.line, nextLineStartTimeMs)
   const hasRevealCompleted = timeMs >= block.line.endTimeMs
