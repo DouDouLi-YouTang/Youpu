@@ -12,9 +12,7 @@ import SkinSubtitle from '../shared/SkinSubtitle.vue'
 import { useFoliaPalette } from '../shared/use-folia-palette'
 import { useSmoothClock } from '../shared/use-smooth-clock'
 import {
-  SECONDARY_TRACK_SIZE_FACTOR,
   resolveSubtitleFontSizes,
-  scaleSubtitleFontSize,
   resolveSubtitleTracks,
   resolveUpcomingPreview,
   SUBTITLE_OVERLAY_OPACITY
@@ -173,13 +171,8 @@ const upcomingPreview = computed(() => {
   return resolveUpcomingPreview(lyric.lines.slice(index + 1, index + 3))
 })
 
-/** 副字幕字号（倍率固定 1）：译文档 + 预览档 */
+/** 副字幕字号（倍率固定 1）：副字幕基准档 + 预览档（次级降档在组件内做） */
 const subtitleFontSizes = resolveSubtitleFontSizes(1)
-/** 次级轨道的字号（在译文档基础上再乘降档系数）—— 缩放口径在共享层，见其说明 */
-const secondarySubtitleFontSize = scaleSubtitleFontSize(
-  subtitleFontSizes.translation,
-  SECONDARY_TRACK_SIZE_FACTOR
-)
 
 /**
  * 辉光形态（`text-shadow` 还是降级的 `drop-shadow`）。
@@ -279,7 +272,7 @@ function handleSeek(): void {
         :background="palette.background"
         :color="palette.secondary"
         :opacity="SUBTITLE_OVERLAY_OPACITY"
-        :secondary-font-size="secondarySubtitleFontSize"
+        :translation-font-size="subtitleFontSizes.translation"
         :upcoming-font-size="subtitleFontSizes.upcoming"
       />
 

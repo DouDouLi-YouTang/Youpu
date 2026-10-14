@@ -25,6 +25,13 @@
  * 瞬间会同时看到「纯音乐，请欣赏」与加载卡。上游的浮名干脆没有空态（没有行时只留
  * 背景 + 卡），本项目用户 2026-10-10 明确要求「歌在放就要显示歌名」，
  * 所以保留空态，只是让卡优先。
+ *
+ * 另一条更硬的闸门是 `hasArticle`：**文章已经排好就一律不显示空态**。
+ * 上游浮名的「有内容」判据就是 `article !== null`（`VisualizerFume.tsx` 的
+ * `(article || lines.length === 0) &&`），而共享的空态判定只看 store 的四个标志位
+ * （`loading` / `isPureMusic` / `hasLyric` / `hasItem`）—— 那套判据在别的皮肤上够用，
+ * 但它不认识"文章"这个概念。不加这道闸门时，任何让 store 判据与文章状态不一致的
+ * 情况（例如 store 的行还在、`currentItem` 却已清空）都会让空态**叠在正文上面**。
  */
 
 import { computed, type ComputedRef, type Ref } from 'vue'
@@ -36,11 +43,9 @@ import { resolveSkinEmptyState, type SkinEmptyState } from '../shared/empty-stat
 import { useSkinActiveLine } from '../shared/use-skin-active-line'
 import type { SmoothClock } from '../shared/use-smooth-clock'
 import {
-  SECONDARY_TRACK_SIZE_FACTOR,
   SUBTITLE_OVERLAY_OPACITY,
   resolveSubtitleTracks,
   resolveUpcomingPreview,
-  scaleSubtitleFontSize,
   type SubtitleTrack
 } from '../shared/subtitle-tracks'
 import {
@@ -64,13 +69,16 @@ export interface UseFumeOverlayOptions {
   palette: Readonly<Ref<FumeOverlayPalette>>
   /** 排版是否正在进行（`useFumeLayout` 的 `isLayoutPending`） */
   isLayoutPending: Ref<boolean>
+  /** 文章是否已经排好（`useFumeLayout` 的 `article !== null`）；见文件头的空态闸门 */
+  hasArticle: ComputedRef<boolean>
 }
 
 export interface UseFumeOverlayResult {
   emptyState: ComputedRef<SkinEmptyState | null>
   subtitleRows: ComputedRef<SubtitleTrack[]>
   upcomingPreview: ComputedRef<string[]>
-  secondarySubtitleFontSize: string
+  /** 副字幕的**基准**字号（次级轨道的降档由共享组件内部做） */
+  subtitleFontSize: string
   upcomingFontSize: string
   emptyFontSize: string
   /** 交给 `SkinFume.vue` 的 `:style`（底距 / 空态色 / 加载卡配色） */
@@ -83,8 +91,10 @@ export function useFumeOverlay(options: UseFumeOverlayOptions): UseFumeOverlayRe
 
   const activeLine = useSkinActiveLine(options.clock)
 
-  const emptyState = computed(() =>
-    resolveSkinEmptyState({
+  const emptyState = computed(() => {
+    // 文章已排好 = 有内容要画，空态一律让位（见文件头）
+    if (options.hasArticle.value) return null
+    return resolveSkinEmptyState({
       loading: lyric.loading,
       isPureMusic: lyric.isPureMusic,
       hasLyric: lyric.hasLyric,
@@ -93,7 +103,7 @@ export function useFumeOverlay(options: UseFumeOverlayOptions): UseFumeOverlayRe
       songArtist: options.ctx.songArtist(),
       hasCurrentLine: activeLine.index.value >= 0
     })
-  )
+  })
 
   /**
    * 副字幕轨道（罗马音在前、译文在后；可读性门槛与去重在共享层）。
@@ -112,12 +122,8 @@ export function useFumeOverlay(options: UseFumeOverlayOptions): UseFumeOverlayRe
     return resolveUpcomingPreview(lyric.lines.slice(index + 1, index + 3))
   })
 
-  /** 副字幕字号（浮名自己的档位，倍率固定 1）—— 次级轨道在它基础上再降一档 */
+  /** 副字幕字号（浮名自己的档位，倍率固定 1）—— 次级轨道的降档在共享组件里 */
   const subtitleFontSize = resolveFumeSubtitleFontSize()
-  const secondarySubtitleFontSize = scaleSubtitleFontSize(
-    subtitleFontSize,
-    SECONDARY_TRACK_SIZE_FACTOR
-  )
   const upcomingFontSize = resolveFumeUpcomingFontSize()
   /** 空态字号（与「流光」同值，见适配层说明） */
   const emptyFontSize = resolveFumeEmptyFontSize()
@@ -155,7 +161,7 @@ export function useFumeOverlay(options: UseFumeOverlayOptions): UseFumeOverlayRe
     emptyState,
     subtitleRows,
     upcomingPreview,
-    secondarySubtitleFontSize,
+    subtitleFontSize,
     upcomingFontSize,
     emptyFontSize,
     overlayStyleVars

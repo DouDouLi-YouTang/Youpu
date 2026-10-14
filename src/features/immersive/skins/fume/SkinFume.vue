@@ -167,7 +167,7 @@ const {
   emptyState,
   subtitleRows,
   upcomingPreview,
-  secondarySubtitleFontSize,
+  subtitleFontSize,
   upcomingFontSize,
   emptyFontSize,
   overlayStyleVars
@@ -175,7 +175,8 @@ const {
   ctx: props.ctx,
   clock,
   palette,
-  isLayoutPending
+  isLayoutPending,
+  hasArticle: computed(() => article.value !== null)
 })
 
 /**
@@ -352,7 +353,7 @@ defineExpose({
         :background="palette.background"
         :color="palette.secondary"
         :opacity="FUME_SUBTITLE_OVERLAY_OPACITY"
-        :secondary-font-size="secondarySubtitleFontSize"
+        :translation-font-size="subtitleFontSize"
         :upcoming-font-size="upcomingFontSize"
       />
     </FumeStage>

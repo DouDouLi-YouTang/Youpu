@@ -4,8 +4,10 @@ import { AnimatePresence, motion } from 'motion-v'
 
 import { colorWithAlpha } from './color-mix'
 import {
+  SECONDARY_TRACK_SIZE_FACTOR,
   buildSubtitleGlowGradient,
   buildSubtitleTextShadow,
+  scaleSubtitleFontSize,
   type SubtitleTrack
 } from './subtitle-tracks'
 
@@ -44,6 +46,17 @@ import {
  * 本组件贴的是 `bottom: var(--skin-subtitle-bottom, 0)` —— 每个皮肤把那个变量设在
  * **自己的定位容器**上（流光设在 70vh 的舞台上，浮名设在铺满的 canvas 宿主上），
  * 于是同一个组件在两边的落点各自正确。写死一个值必然有一边是错的。
+ *
+ * ## 字号只收**一个**基准值，降档在组件内做
+ *
+ * 上游是 `fontSize: scaleFontSize(translationFontSize, isSecondaryRow ? 0.88 : 1)`
+ * —— **每一行**都拿基准值，次级轨道再乘系数。所以这里也只收基准值
+ * （`translationFontSize`），降档由组件自己算。
+ *
+ * ⚠️ 拆成「主行字号 + 次级字号」两个 prop 看着更直白，但**极容易漏**：
+ * 调用方只要忘了给主行那个 prop，首行就会静默地继承宿主字号 ——
+ * 不报错、不白屏，只是字幕比上游小一档（本项目 2026-10-14 实测踩过）。
+ * 让组件自己派生就没有"少传一个 prop"这种可能。
  */
 const props = defineProps<{
   /** 已解析好的轨道（罗马音在前、译文在后；可能只有一条，也可能为空） */
@@ -56,11 +69,21 @@ const props = defineProps<{
   color: string
   /** 整层的不透明度（上游 `subtitleOverlayOpacity`，默认 0.6） */
   opacity: number
-  /** 次级轨道的字号（clamp 字符串，已乘降档系数） */
-  secondaryFontSize: string
+  /** 副字幕的**基准**字号（clamp 字符串，各皮肤自己的档位） */
+  translationFontSize: string
   /** 预览行的字号（clamp 字符串） */
   upcomingFontSize: string
 }>()
+
+/**
+ * 次级轨道（译文 / 第二条）的字号：基准值再乘 {@link SECONDARY_TRACK_SIZE_FACTOR}。
+ *
+ * 由组件派生而不是由调用方传（见文件头）。**不是** computed：它只依赖一个 prop，
+ * 而 `scaleSubtitleFontSize` 是一次字符串正则 —— 每行渲染各算一次反而更直白。
+ */
+const secondaryFontSize = computed(() =>
+  scaleSubtitleFontSize(props.translationFontSize, SECONDARY_TRACK_SIZE_FACTOR)
+)
 
 /** 辉光底的内联背景（形状在共享层，尺寸 / 模糊在样式表） */
 const glowStyle = computed(() => ({
@@ -96,7 +119,7 @@ const textShadow = computed(() => buildSubtitleTextShadow(props.background, colo
             :key="row.role"
             class="skin-subtitle"
             :class="index > 0 ? 'is-secondary' : 'is-primary'"
-            :style="index > 0 ? { fontSize: secondaryFontSize } : undefined"
+            :style="{ fontSize: index > 0 ? secondaryFontSize : translationFontSize }"
           >
             {{ row.text }}
           </p>
