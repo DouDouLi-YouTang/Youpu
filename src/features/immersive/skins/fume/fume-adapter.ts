@@ -19,7 +19,9 @@
  * 里直接体现，不进这份调参表。
  */
 
-import type { FumeCameraTrackingMode } from './core/fume-types'
+import type { LyricLine, LyricWord } from '@/domain/lyric'
+import { buildLineRenderHints } from '../shared/render-hints'
+import type { FumeCameraTrackingMode, FumeLine, FumeWord } from './core/fume-types'
 
 /** 浮名在本项目里的内置调参（§14.1 的默认列，全部照抄上游默认值） */
 export const FUME_TUNING = Object.freeze({
@@ -76,4 +78,106 @@ export function resolveFumeBackgroundSeed(
   themeName: string
 ): string {
   return `${seed === undefined ? 'fume' : String(seed)}:${themeName}`
+}
+
+// ─────────────────────── §15.2 数据形状适配（LyricLine → FumeLine） ───────────────────────
+
+/**
+ * 末行结束时间未知时的兜底时长（§15.2：与「倾诉」「流光」的固定 5 秒一致）。
+ *
+ * 三个适配层各有一份同值常量而不是互相 import：皮肤之间**不许**横向依赖
+ * （`fume/` import `glow/` 会让两个面板的打包与重构耦合在一起）。
+ * 数值一致性由三边的单测各自钉住（`fume-adapter.test.ts` 断言 `=== 5000`）。
+ */
+export const FUME_FALLBACK_LINE_DURATION_MS = 5000
+
+/**
+ * 推算行结束时间（毫秒，§15.2）。优先级与 `tilt-adapter.resolveLineEndMs` /
+ * `glow-adapter.resolveLineEndMs` **完全一致**，刻意不另立一套口径：
+ *  1. 有下一行 → 下一行起始（歌词时间戳天然就是上一行的结束）；
+ *  2. 最后一行 → 播放时长（覆盖到曲末，避免末行拖太久）；
+ *  3. 都不行（时长未知 / 时间戳乱序）→ 固定 5 秒。
+ *
+ * ⚠️ 这个值**不是**「字幕显示多久」那么简单：§5.3 的行过场截止时间
+ * （`resolveLinePassCutoffTime`）与 §6.3 的颜色拖尾都直接读它，
+ * 而 `renderEndTime` 又是 §8.3 `staticState` 从 `null` 翻到 `'passed'` 的判据。
+ * 三个皮肤的行结束时间必须同源，否则同一首歌在三个面板里的镜头节奏会漂。
+ */
+export function resolveFumeLineEndMs(
+  line: Pick<LyricLine, 'timeMs'>,
+  nextLine: Pick<LyricLine, 'timeMs'> | null | undefined,
+  playerDurationMs: number
+): number {
+  const start = line.timeMs
+  if (nextLine && Number.isFinite(nextLine.timeMs) && nextLine.timeMs > start) {
+    return nextLine.timeMs
+  }
+  if (Number.isFinite(playerDurationMs) && playerDurationMs > start) {
+    return playerDurationMs
+  }
+  return start + FUME_FALLBACK_LINE_DURATION_MS
+}
+
+/**
+ * `LyricWord[]` → `FumeWord[]`（词级时间戳路径）。
+ *
+ * 返回**空数组**表示「不能用词级时间戳」，调用方按 §5.5 走整行摊分 ——
+ * 两种情况都会退化：
+ *  - 没有 `words`（老歌只有行级 LRC）；
+ *  - `words.map(w => w.word).join('') !== lineText`（数据不自洽）。
+ *
+ * 第二条为什么必须拦：§5.1 的 `buildWordRangesFromWords` 是**按词的字素数顺序**
+ * 往前推 cursor 的，它不看词文本本身。若词拼接与整行对不上，cursor 会算到错误的
+ * 字素区间上 —— 表现是「某些字永远不亮、某些字提前亮」，且没有任何报错。
+ * 宁可不做逐词揭示，也不要错位。（与 `tilt-adapter.toWordSpans` 返回 null 同理。）
+ *
+ * 时间戳做单调化：起点不早于上一个词的起点。上游偶见的乱序数据不至于让揭示倒退
+ * （§5.2 的进度公式在 `end < start` 时会退化成「到点才亮」，视觉上是卡顿而不是错误）。
+ */
+export function toFumeWords(words: readonly LyricWord[] | undefined, lineText: string): FumeWord[] {
+  if (!words || words.length === 0) return []
+
+  let joined = ''
+  for (const word of words) joined += word.word
+  if (joined !== lineText) return []
+
+  const result: FumeWord[] = []
+  let lastStart: number | null = null
+  for (const word of words) {
+    const rawStart = Number.isFinite(word.timeMs) ? word.timeMs : (lastStart ?? 0)
+    const start: number = lastStart === null ? rawStart : Math.max(rawStart, lastStart)
+    const duration = Number.isFinite(word.durationMs) && word.durationMs > 0 ? word.durationMs : 0
+    result.push({ text: word.word, startTimeMs: start, endTimeMs: start + duration })
+    lastStart = start
+  }
+  return result
+}
+
+/**
+ * 整个歌词数组 → `FumeLine[]`（§15.2）。**逐行**补齐 `endTimeMs` 与 `renderHints`。
+ *
+ * 为什么整体转换而不是「用到哪行转哪行」：§7.7 的排版要一次性看到全部行
+ * （列高装箱、字号二分、变体选择都依赖整篇），而 §7.1 的缓存键又要逐行指纹，
+ * 所以转换必须在**进入排版之前**完成，且结果要被缓存键和排版同时复用。
+ *
+ * `isChorus` 恒为 `false`（§7.11）：本项目没有副歌元数据，hero 变体因此只能靠
+ * 「每 6 行一个 + 种子阈值」与 fallback 规则决定。**不要**用「有没有译文」之类的
+ * 旁证去猜副歌 —— 那会让 hero 的分布随时间线数据质量漂移。
+ */
+export function toFumeLines(lines: readonly LyricLine[], playerDurationMs: number): FumeLine[] {
+  return lines.map((line, index) => {
+    const startTimeMs = line.timeMs
+    const endTimeMs = resolveFumeLineEndMs(line, lines[index + 1] ?? null, playerDurationMs)
+    const words = toFumeWords(line.words, line.text)
+    return {
+      words,
+      startTimeMs,
+      endTimeMs,
+      fullText: line.text,
+      translation: line.translation,
+      romanization: line.romaji,
+      isChorus: false,
+      renderHints: buildLineRenderHints({ startTimeMs, endTimeMs, words })
+    }
+  })
 }
