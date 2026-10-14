@@ -42,6 +42,7 @@ import type { LyricLine } from '@/domain/lyric'
 import { colorWithAlpha } from '../shared/color-mix'
 import { resolveSkinEmptyState, type SkinEmptyState } from '../shared/empty-state'
 import { createLineRenderEndTimeCache } from '../shared/line-timing'
+import { useSubtitleBottom } from '../shared/use-subtitle-bottom'
 import { resolveRecentCompletedIndex, useSkinActiveLine } from '../shared/use-skin-active-line'
 import type { SmoothClock } from '../shared/use-smooth-clock'
 import {
@@ -97,6 +98,9 @@ export interface UseFumeOverlayResult {
 export function useFumeOverlay(options: UseFumeOverlayOptions): UseFumeOverlayResult {
   const lyric = useLyricStore()
   const player = usePlayerStore()
+
+  /** 副字幕底距（跟随控制条显隐；上游口径见 `shared/use-subtitle-bottom`） */
+  const { bottomPx: subtitleBottomPx } = useSubtitleBottom()
 
   const activeLine = useSkinActiveLine(options.clock, options.lines)
 
@@ -174,11 +178,11 @@ export function useFumeOverlay(options: UseFumeOverlayOptions): UseFumeOverlayRe
     const palette = options.palette.value
     return {
       /**
-       * 副字幕的底距：与「流光」同一个基线（Folia 的 32px + 控制条净空 80px = 112px，
-       * 本项目控制条高 90px，故取它再加 22px 净空）。变量名归共享组件所有
-       * （`shared/SkinSubtitle.vue` 读 `--skin-subtitle-bottom`）。
+       * 副字幕的底距：跟随控制条显隐（在场 112px / 隐藏 32px，带过渡）——
+       * 与「流光」同一套口径，见 `shared/use-subtitle-bottom`。
+       * 变量名归共享组件所有（`shared/SkinSubtitle.vue` 读 `--skin-subtitle-bottom`）。
        */
-      '--skin-subtitle-bottom': 'calc(var(--bottombar-height, 90px) + 22px)',
+      '--skin-subtitle-bottom': `${Math.round(subtitleBottomPx.value)}px`,
       /** 空态字色（共享组件读 `--skin-empty-color`） */
       '--skin-empty-color': palette.secondary,
       '--fume-pending-bg': palette.background,

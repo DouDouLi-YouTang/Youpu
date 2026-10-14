@@ -106,6 +106,24 @@ function onWindowWheel(): void {
  * - 默认 idle:整条 translateY 下滑出视口(对齐参考 material-you-compatibility.scss:57,
  *   非 opacity 淡出),transition transform .3s ease。
  */
+/**
+ * 控制条是否处于「隐没」状态 —— **判据的唯一出处**。
+ *
+ * 单独抽出来是因为副字幕的底距也要跟它走（上游 `usePlayerSubtitleBottomPx`）：
+ * 两边各写一份判据时，「控制条已经隐没、字幕还以为它在场」这类错位不会有任何报错，
+ * 只会看到字幕一直悬在控制条原来的位置上。
+ *
+ * ⚠️ 它只**读**状态，不注册任何监听 —— 挂载窗口监听的仍然是 `useControlsIdle()`，
+ * 而那个函数必须只被外壳调用一次。
+ */
+export function useControlsHidden() {
+  const settings = useImmersiveSettingsStore()
+  return computed(() => {
+    if (settings.presentationMode) return idle.value
+    return idle.value && !settings.alwaysShowBottomBar && !bottombarHover.value
+  })
+}
+
 export function useControlsIdle() {
   const settings = useImmersiveSettingsStore()
 
@@ -143,10 +161,7 @@ export function useControlsIdle() {
     clearDebounceTimer()
   })
 
-  const hidden = computed(() => {
-    if (settings.presentationMode) return idle.value
-    return idle.value && !settings.alwaysShowBottomBar && !bottombarHover.value
-  })
+  const hidden = useControlsHidden()
   const idleClass = computed(() => {
     if (!hidden.value) return ''
     // presentationMode 走纯淡出;默认走下滑

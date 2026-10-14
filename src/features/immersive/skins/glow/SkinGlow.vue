@@ -11,6 +11,7 @@ import { attachInterludeLines } from '../shared/interlude-lines'
 import SkinEmptyState from '../shared/SkinEmptyState.vue'
 import SkinSubtitle from '../shared/SkinSubtitle.vue'
 import { useFoliaPalette } from '../shared/use-folia-palette'
+import { useSubtitleBottom } from '../shared/use-subtitle-bottom'
 import { useSmoothClock } from '../shared/use-smooth-clock'
 import {
   resolveSubtitleFontSizes,
@@ -237,6 +238,14 @@ const stageStyle = computed<Record<string, string>>(() => ({
   '--skin-empty-color': palette.value.secondary
 }))
 
+/**
+ * 副字幕底距（跟随控制条显隐；上游口径见 `shared/use-subtitle-bottom`）。
+ *
+ * ⚠️ 挂在**内容层**而不是舞台：舞台只有 70vh，锚点会跟着它走。
+ * 变量名归共享组件所有（`shared/SkinSubtitle.vue` 读它）。
+ */
+const { bottomPx: subtitleBottomPx } = useSubtitleBottom()
+
 /** 点行跳转（对齐「倾诉」：点当前行 → seek 到行首） */
 function handleSeek(): void {
   const source = activeLine.source.value
@@ -256,8 +265,11 @@ function handleSeek(): void {
     :clock="clock"
   />
 
-  <!-- 内容层：整屏歌词舞台 -->
-  <div class="immersive-content">
+  <!-- 内容层：整屏歌词舞台。底距由 JS 逐帧插值后注入（见 use-subtitle-bottom） -->
+  <div
+    class="immersive-content"
+    :style="{ '--skin-subtitle-bottom': `${Math.round(subtitleBottomPx)}px` }"
+  >
     <div ref="stageRef" class="glow-stage" :style="stageStyle">
       <!-- 呼吸浮动层：**跨行常驻**（见 GlowLine.vue 文件头），无限循环 -->
       <motion.div

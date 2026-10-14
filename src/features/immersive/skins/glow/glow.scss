@@ -32,12 +32,11 @@
   // 内容层不吃事件（见文件头），只有 .glow-line-hit 单独放行
   pointer-events: none;
 
-  // 副字幕的底距：Folia 的基线 32px + 控制条净空 80px = 112px，**从视口底起算**。
-  // 本项目控制条高 90px（--bottombar-height），故取它再加 22px 净空，
-  // 与「倾诉」的 `padding-bottom: calc(var(--bottombar-height) + …)` 是同一个意图。
-  // 变量名归共享组件所有（`shared/SkinSubtitle.vue` 读它），浮名在自己那边设同样的值。
-  // ⚠️ 必须设在本层（铺满视口）而不是 `.glow-stage`（只有 70vh），否则锚点会跟着舞台走。
-  --skin-subtitle-bottom: calc(var(--bottombar-height, 90px) + 22px);
+  // 副字幕的底距**不写在这里**：它跟随控制条显隐（在场 112px / 隐藏 32px，
+  // 带过渡），由 `shared/use-subtitle-bottom` 逐帧算好后以行内 style 注入。
+  // 写死一个值的话，控制条隐没时字幕会一直悬在原来的高度上（上游会落回基线）。
+  // ⚠️ 注入点必须是本层（铺满视口）而不是 `.glow-stage`（只有 70vh），
+  // 否则锚点会跟着舞台走 —— 变量名归共享组件所有（`shared/SkinSubtitle.vue` 读它）。
 }
 
 .glow-stage {
