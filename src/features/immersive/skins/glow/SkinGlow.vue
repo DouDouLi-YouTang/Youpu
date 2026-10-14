@@ -265,17 +265,6 @@ function handleSeek(): void {
         </AnimatePresence>
       </motion.div>
 
-      <!-- 底部副字幕（罗马音 / 译文）或「接下来两句」预览：不吃事件 -->
-      <SkinSubtitle
-        :rows="subtitleRows"
-        :preview="upcomingPreview"
-        :background="palette.background"
-        :color="palette.secondary"
-        :opacity="SUBTITLE_OVERLAY_OPACITY"
-        :translation-font-size="subtitleFontSizes.translation"
-        :upcoming-font-size="subtitleFontSizes.upcoming"
-      />
-
       <!--
         整行点击跳转：舞台铺一层透明按钮（上游是 pointer-events-none，行跳转在外侧桥接层）。
         本项目对齐「倾诉」的做法：点当前行 → seek 到行首。
@@ -290,6 +279,23 @@ function handleSeek(): void {
         @click="handleSeek"
       />
     </div>
+
+    <!--
+      底部副字幕（罗马音 / 译文）或「接下来两句」预览：不吃事件。
+
+      ⚠️ **挂在内容层而不是舞台里**：上游的字幕锚点是「从视口底起算的 112px」，
+      而舞台只有 70vh —— 挂在舞台里会让字幕整体低一大截，且不随控制条显隐变化
+      （2026-10-14 实测修正，见 glow.scss 的文件头）。
+    -->
+    <SkinSubtitle
+      :rows="subtitleRows"
+      :preview="upcomingPreview"
+      :background="palette.background"
+      :color="palette.secondary"
+      :opacity="SUBTITLE_OVERLAY_OPACITY"
+      :translation-font-size="subtitleFontSizes.translation"
+      :upcoming-font-size="subtitleFontSizes.upcoming"
+    />
   </div>
 </template>
 
