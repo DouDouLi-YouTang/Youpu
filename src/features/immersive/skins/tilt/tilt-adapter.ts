@@ -11,6 +11,10 @@
  *  2. 排版数值解析：clamp 字号、用户字号倍率、可用宽度、溢出缩放（纯函数，可单测）
  */
 import type { LyricLine, LyricWord } from '@/domain/lyric'
+import {
+  FALLBACK_LINE_DURATION_MS as SHARED_FALLBACK_LINE_DURATION_MS,
+  resolveLineEndTimeMs
+} from '../shared/line-timing'
 import { AFTERGLOW_FLOOR, clampPulseDuration } from './core/char-pulse'
 import type { TimedSpan } from './core/char-timing'
 import { SHORT_LAST_SEGMENT_SCALE } from './core/tilt-pick'
@@ -35,8 +39,13 @@ export const TILT_CHAR_FADE_DELAY_MS = 0.05 * SECOND_MS
 /** 逐字淡入动画时长。笔记未给值，取 0.4 秒（与 LyricLines 逐字过渡的手感一致）。 */
 export const CHAR_FADE_DURATION_MS = 0.4 * SECOND_MS
 
-/** 末行结束时间兜底的固定时长（笔记 §8.1.1：可用 player.durationMs，或固定值如 5 秒） */
-export const FALLBACK_LINE_DURATION_MS = 5 * SECOND_MS
+/**
+ * 行结束时间兜底的固定时长（笔记 §8.1.1：可用 player.durationMs，或固定值如 5 秒）。
+ *
+ * 从共享层转发（**唯一出处**在 `shared/line-timing`）—— 三个皮肤口径必须一致，
+ * 各自写一份字面量时改一处忘另两处不会有测试发现。
+ */
+export const FALLBACK_LINE_DURATION_MS = SHARED_FALLBACK_LINE_DURATION_MS
 
 /**
  * seek 判定阈值：`ctx.currentTime()` 两次观测的差值超过它，就当作拖动进度条 /
@@ -175,18 +184,13 @@ export interface TiltLineSource {
  * 该值同时用于「无 words 时整行时长的均匀分配」与段显示窗口的结束。
  */
 export function resolveLineEndMs(
-  line: Pick<LyricLine, 'timeMs'>,
+  line: Pick<LyricLine, 'timeMs'> & Pick<LyricLine, 'endTimeMs'>,
   nextLine: Pick<LyricLine, 'timeMs'> | null | undefined,
   playerDurationMs: number
 ): number {
-  const start = line.timeMs
-  if (nextLine && Number.isFinite(nextLine.timeMs) && nextLine.timeMs > start) {
-    return nextLine.timeMs
-  }
-  if (Number.isFinite(playerDurationMs) && playerDurationMs > start) {
-    return playerDurationMs
-  }
-  return start + FALLBACK_LINE_DURATION_MS
+  // 实现与口径的唯一出处是共享层（真实行时长优先 → 下一行起始 → 播放时长 → 5 秒）。
+  // 三个皮肤各写一份的后果是同一首歌在三个面板里的镜头节奏会漂，见那边的文件头。
+  return resolveLineEndTimeMs(line, nextLine, playerDurationMs)
 }
 
 /**

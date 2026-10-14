@@ -13,11 +13,13 @@
   flex-wrap: wrap;
   width: 100%;
   // max-w-6xl = 72rem（由 max-width 限制，不是 width，窄屏仍然满宽）
-  max-width: 72rem;
+  // ⚠️ 值来自 `glow-adapter` 的常量（由 SkinGlow 注入 CSS 变量）——
+  // 写死字面量会让"常量改了、样式没改"，且改动点会散在两处。
+  max-width: var(--glow-line-max-width, 72rem);
   // content-center：折行后多行整体在交叉轴居中
   align-content: center;
-  // Folia 的 minHeight: '300px' —— 换行 / 单行时舞台高度不跳
-  min-height: 300px;
+  // Folia 的 minHeight: '300px' —— 换行 / 单行时舞台高度不跳（值同上来自常量）
+  min-height: var(--glow-line-min-height, 300px);
   // margin: 0 auto 是上游父级 justify-center 的等价物（行容器自己在舞台里居中）
   margin: 0 auto;
   // pointer-events-none：行本身不吃事件（整行点击 seek 由舞台层的覆盖按钮承担，

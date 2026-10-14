@@ -7,6 +7,7 @@ import { usePlayerStore } from '@/stores/player.store'
 import { resolveSkinEmptyState } from '../shared/empty-state'
 import { useFoliaSerifReady } from '../shared/folia-font'
 import { isGlowBlurQuantized } from '../shared/glow-blur-quantize'
+import { attachInterludeLines } from '../shared/interlude-lines'
 import SkinEmptyState from '../shared/SkinEmptyState.vue'
 import SkinSubtitle from '../shared/SkinSubtitle.vue'
 import { useFoliaPalette } from '../shared/use-folia-palette'
@@ -24,6 +25,7 @@ import {
   GLOW_ENABLE_WORD_ROTATION,
   GLOW_INTENSITY,
   GLOW_LINE_MAX_WIDTH_REM,
+  GLOW_LINE_MIN_HEIGHT_PX,
   GLOW_STAGE_HEIGHT_VH,
   resolveGlowEmptyFontSize,
   resolveGlowFontSize,
@@ -96,10 +98,17 @@ const { palette, isDaylight, wordColors } = useFoliaPalette({
 /** 内置衬线字体的就绪信号：变化即重测词宽（见 use-glow-layout） */
 const { fontState } = useFoliaSerifReady()
 
-/** 逐帧时钟（整屏一条 rAF） */
-const clock = useSmoothClock()
+/**
+ * 逐帧时钟（整屏一条 rAF）。
+ *
+ * ⚠️ 行源要在时钟**之前**建出来，再注入给时钟与 `useGlowActiveLine` ——
+ * 三方必须用同一个数组（含插曲行的那一份），否则下标会指向不同的行。
+ * 见 `use-glow-line` 的 `lines`。
+ */
+const lines = computed(() => attachInterludeLines(lyric.lines, player.durationMs))
+const clock = useSmoothClock({ lines })
 /** 当前行（下标 + 行数据 + 补上的 endMs），逐帧从时钟取 */
-const activeLine = useGlowActiveLine(clock)
+const activeLine = useGlowActiveLine(clock, lines)
 
 /** 舞台元素：测量层从它读字体栈（族名继承自这里，逐词不覆盖） */
 const stageRef = ref<HTMLElement | null>(null)
@@ -170,22 +179,34 @@ const emptyState = computed(() =>
  *
  * ⚠️ 与「倾诉」的一处**刻意差异**：流光的字幕档位是固定的 `'both'`
  * （没有设置面板，不考虑"只看译文"这类开关），与上游 `classic` 的默认表现一致。
+ *
+ * ⚠️ **当前行没有可读副字幕时回退到"最近一句唱完的行"**（上游
+ * `resolveVisualizerSubtitleOverlayContent` 的 `[activeLine, recentCompletedLine]`
+ * 里取第一个有轨道的）。这是「前奏 / 间奏时底栏该显示什么」的答案：
+ * 上游保持上一句的译文，本项目改造前会直接空掉 —— 长间奏里底栏整段消失，
+ * 与官网演示明显不同。回退只发生在**当前行下标为 -1** 时（见共享层说明），
+ * 不是"每行结束后都拿上一句顶上"。
  */
-const subtitleRows = computed(() => resolveSubtitleTracks(activeLine.line.value, 'both'))
+const subtitleRows = computed(() => {
+  const rows = resolveSubtitleTracks(activeLine.line.value, 'both')
+  if (rows.length > 0) return rows
+  return resolveSubtitleTracks(activeLine.recentCompletedLine.value, 'both')
+})
 
 /**
  * 「下一句」预览。
  *
  * 上游语义：**当前行有可读副字幕就不显示预览**，没有才显示接下来的两行
  * （见 `shared/subtitle-tracks.resolveUpcomingPreview` 的说明）。
- * 行源取自 store 原始行数组的下两行 —— 用 `activeLine.index`（逐帧时钟算出来的）
- * 而不是 store 的节流下标，否则预览会比主舞台晚最多 250ms 切换。
+ * 行源取 `activeLine.lines`（含插曲行的那一份，与主舞台同源）的下两行 ——
+ * 用 `activeLine.index`（逐帧时钟算出来的）而不是 store 的节流下标，
+ * 否则预览会比主舞台晚最多 250ms 切换。
  */
 const upcomingPreview = computed(() => {
   if (subtitleRows.value.length > 0) return []
   const index = activeLine.index.value
   if (index < 0) return []
-  return resolveUpcomingPreview(lyric.lines.slice(index + 1, index + 3))
+  return resolveUpcomingPreview(activeLine.lines.value.slice(index + 1, index + 3))
 })
 
 /** 副字幕字号（倍率固定 1）：副字幕基准档 + 预览档（次级降档在组件内做） */
@@ -210,6 +231,7 @@ setGlowQuantizedForm(isGlowBlurQuantized())
  */
 const stageStyle = computed<Record<string, string>>(() => ({
   '--glow-line-max-width': `${GLOW_LINE_MAX_WIDTH_REM}rem`,
+  '--glow-line-min-height': `${GLOW_LINE_MIN_HEIGHT_PX}px`,
   '--glow-stage-height': `${GLOW_STAGE_HEIGHT_VH}vh`,
   // 空态字色：变量名归共享组件所有（`shared/SkinEmptyState.vue` 读它）
   '--skin-empty-color': palette.value.secondary
@@ -270,7 +292,7 @@ function handleSeek(): void {
             :base-color="palette.primary"
             :active-color="palette.accent"
             :word-colors="wordColors"
-            :is-chorus="false"
+            :is-chorus="activeLine.line.value?.isChorus === true"
           />
 
           <!-- 空态：没有行可排（或用同样的 key 占位，保证两态之间有过渡） -->

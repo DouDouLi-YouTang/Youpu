@@ -145,8 +145,15 @@ describe('整首歌转换（toFumeLines）', () => {
     expect(result[0]?.romanization).toBeUndefined()
   })
 
-  it('isChorus 恒为 false（本项目没有副歌元数据，§7.11）', () => {
+  it('isChorus 透传数据层的副歌标记；没有标记的行回退成 false（§7.11）', () => {
+    // 数据层（`lyric.mapper.applyChorusRanges`）按 `/song/chorus` 的区间打标，
+    // 没打标的行必须是 false 而不是 undefined —— 下游 `article-blocks` 直接读它做加权。
     expect(toFumeLines(LINES, 9000).every((line) => line.isChorus === false)).toBe(true)
+
+    const withChorus = LINES.map((line, index) =>
+      index === 1 ? { ...line, isChorus: true } : line
+    )
+    expect(toFumeLines(withChorus, 9000).map((line) => line.isChorus)).toEqual([false, true, false])
   })
 
   it('renderHints 随行一起烘出（否则 §5.3 的截止时间会退化成行尾）', () => {

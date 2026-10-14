@@ -1,4 +1,4 @@
-import { onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, type Ref } from 'vue'
 
 import { useImmersiveSettingsStore } from '../../immersive-settings.store'
 import { useLyricStore } from '@/stores/lyric.store'
@@ -6,6 +6,8 @@ import { usePlayerStore } from '@/stores/player.store'
 import { audioBands } from '../../use-audio-bands'
 import type { AudioBands } from '../../use-audio-bands'
 import { stepClock, type ClockState } from './clock-core'
+import { buildLineRenderEndTimes } from './line-timing'
+import type { LyricLine } from '@/domain/lyric'
 import { getAudioElement } from '@/app/providers/player-provider'
 
 /**
@@ -111,6 +113,18 @@ export interface SmoothClock {
   onFrame(callback: () => void): () => void
 }
 
+/** 创建时钟时可选的覆盖项 */
+export interface UseSmoothClockOptions {
+  /**
+   * 行源覆盖（含插曲行的那一份，见 `shared/interlude-lines`）。
+   *
+   * ⚠️ 必须与渲染层用的是**同一个数组**：时钟用一份、渲染用另一份时，
+   * 下标会指向两套数组里不同的行 —— 表现是「画面在唱 A 句、时钟以为在 B 句」，
+   * 且只在补了插曲行的歌上出现（很难查）。不传就用 store 的原始行。
+   */
+  lines?: Ref<readonly LyricLine[]>
+}
+
 /**
  * 创建逐帧时钟。**必须在组件 setup 中调用**（会注册 rAF 循环与卸载钩子）。
  *
@@ -118,10 +132,13 @@ export interface SmoothClock {
  * 两条独立循环会各差半帧，导致「时间已经进了下一行、下标还停在上一行」——
  * 换行的那一帧正是动画最显眼的一帧。
  */
-export function useSmoothClock(): SmoothClock {
+export function useSmoothClock(options: UseSmoothClockOptions = {}): SmoothClock {
   const player = usePlayerStore()
   const settings = useImmersiveSettingsStore()
   const lyric = useLyricStore()
+
+  /** 行源（见 `UseSmoothClockOptions.lines`） */
+  const lines = computed<readonly LyricLine[]>(() => options.lines?.value ?? lyric.lines)
 
   /** 本帧算出的时间（毫秒，含 lyricOffset） */
   const frameTime = ref(0)
@@ -170,17 +187,59 @@ export function useSmoothClock(): SmoothClock {
   let rafId: number | null = null
 
   /**
-   * 当前行下标：与经典皮肤同式（`useActiveLyricIndex`），含 stagger 提前 200ms。
-   * 行数组按时间升序（解析阶段保证），故遇到第一个未到的行即可停 —— 不要遍历到底。
+   * 当前行下标 —— 上游 `findLatestActiveLineIndex` 的**窗口**语义，含 stagger 提前 200ms。
+   *
+   * ## 为什么不是「最后一个已开始的行」
+   *
+   * 本项目改造前的写法是「遍历到第一个未开始的行，取它前面那个」—— 那个下标一旦前进
+   * 就**再也不会回到 -1**，于是：
+   *  - 长间奏（前奏 / 间奏 / 尾奏）期间舞台一直停着上一句，而上游会把它清空；
+   *  - 副字幕也没有机会回退到"最近一句唱完的行"（上游 `getRecentCompletedLine`
+   *    只在 `currentLineIndex === -1` 时才去找上一句）。
+   *
+   * 上游的判据是**从后往前找第一行「已开始且还没结束」**：
+   * `time >= startTime && time <= renderEndTime`，找不到就是 -1。
+   * 这里的 `renderEndTime` 含**出场补白**（行唱完之后留一小段给退场动画），
+   * 所以下标不是在行的最后一个字唱完的瞬间就跳走，而是等退场动画播完 ——
+   * 否则上一行的 exit 动画会被下一行抢掉，两行在视觉上叠在一起。
+   *
+   * ⚠️ `renderEndTime` 的推算要读 `shared/render-hints`（与两个皮肤同一张档位表）。
+   * 本函数在 rAF 里逐帧跑，所以**不能**每帧重算提示 —— 按行下标缓存，
+   * 只有下标真的变了才重算一次（见 `renderEndTimes` 的说明）。
    */
   function resolveLineIndex(t: number): number {
-    const lines = lyric.lines
-    let idx = -1
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].timeMs <= t) idx = i
-      else break
+    const currentLines = lines.value
+    for (let index = currentLines.length - 1; index >= 0; index -= 1) {
+      const line = currentLines[index]
+      if (t < line.timeMs) continue
+      if (t <= resolveLineRenderEndTimeMs(index)) return index
     }
-    return idx
+    return -1
+  }
+
+  /**
+   * 逐行的 `renderEndTime` 缓存（毫秒）。下标只在换行时变，所以这份数组只在
+   * 行数组或播放时长变化时重建 —— 不在每帧重算（见 `resolveLineIndex` 的说明）。
+   *
+   * ⚠️ 用 `===` 比引用而不是比内容：store 的行数组是**整份替换**的
+   * （`loadLyric` 直接赋值），所以引用不变就说明行没变。
+   */
+  let renderEndTimes: number[] = []
+  let renderEndTimesForLines: readonly LyricLine[] | null = null
+  let renderEndTimesForDuration = Number.NaN
+
+  function resolveLineRenderEndTimeMs(index: number): number {
+    const currentLines = lines.value
+    if (
+      renderEndTimesForLines !== currentLines ||
+      renderEndTimesForDuration !== player.durationMs ||
+      renderEndTimes.length !== currentLines.length
+    ) {
+      renderEndTimes = buildLineRenderEndTimes(currentLines, player.durationMs)
+      renderEndTimesForLines = currentLines
+      renderEndTimesForDuration = player.durationMs
+    }
+    return renderEndTimes[index] ?? Number.NEGATIVE_INFINITY
   }
 
   function tick(): void {

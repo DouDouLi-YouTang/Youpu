@@ -48,9 +48,10 @@ import { useGlowWordStatus } from './use-glow-word-status'
  *
  *  - **时间源**：Folia 的 `currentTime` 是逐帧 MotionValue；本项目 `player.currentTimeMs`
  *    被节流到 4Hz，所以改从共享的逐帧时钟读（见 `shared/use-smooth-clock.ts`）。
- *  - **`isChorus`**：本项目的 `LyricLine` 没有这个字段（解析层不产出），
- *    所以涟漪层恒不渲染。**刻意不猜**：猜错会在本该安静的行上凭空冒出涟漪。
- *    将来解析层补上字段时，把这里换成真实值即可，模板一行不用改。
+ *  - **`isChorus`**：来自 `/song/chorus` 的副歌时间区间（数据层在
+ *    `lyric.mapper.applyChorusRanges` 里按"行与区间是否重叠"打标）。
+ *    没有标记的行照常渲染，只是不出涟漪 —— 与上游"缺 isChorus 时自然回退"
+ *    的约定一致。
  */
 
 const props = defineProps<{

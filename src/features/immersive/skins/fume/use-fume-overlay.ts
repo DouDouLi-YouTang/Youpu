@@ -34,13 +34,15 @@
  * 情况（例如 store 的行还在、`currentItem` 却已清空）都会让空态**叠在正文上面**。
  */
 
-import { computed, type ComputedRef, type Ref } from 'vue'
+import { computed, onBeforeUnmount, ref, type ComputedRef, type Ref } from 'vue'
 
 import { useLyricStore } from '@/stores/lyric.store'
 import { usePlayerStore } from '@/stores/player.store'
+import type { LyricLine } from '@/domain/lyric'
 import { colorWithAlpha } from '../shared/color-mix'
 import { resolveSkinEmptyState, type SkinEmptyState } from '../shared/empty-state'
-import { useSkinActiveLine } from '../shared/use-skin-active-line'
+import { createLineRenderEndTimeCache } from '../shared/line-timing'
+import { resolveRecentCompletedIndex, useSkinActiveLine } from '../shared/use-skin-active-line'
 import type { SmoothClock } from '../shared/use-smooth-clock'
 import {
   SUBTITLE_OVERLAY_OPACITY,
@@ -65,6 +67,13 @@ export interface FumeOverlayPalette {
 export interface UseFumeOverlayOptions {
   ctx: SkinContext
   clock: SmoothClock
+  /**
+   * 行源（含插曲行的那一份，与喂给时钟的是同一个 —— 见 `SkinFume.vue`）。
+   *
+   * 副字幕与预览都读它：用 store 的原始行会让预览跳过插曲行，
+   * 与纸上看到的文章不一致。
+   */
+  lines: Ref<LyricLine[]>
   /** 调色板（`useFoliaPalette()` 的 `palette`，一个只读的 ref） */
   palette: Readonly<Ref<FumeOverlayPalette>>
   /** 排版是否正在进行（`useFumeLayout` 的 `isLayoutPending`） */
@@ -89,7 +98,28 @@ export function useFumeOverlay(options: UseFumeOverlayOptions): UseFumeOverlayRe
   const lyric = useLyricStore()
   const player = usePlayerStore()
 
-  const activeLine = useSkinActiveLine(options.clock)
+  const activeLine = useSkinActiveLine(options.clock, options.lines)
+
+  /**
+   * 「最近一句唱完的行」—— 副字幕的**回退源**（上游 `[activeLine, recentCompletedLine]`
+   * 里取第一个有轨道的）。与「流光」同一套口径，理由见 `use-skin-active-line`。
+   *
+   * ⚠️ 逐帧从时钟算、只在结果变了时写 ref（写进 computed 会永远不更新，
+   * 因为 `clock.time()` 不是响应式的）。
+   */
+  const renderEndTimes = createLineRenderEndTimeCache()
+  const recentCompletedLine = ref<LyricLine | null>(null)
+  const unsubscribeRecent = options.clock.onFrame(() => {
+    const nextIndex = resolveRecentCompletedIndex(
+      options.lines.value,
+      activeLine.index.value,
+      options.clock.time(),
+      renderEndTimes(options.lines.value, player.durationMs)
+    )
+    const next = nextIndex >= 0 ? (options.lines.value[nextIndex] ?? null) : null
+    if (next !== recentCompletedLine.value) recentCompletedLine.value = next
+  })
+  onBeforeUnmount(unsubscribeRecent)
 
   const emptyState = computed(() => {
     // 文章已排好 = 有内容要画，空态一律让位（见文件头）
@@ -109,7 +139,11 @@ export function useFumeOverlay(options: UseFumeOverlayOptions): UseFumeOverlayRe
    * 副字幕轨道（罗马音在前、译文在后；可读性门槛与去重在共享层）。
    * 档位固定 `'both'`：浮名没有设置面板，与「流光」同一取舍。
    */
-  const subtitleRows = computed(() => resolveSubtitleTracks(activeLine.line.value, 'both'))
+  const subtitleRows = computed(() => {
+    const rows = resolveSubtitleTracks(activeLine.line.value, 'both')
+    if (rows.length > 0) return rows
+    return resolveSubtitleTracks(recentCompletedLine.value, 'both')
+  })
 
   /**
    * 「下一句」预览。**当前行有可读副字幕就不显示预览**（上游语义）。
@@ -119,7 +153,7 @@ export function useFumeOverlay(options: UseFumeOverlayOptions): UseFumeOverlayRe
     if (subtitleRows.value.length > 0) return []
     const index = activeLine.index.value
     if (index < 0) return []
-    return resolveUpcomingPreview(lyric.lines.slice(index + 1, index + 3))
+    return resolveUpcomingPreview(options.lines.value.slice(index + 1, index + 3))
   })
 
   /** 副字幕字号（浮名自己的档位，倍率固定 1）—— 次级轨道的降档在共享组件里 */

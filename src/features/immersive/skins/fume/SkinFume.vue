@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { useLyricStore } from '@/stores/lyric.store'
 import { usePlayerStore } from '@/stores/player.store'
 import { useFoliaPalette } from '../shared/use-folia-palette'
+import { attachInterludeLines } from '../shared/interlude-lines'
 import { useSmoothClock, type SkinAudioBands } from '../shared/use-smooth-clock'
 import { FOLIA_SERIF_FAMILY, useFoliaSerifReady } from '../shared/folia-font'
 import { getLineRenderEndTimeMs } from '../shared/render-hints'
@@ -87,8 +88,18 @@ const { palette, isDaylight, wordColors } = useFoliaPalette({
     }))
   )
 })
+/**
+ * 行源：store 的原始行 + 长空窗里补出的插曲行（`......`）。
+ *
+ * ⚠️ 上游浮名**同样**会把这些插曲行排进文章（`attachInterludes` 在解析层就补好了，
+ * 浮名只是照常排版），所以这里不能跳过 —— 少了它们，长间奏期间纸上会空一块，
+ * 而官网演示里会有一串放大的点被"打印"出来。
+ *
+ * 三方（时钟 / 排版 / 副字幕）必须用同一个数组，见 `use-smooth-clock` 的说明。
+ */
+const lines = computed(() => attachInterludeLines(lyric.lines, player.durationMs))
 /** 逐帧时钟：相机跟随打印光标要求「每帧都有时间」，4Hz 的 store 值不够 */
-const clock = useSmoothClock()
+const clock = useSmoothClock({ lines })
 
 /**
  * 内置衬线字体（`FOLIA_SERIF_FAMILY`）的就绪信号 —— 它一变就**清片段测量缓存**。
@@ -161,7 +172,7 @@ const isPlaying = computed(() => player.state === 'playing')
  * ⚠️ 依赖 `player.durationMs`：末行的结束时间用它推算（§15.2）。时长从 0 变成真实值
  * 时会重算一次 —— 那次重排是必要的，否则末行的拖尾窗口按 5 秒兜底算，唱到曲末会提前变暗。
  */
-const fumeLines = computed(() => toFumeLines(lyric.lines, player.durationMs))
+const fumeLines = computed(() => toFumeLines(lines.value, player.durationMs))
 
 /**
  * 文章排版（§7.9）。入参 `lines` 是 `fumeLines`，视口是舞台逻辑尺寸 ——
@@ -193,6 +204,7 @@ const {
 } = useFumeOverlay({
   ctx: props.ctx,
   clock,
+  lines,
   palette,
   isLayoutPending,
   hasArticle: computed(() => article.value !== null)

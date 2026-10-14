@@ -65,7 +65,7 @@ const props = defineProps<{
    * 为空数组时所有词都回退到 `activeColor`，与加这个功能之前的表现完全一致。
    */
   wordColors?: readonly WordColorEntry[]
-  /** 是否合唱行（本项目恒为 false，见 `GlowWord.vue` 文件头） */
+  /** 是否合唱行（副歌行，来自 `/song/chorus`；见 `GlowWord.vue` 文件头） */
   isChorus: boolean
 }>()
 

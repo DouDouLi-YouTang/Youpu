@@ -33,19 +33,76 @@ export interface SkinActiveLine {
   lineKey: ComputedRef<string>
 }
 
-export function useSkinActiveLine(clock: SmoothClock): SkinActiveLine {
+/**
+ * 取「最近一句唱完的行」的**下标** —— 上游 `getRecentCompletedLine`
+ * （`components/visualizer/runtime.ts`）。
+ *
+ * ## 为什么需要它
+ *
+ * 上游的副字幕取值是 `[activeLine, recentCompletedLine]` 里找**第一个**有可读轨道的行
+ * （`VisualizerSubtitleOverlay.resolveVisualizerSubtitleOverlayContent`）。
+ * 也就是说：当当前行没有译文 / 罗马音时，底栏**继续显示上一句的**，而不是空掉。
+ *
+ * 只有当前行下标为 -1（前奏 / 间奏 / 尾奏这类没有行匹配的时段）上游才去找上一句 ——
+ * 这不是"每行结束后都回退"，语义边界照抄，别扩大。
+ *
+ * ⚠️ 判据是 `currentTime > getLineEndTime(line)`，`getLineEndTime` 传的是
+ * **renderEndTime**（含出场补白），不是原始 endTime —— 见 `shared/line-timing`。
+ * 用原始 endTime 会让上一句在它自己的退场动画还没播完时就出现，与主舞台错位。
+ *
+ * ## 为什么返回下标而不是行对象
+ *
+ * 上游返回 `Line` 对象（React 侧用 `useMemo` 缓存，靠引用比较决定要不要重渲染）。
+ * 本项目的调用方要在**逐帧**回调里判断"结果变没变"——比对象引用在行数组被整份替换后
+ * 会误判成"变了"（其实还是同一行），比下标则天然稳定。需要行对象的调用方自己取一次即可。
+ */
+export function resolveRecentCompletedIndex(
+  lines: readonly LyricLine[],
+  currentLineIndex: number,
+  currentTimeMs: number,
+  lineRenderEndTimes: readonly number[]
+): number {
+  if (currentLineIndex !== -1 || lines.length === 0) return -1
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (currentTimeMs > (lineRenderEndTimes[index] ?? Number.NEGATIVE_INFINITY)) return index
+  }
+  return -1
+}
+
+/**
+ * @param clock 逐帧时钟（行下标与时间同帧）
+ * @param linesOverride 行源覆盖。**不传 = 用 store 的原始行**；传了就完全用它的
+ *   （「流光」要传补过插曲行的那一份，见 `shared/interlude-lines`）。
+ *   之所以是"覆盖"而不是"再叠一层"：插曲行必须与真行在**同一个数组**里，
+ *   否则下标会在两套数组之间对不上号。
+ */
+export function useSkinActiveLine(
+  clock: SmoothClock,
+  linesOverride?: Ref<readonly LyricLine[]>
+): SkinActiveLine {
   const lyric = useLyricStore()
 
   const index = ref(-1)
 
-  /** 只在行下标变化时写 ref（见文件头） */
+  /** 行源：覆盖优先，否则退回 store（两条路都是响应式的） */
+  const lines = computed<readonly LyricLine[]>(() => linesOverride?.value ?? lyric.lines)
+
+  /**
+   * 只在行下标变化时写 ref（见文件头）。
+   *
+   * 下标来自 `clock.currentLineIndex()` —— 它按「行是否还在屏幕上」判定：
+   * 行结束（含出场补白）之后、下一行开始之前，下标回到 -1。
+   * 上游就是这个语义（`findLatestActiveLineIndex` 的 `time <= renderEndTime` 分支），
+   * 于是长间奏时舞台会清空、副字幕回退到上一句 —— 不是「一直停在上一个下标」。
+   */
   const unsubscribe = clock.onFrame(() => {
     const next = clock.currentLineIndex()
     if (next !== index.value) index.value = next
   })
   onBeforeUnmount(unsubscribe)
 
-  const line = computed<LyricLine | null>(() => lyric.lines[index.value] ?? null)
+  const line = computed<LyricLine | null>(() => lines.value[index.value] ?? null)
 
   const lineKey = computed(() => `${lyric.songId ?? 'none'}:${index.value}`)
 

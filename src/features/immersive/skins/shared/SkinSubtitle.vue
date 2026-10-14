@@ -57,6 +57,13 @@ import {
  * 调用方只要忘了给主行那个 prop，首行就会静默地继承宿主字号 ——
  * 不报错、不白屏，只是字幕比上游小一档（本项目 2026-10-14 实测踩过）。
  * 让组件自己派生就没有"少传一个 prop"这种可能。
+ *
+ * ## 换行时的那一次淡入
+ *
+ * 上游在文字栈外面还套了一层 keyed `motion.div`（`key` 取当前行 / 上一句的起始时间），
+ * 换行时它整块淡入上移 10px。**这一层与最外层的 AnimatePresence 不是一回事**：
+ * 外层管"整块字幕在不在"（有无副字幕），内层管"同一块字幕换了内容"。
+ * 少了内层，换行时文字是**硬切**的 —— 上游是滑上来的。
  */
 const props = defineProps<{
   /** 已解析好的轨道（罗马音在前、译文在后；可能只有一条，也可能为空） */
@@ -92,6 +99,20 @@ const glowStyle = computed(() => ({
 
 /** 文字阴影（极浅的 0.24 底色，见共享层的说明） */
 const textShadow = computed(() => buildSubtitleTextShadow(props.background, colorWithAlpha))
+
+/**
+ * 文字栈的身份 —— 变化即触发内层淡入（见文件头）。
+ *
+ * 用**内容**而不是行下标：本组件拿不到下标（那是各皮肤的行源），而内容变了
+ * 就说明换行 / 换档了。轨道文本相同（同一句被回退显示两次）时不该重播动画，
+ * 所以把文本与角色一起拼进 key。
+ */
+const stackKey = computed(() => {
+  if (props.rows.length > 0) {
+    return props.rows.map((row) => `${row.role}:${row.text}`).join('|')
+  }
+  return (props.preview ?? []).join('|')
+})
 </script>
 
 <template>
@@ -112,29 +133,50 @@ const textShadow = computed(() => buildSubtitleTextShadow(props.background, colo
       <!-- 辉光底：垫在文字后面的椭圆渐变，外扩 + 模糊见样式表 -->
       <div class="skin-subtitle-glow" aria-hidden="true" :style="glowStyle" />
 
-      <div class="skin-subtitle-stack">
-        <template v-if="rows.length > 0">
-          <p
-            v-for="(row, index) in rows"
-            :key="row.role"
-            class="skin-subtitle"
-            :class="index > 0 ? 'is-secondary' : 'is-primary'"
-            :style="{ fontSize: index > 0 ? secondaryFontSize : translationFontSize }"
+      <!--
+        内容层：上游的 `px-1.5 py-0.5`（内边距 6px / 2px）。
+        辉光底是相对**这一层**外扩的（`-inset-x-10 -inset-y-6`），所以内边距不能省 ——
+        省掉后辉光底会贴着字，椭圆渐变最亮的那一圈正好压在字形边缘上。
+      -->
+      <div class="skin-subtitle-content">
+        <!--
+          内层 keyed 层：换行时整块淡入上移 10px（见文件头）。
+          `mode="wait"` 不适用：这里只关心"新的进来"，旧内容不需要单独退场
+          （外层 AnimatePresence 已经处理了整块消失）。
+        -->
+        <AnimatePresence>
+          <motion.div
+            :key="stackKey"
+            class="skin-subtitle-stack"
+            :initial="{ opacity: 0, y: 10 }"
+            :animate="{ opacity: 1, y: 0 }"
+            :exit="{ opacity: 0 }"
+            :transition="{ duration: 0.2, ease: 'easeOut' }"
           >
-            {{ row.text }}
-          </p>
-        </template>
+            <template v-if="rows.length > 0">
+              <p
+                v-for="(row, index) in rows"
+                :key="row.role"
+                class="skin-subtitle"
+                :class="index > 0 ? 'is-secondary' : 'is-primary'"
+                :style="{ fontSize: index > 0 ? secondaryFontSize : translationFontSize }"
+              >
+                {{ row.text }}
+              </p>
+            </template>
 
-        <template v-else>
-          <p
-            v-for="(text, index) in preview"
-            :key="index"
-            class="skin-subtitle is-upcoming"
-            :style="{ fontSize: upcomingFontSize }"
-          >
-            {{ text }}
-          </p>
-        </template>
+            <template v-else>
+              <p
+                v-for="(text, index) in preview"
+                :key="index"
+                class="skin-subtitle is-upcoming"
+                :style="{ fontSize: upcomingFontSize }"
+              >
+                {{ text }}
+              </p>
+            </template>
+          </motion.div>
+        </AnimatePresence>
       </div>
     </motion.div>
   </AnimatePresence>

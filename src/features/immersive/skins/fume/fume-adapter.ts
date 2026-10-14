@@ -21,6 +21,7 @@
 
 import type { LyricLine, LyricWord } from '@/domain/lyric'
 import { buildLineRenderHints } from '../shared/render-hints'
+import { resolveLineEndTimeMs } from '../shared/line-timing'
 import { resolveSubtitleClampSize } from '../shared/subtitle-tracks'
 import type { FumeCameraTrackingMode, FumeLine, FumeWord } from './core/fume-types'
 
@@ -160,13 +161,14 @@ export function resolveFumeBackgroundSeed(
 // ─────────────────────── §15.2 数据形状适配（LyricLine → FumeLine） ───────────────────────
 
 /**
- * 末行结束时间未知时的兜底时长（§15.2：与「倾诉」「流光」的固定 5 秒一致）。
+ * 行结束时间未知时的兜底时长（§15.2）。
  *
- * 三个适配层各有一份同值常量而不是互相 import：皮肤之间**不许**横向依赖
- * （`fume/` import `glow/` 会让两个面板的打包与重构耦合在一起）。
- * 数值一致性由三边的单测各自钉住（`fume-adapter.test.ts` 断言 `=== 5000`）。
+ * 从共享层转发（**唯一出处**在 `shared/line-timing`）：皮肤之间不许横向依赖
+ * （`fume/` import `glow/` 会让两个面板的打包与重构耦合），但**共享层**正是为
+ * 这种"三个面板口径必须一致"的量准备的 —— 各自写一份字面量时，
+ * 改一处忘另两处不会有任何测试发现。
  */
-export const FUME_FALLBACK_LINE_DURATION_MS = 5000
+export { FALLBACK_LINE_DURATION_MS as FUME_FALLBACK_LINE_DURATION_MS } from '../shared/line-timing'
 
 /**
  * 推算行结束时间（毫秒，§15.2）。优先级与 `tilt-adapter.resolveLineEndMs` /
@@ -181,18 +183,13 @@ export const FUME_FALLBACK_LINE_DURATION_MS = 5000
  * 三个皮肤的行结束时间必须同源，否则同一首歌在三个面板里的镜头节奏会漂。
  */
 export function resolveFumeLineEndMs(
-  line: Pick<LyricLine, 'timeMs'>,
+  line: Pick<LyricLine, 'timeMs'> & Pick<LyricLine, 'endTimeMs'>,
   nextLine: Pick<LyricLine, 'timeMs'> | null | undefined,
   playerDurationMs: number
 ): number {
-  const start = line.timeMs
-  if (nextLine && Number.isFinite(nextLine.timeMs) && nextLine.timeMs > start) {
-    return nextLine.timeMs
-  }
-  if (Number.isFinite(playerDurationMs) && playerDurationMs > start) {
-    return playerDurationMs
-  }
-  return start + FUME_FALLBACK_LINE_DURATION_MS
+  // 实现与口径的唯一出处是共享层（真实行时长优先 → 下一行起始 → 播放时长 → 5 秒）。
+  // 三个皮肤各写一份的后果是同一首歌在三个面板里的镜头节奏会漂，见那边的文件头。
+  return resolveLineEndTimeMs(line, nextLine, playerDurationMs)
 }
 
 /**
@@ -237,9 +234,10 @@ export function toFumeWords(words: readonly LyricWord[] | undefined, lineText: s
  * （列高装箱、字号二分、变体选择都依赖整篇），而 §7.1 的缓存键又要逐行指纹，
  * 所以转换必须在**进入排版之前**完成，且结果要被缓存键和排版同时复用。
  *
- * `isChorus` 恒为 `false`（§7.11）：本项目没有副歌元数据，hero 变体因此只能靠
- * 「每 6 行一个 + 种子阈值」与 fallback 规则决定。**不要**用「有没有译文」之类的
- * 旁证去猜副歌 —— 那会让 hero 的分布随时间线数据质量漂移。
+ * `isChorus` 来自 `/song/chorus` 的副歌区间（数据层在 `lyric.mapper.applyChorusRanges`
+ * 里按"行与区间是否重叠"打标，见 §7.11）。它是 hero 变体的一档加权
+ * （`article-blocks` 的 `chorusScore`），没有标记的行照常参与选择。
+ * **不要**用「有没有译文」之类的旁证去补 —— 那会让 hero 的分布随时间线数据质量漂移。
  */
 export function toFumeLines(lines: readonly LyricLine[], playerDurationMs: number): FumeLine[] {
   return lines.map((line, index) => {
@@ -253,7 +251,7 @@ export function toFumeLines(lines: readonly LyricLine[], playerDurationMs: numbe
       fullText: line.text,
       translation: line.translation,
       romanization: line.romaji,
-      isChorus: false,
+      isChorus: line.isChorus === true,
       renderHints: buildLineRenderHints({ startTimeMs, endTimeMs, words })
     }
   })

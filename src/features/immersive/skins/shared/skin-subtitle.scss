@@ -25,6 +25,16 @@
   pointer-events: none;
 }
 
+// 内容层：上游 `relative isolate inline-block px-1.5 py-0.5`。
+// 辉光底相对**这一层**外扩（见下），所以这层的内边距不能省。
+.skin-subtitle-content {
+  position: relative;
+  display: inline-block;
+  padding: 0.125rem 0.375rem;
+  // isolate：把辉光底的合成层限制在这一层里（上游的 isolate）
+  isolation: isolate;
+}
+
 // 文字栈：`space-y-2` + `max-w-4xl mx-auto`
 .skin-subtitle-stack {
   position: relative;
@@ -45,6 +55,11 @@
   // `blur-2xl` = 40px：辉光底的边缘必须完全糊掉，否则能看到一个椭圆轮廓
   filter: blur(40px);
   pointer-events: none;
+  // 上游的 `translateZ(0)` + `backface-visibility: hidden`：
+  // iOS Safari 在邻近 WebKit mask 重新合成时可能丢掉带 filter 的负层 ——
+  // 显式提升成独立合成层可以避开那个丢失（Electron 下无副作用）。
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 // 副字幕行：`truncate`（单行省略）+ 字重兜底 500（首行）/ 400（次级与预览）
@@ -81,4 +96,7 @@
   font-weight: 400;
   // 1px 的模糊：足够提示"这不是正在唱的那句"，又不影响读
   filter: blur(1px);
+  // 上游的 `transition-all duration-500`：预览行在"哪两行进预览"之间切换时
+  // 是**渐隐渐显**，不是硬切。少了这条，长间奏里预览行会一跳一跳地换。
+  transition: all 0.5s;
 }

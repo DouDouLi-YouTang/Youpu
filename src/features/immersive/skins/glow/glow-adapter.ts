@@ -12,6 +12,7 @@
  */
 
 import type { LyricLine, LyricWord } from '@/domain/lyric'
+import { resolveLineEndTimeMs } from '../shared/line-timing'
 import { buildDisplayWords, type DisplayWord, type TimedWord } from './core/cjk-layout'
 import type { AnimationIntensity } from './core/word-layout'
 
@@ -78,8 +79,13 @@ export const GLOW_STAGE_HEIGHT_VH = 70
 /** 行跳转判定阈值（毫秒）：两次观测差值超过它即视为拖动进度 / 改偏移 */
 export const SEEK_JUMP_MS = 1000
 
-/** 末行结束时间兜底的固定时长（对齐 `tilt-adapter` 的口径） */
-export const FALLBACK_LINE_DURATION_MS = 5000
+/**
+ * 行结束时间无法推算时的兜底时长。
+ *
+ * 从共享层转发（**唯一出处**在 `shared/line-timing`）—— 三个皮肤各自写一份
+ * 字面量时，"改了一处忘了另两处"不会有任何测试发现（三份都是 5000 就都通过）。
+ */
+export { FALLBACK_LINE_DURATION_MS } from '../shared/line-timing'
 
 /**
  * 用 clamp 拼一个响应式字号字符串（三项**都**乘倍率）。
@@ -158,18 +164,13 @@ export function resolvePixelFontSize(
  *  3. 都不行 → 固定 5 秒。
  */
 export function resolveLineEndMs(
-  line: Pick<LyricLine, 'timeMs'>,
+  line: Pick<LyricLine, 'timeMs'> & Pick<LyricLine, 'endTimeMs'>,
   nextLine: Pick<LyricLine, 'timeMs'> | null | undefined,
   playerDurationMs: number
 ): number {
-  const start = line.timeMs
-  if (nextLine && Number.isFinite(nextLine.timeMs) && nextLine.timeMs > start) {
-    return nextLine.timeMs
-  }
-  if (Number.isFinite(playerDurationMs) && playerDurationMs > start) {
-    return playerDurationMs
-  }
-  return start + FALLBACK_LINE_DURATION_MS
+  // 实现与口径的唯一出处是共享层（真实行时长优先 → 下一行起始 → 播放时长 → 5 秒）。
+  // 三个皮肤各写一份的后果是同一首歌在三个面板里的镜头节奏会漂，见那边的文件头。
+  return resolveLineEndTimeMs(line, nextLine, playerDurationMs)
 }
 
 /**
