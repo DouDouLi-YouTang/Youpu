@@ -96,7 +96,6 @@ const layoutVariants = computed(() =>
       :profile="profile"
       :clock="clock"
       :intensity="intensity"
-      :enable-word-rotation="enableWordRotation"
       :layout-variants="layoutVariants"
       :font-size="fontSize"
       :base-color="baseColor"

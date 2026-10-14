@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { AnimatePresence, motion } from 'motion-v'
 
 import { useLyricStore } from '@/stores/lyric.store'
 import { usePlayerStore } from '@/stores/player.store'
-import { useImmersiveSettingsStore } from '@/features/immersive/immersive-settings.store'
 import { resolveSkinEmptyState } from '../shared/empty-state'
 import { useFoliaSerifReady } from '../shared/folia-font'
+import { isGlowBlurQuantized } from '../shared/glow-blur-quantize'
 import { useFoliaPalette } from '../shared/use-folia-palette'
 import { useSmoothClock } from '../shared/use-smooth-clock'
 import {
@@ -71,7 +71,6 @@ import { useGlowViewport } from './use-glow-viewport'
 
 const props = defineProps<{ ctx: SkinContext }>()
 
-const settings = useImmersiveSettingsStore()
 const lyric = useLyricStore()
 const player = usePlayerStore()
 
@@ -187,8 +186,12 @@ const secondarySubtitleFontSize = computed(() =>
  * 形态在**每次词转 active 时**由 variants 解析一次（见 `glow-variants` 的说明），
  * 所以这里只需在挂载时同步一次 `detectLinux()` 的结果 —— 不需要 watch：
  * 平台在会话内不会变。
+ *
+ * ⚠️ `glow-variants` 里那个模块级开关**默认是 false**，必须在这里显式同步一次。
+ * 漏了这一步的表现是：Linux 上依旧走 `text-shadow` 路径，字形缓存照样泄漏
+ * （降级开关形同不存在，且没有任何报错）。
  */
-onBeforeUnmount(setGlowQuantizedForm(false))
+setGlowQuantizedForm(isGlowBlurQuantized())
 
 /**
  * 舞台 CSS 变量：把 JS 侧的常量交给样式表，避免同一个数字写两处。
@@ -207,15 +210,6 @@ function handleSeek(): void {
   // seekLyric 由壳层扣掉 lyricOffset（见 shared/use-transport），此处不要再减
   props.ctx.seekLyric(source.timeMs)
 }
-
-// lyricOffset 变化会让时钟整体平移；行下标只在真的跨过行首时才变，所以不需要显式重同步。
-// 留这个 watch 只为把「偏移是这一页的通用项」记在代码里（改它的入口在沉浸设置面板）。
-watch(
-  () => settings.lyricOffset,
-  () => {
-    /* 时钟每帧读的是 player.currentTimeMs + lyricOffset，下一帧自动生效 */
-  }
-)
 </script>
 
 <template>
