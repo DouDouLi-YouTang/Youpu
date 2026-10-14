@@ -23,11 +23,12 @@
  *  - `fullText`：就是 `line.text`（本项目解析层已经把整行文本拼好）。
  */
 
-import { computed, onBeforeUnmount, ref, type ComputedRef, type Ref } from 'vue'
+import { computed, type ComputedRef, type Ref } from 'vue'
 
 import { useLyricStore } from '@/stores/lyric.store'
 import { usePlayerStore } from '@/stores/player.store'
 import type { SmoothClock } from '../shared/use-smooth-clock'
+import { useSkinActiveLine } from '../shared/use-skin-active-line'
 import { resolveLineEndMs } from './glow-adapter'
 import type { LyricLine } from '@/domain/lyric'
 
@@ -59,18 +60,11 @@ export function useGlowActiveLine(clock: SmoothClock): GlowActiveLine {
   const lyric = useLyricStore()
   const player = usePlayerStore()
 
-  const index = ref(-1)
-
-  /** 只在行下标变化时写 ref（见文件头） */
-  const unsubscribe = clock.onFrame(() => {
-    const next = clock.currentLineIndex()
-    if (next !== index.value) index.value = next
-  })
-  onBeforeUnmount(unsubscribe)
-
-  const line = computed<LyricLine | null>(() =>
-    index.value >= 0 ? (lyric.lines[index.value] ?? null) : null
-  )
+  /**
+   * 行下标与当前行从共享层来（「流光」与「浮名」是同一套口径）。
+   * 本文件只补**流光特有的**那部分：行结束时间与下一行起点（见文件头）。
+   */
+  const { index, line, lineKey } = useSkinActiveLine(clock)
 
   const source = computed<GlowLineSource | null>(() => {
     const current = line.value
@@ -84,8 +78,6 @@ export function useGlowActiveLine(clock: SmoothClock): GlowActiveLine {
       nextLineStartMs: next?.timeMs ?? null
     }
   })
-
-  const lineKey = computed(() => `${lyric.songId ?? 'none'}:${index.value}`)
 
   return { index, line, source, lineKey }
 }
