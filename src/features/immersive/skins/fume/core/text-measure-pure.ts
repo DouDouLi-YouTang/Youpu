@@ -1,30 +1,31 @@
 /**
- * 「浮名」文本测量层的**纯函数部分**（移植规格书 §4.2–§4.6、§4.9、§4.10 的判定骨架）。
+ * 「浮名」文本测量的**纯换算部分**（移植规格书 §4.2–§4.6、§4.9 的判定骨架）。
  *
- * ## 为什么把它和 `text-measure.ts` 拆开
+ * ## 为什么它在 `core/` 而不在 `measure/`
  *
  * 规格书 §15.1 的硬边界是「`core/` 不许 import 测量层」——因为测量层会碰 DOM。
  * 但 §4 里真正容易写错的不是 canvas 调用，而是**字素偏移的换算**：
  * 「光标 → 全局字素」「区间 → 宽度」「行边界 → 可绘制片段」这三组换算全部只依赖
  * 数据形状（`prepared.segments` / `widths` / `breakableFitAdvances`），与 DOM 无关。
- * 把它们单独放一个文件，就能在 node 里用**假测量数据**把边界逐条断言；
- * `text-measure.ts` 只剩「把 DOM 数据接进来 + 跑字号二分」。
+ * 而 `core/article-layout.ts`（§7.6 建渲染行）**必须**用到它们，却又不许 import
+ * `measure/`。所以落点只能是 `core/`：换算住在 core，测量住在 measure，
+ * 后者 import 前者 —— 依赖方向始终是 measure → core。
  *
- * 于是本文件不许出现 `document` / `canvas` / `pretext` 的导入 —— `prepared` 只以
- * **结构**参与（`FumePreparedLike`），这样才能喂假数据。
+ * 本文件**不许**出现 `document` / `canvas` / `pretext` 的导入 —— `prepared` 只以
+ * **结构**参与（`FumePreparedLike`），于是单测能喂假数据把边界逐条钉住。
  *
  * ## 单位
  *
  * 长度一律是 CSS px（上游就是 px）。时间不参与本层。
  */
 
-import { clamp, splitGraphemes } from '../core/fume-math'
+import { clamp, splitGraphemes } from './fume-math'
 import type {
   FumeRenderLineSlice,
   FumeRenderSegmentSlice,
   FumeSegmentMeta,
   FumeWordRange
-} from '../core/fume-types'
+} from './fume-types'
 
 /**
  * `prepared` 里本层真正读到的那部分（§4.4 / §4.6）。

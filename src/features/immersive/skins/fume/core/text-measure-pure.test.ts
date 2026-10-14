@@ -25,7 +25,7 @@ import {
   widthBetweenOffsets,
   type FumePreparedLike
 } from './text-measure-pure'
-import type { FumeWordRange } from '../core/fume-types'
+import type { FumeWordRange } from './fume-types'
 
 /**
  * 造一个「等宽」prepared：`segments[i]` 每字素 10px。

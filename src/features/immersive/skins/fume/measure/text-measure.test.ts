@@ -68,6 +68,7 @@ import {
   clearSegmentMeasureCache,
   measureSegmentGlyphOffsets,
   normalizeFontWeight,
+  resolveFumeFontFamily,
   resolveThemeFontWeight
 } from './text-measure'
 
@@ -118,6 +119,62 @@ describe('buildFontSpec（§4.8）', () => {
     expect(buildFontSpec(32, 'hero', '"Folia Noto Serif SC"', { fontWeight: 900 })).toBe(
       '900 32px "Folia Noto Serif SC"'
     )
+  })
+})
+
+describe('resolveFumeFontFamily（§7.7 的 resolveThemeFontStack 位置）', () => {
+  it('没有自定义族时是「内置衬线族 + 该档位的通用兜底族」', () => {
+    expect(resolveFumeFontFamily({ name: 't', fontStyle: 'serif' })).toBe(
+      '"Folia Noto Serif SC", serif'
+    )
+    expect(resolveFumeFontFamily({ name: 't', fontStyle: 'sans' })).toBe(
+      '"Folia Noto Serif SC", system-ui, sans-serif'
+    )
+    expect(resolveFumeFontFamily({ name: 't', fontStyle: 'mono' })).toBe(
+      '"Folia Noto Serif SC", ui-monospace, monospace'
+    )
+  })
+
+  it('自定义族排在内置族之前（顺序就是优先级）', () => {
+    expect(resolveFumeFontFamily({ name: 't', fontStyle: 'serif', fontFamily: 'My Font' })).toBe(
+      '"My Font", "Folia Noto Serif SC", serif'
+    )
+
+    expect(
+      resolveFumeFontFamily({
+        name: 't',
+        fontStyle: 'serif',
+        fontFamilyStack: ['First', 'Second']
+      })
+    ).toBe('First, Second, "Folia Noto Serif SC", serif')
+  })
+
+  it('fontFamily 与 fontFamilyStack 合并后去重（同一个族不重复出现）', () => {
+    const family = resolveFumeFontFamily({
+      name: 't',
+      fontStyle: 'serif',
+      fontFamily: 'Dup',
+      fontFamilyStack: ['Dup', 'Other']
+    })
+
+    expect(family.match(/Dup/g)).toHaveLength(1)
+    expect(family).toBe('Dup, Other, "Folia Noto Serif SC", serif')
+  })
+
+  it('带空格的族名会被加引号（不加会被解析成多个族）', () => {
+    expect(
+      resolveFumeFontFamily({ name: 't', fontStyle: 'serif', fontFamily: 'Noto Serif SC' })
+    ).toBe('"Noto Serif SC", "Folia Noto Serif SC", serif')
+    // 通用族（serif 等）本来就有内置兜底，这里只验证「单个词不加引号」
+    expect(resolveFumeFontFamily({ name: 't', fontStyle: 'serif', fontFamily: 'Georgia' })).toBe(
+      'Georgia, "Folia Noto Serif SC", serif'
+    )
+  })
+
+  it('空白自定义族被忽略（不会在栈里留下空项）', () => {
+    expect(
+      resolveFumeFontFamily({ name: 't', fontStyle: 'serif', fontFamilyStack: ['  ', ''] })
+    ).toBe('"Folia Noto Serif SC", serif')
   })
 })
 

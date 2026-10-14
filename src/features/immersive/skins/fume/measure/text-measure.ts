@@ -5,7 +5,8 @@
  *
  * 全文只有这里可以调 `prepareWithSegments` / `layoutWithLines` / `getContext('2d')`。
  * 于是「换测量后端」（比如将来换成 OffscreenCanvas 或预烘的字宽表）只需要改这里，
- * 而 §4 的全部换算逻辑（在 `text-measure-pure.ts`）保持可单测、可读。
+ * 而 §4 的**纯换算**逻辑（住在 `core/text-measure-pure.ts`，因为 §7.6 的建块也要用它）
+ * 保持可单测、可读 —— 依赖方向是 measure → core（§15.1 的边界只禁反向）。
  *
  * ## 无 DOM 时的行为（**不是**抛错）
  *
@@ -35,8 +36,15 @@ import {
   type PreparedTextWithSegments
 } from '@chenglou/pretext'
 import { rememberBounded } from '../../shared/bounded-cache'
+import { FOLIA_SERIF_FAMILY } from '../../shared/folia-font'
+import {
+  FUME_BODY_LINE_HEIGHT_RATIO,
+  FUME_HERO_LINE_HEIGHT_RATIO,
+  resolveLineHeight
+} from '../core/article-blocks'
 import { splitGraphemes } from '../core/fume-math'
 import type { FumeBlockVariant } from '../core/fume-types'
+import type { FumeLayoutThemeKey } from '../core/layout-key'
 
 /** pretext 的预制参数（§4.1）：`pre-wrap` 保留空白，歌词里的空格才不会被吃掉 */
 const FUME_PRETEXT_OPTIONS = { whiteSpace: 'pre-wrap' } satisfies PrepareOptions
@@ -50,9 +58,14 @@ export const FUME_HERO_FONT_PX_RANGE = { low: 18, high: 58 } as const
 export const FUME_BODY_FONT_PX_RANGE = { low: 10, high: 30 } as const
 const FONT_PX_BISECTION_ITERATIONS = 8
 
-/** 行高系数（§4.10 / §7.5）：hero 1.02、body 1.06；行高**取整**（§17.3 第 4 条） */
-export const FUME_HERO_LINE_HEIGHT_RATIO = 1.02
-export const FUME_BODY_LINE_HEIGHT_RATIO = 1.06
+/**
+ * 行高系数（§4.10 / §7.5）：hero 1.02、body 1.06；行高**取整**（§17.3 第 4 条）。
+ *
+ * ⚠️ 这两个值的**真源在 `core/article-blocks.ts`**（那里还负责块间距与装箱），
+ * 这里只是转出给既有调用点用。字号二分与 §7.5 的块高必须用同一个系数，
+ * 两处各写一份的话「二分出来的行高」与「装箱用的行高」会在小数点后分叉。
+ */
+export { FUME_BODY_LINE_HEIGHT_RATIO, FUME_HERO_LINE_HEIGHT_RATIO }
 
 /** 片段逐字素测量缓存上限（§4.7）：远大于一首歌的片段数，防止长会话无限增长 */
 export const SEGMENT_MEASURE_CACHE_LIMIT = 2048
@@ -60,6 +73,42 @@ export const SEGMENT_MEASURE_CACHE_LIMIT = 2048
 /** 主题里影响字体串的字段（§4.8）：只要这一个，避免把整个主题拖进来 */
 export interface FumeFontThemeInput {
   fontWeight?: number
+}
+
+/** 各字体风格档在 canvas 里用的兜底族（本项目只随包分发衬线字体，见下） */
+const GENERIC_FALLBACK_BY_STYLE: Record<FumeLayoutThemeKey['fontStyle'], string> = {
+  sans: 'system-ui, sans-serif',
+  serif: 'serif',
+  mono: 'ui-monospace, monospace'
+}
+
+/**
+ * 主题 → canvas 用的字体栈（§7.7 的 `resolveThemeFontStack` 位置）。
+ *
+ * 上游会拼「自定义族 + 内置档位栈」两大段；本项目**只有一个随包分发的族**
+ * （`FOLIA_SERIF_FAMILY`，见 `shared/folia-font.ts` 与 `assets/fonts/fonts.scss`），
+ * 所以顺序是「主题自定义族 → 内置衬线族 → 该档位的通用兜底族」。
+ *
+ * 为什么不照抄上游那三条几十个族的长栈：那些族在本机大概率不存在，写进去只会让
+ * canvas 与 CSS 的**实际**选字结果难以预测；而本项目已经把需要的字形随包带上了，
+ * 少写几个不存在的候选反而让测量与渲染更容易对齐。主题若给了自定义族则排在最前，
+ * 与上游「自定义优先」的语义一致。
+ *
+ * 返回的是**合法 CSS 字体栈**（可直接进 canvas `font` 简写），所以带空格的族名
+ * 必须加引号 —— `Folia Noto Serif SC` 不加引号会被解析成三个族名。
+ */
+export function resolveFumeFontFamily(theme: FumeLayoutThemeKey): string {
+  const customFamilies = [theme.fontFamily, ...(theme.fontFamilyStack ?? [])]
+    .map((family) => family?.trim())
+    .filter((family): family is string => Boolean(family))
+    .map((family) => (family.includes(' ') ? `"${family}"` : family))
+
+  const builtin = `"${FOLIA_SERIF_FAMILY}"`
+  const fallback = GENERIC_FALLBACK_BY_STYLE[theme.fontStyle] ?? GENERIC_FALLBACK_BY_STYLE.serif
+
+  // 自定义族里去重（主题栈有时会重复同一个族），但保留书写顺序 —— 顺序就是优先级
+  const ordered = [...new Set(customFamilies)]
+  return [...ordered, builtin, fallback].join(', ')
 }
 
 /** 一次字号二分的产物（§4.10）：字号 + pretext 的两个对象 */
@@ -178,10 +227,8 @@ function prepareSingleLineAt(
 ): FumePreparedSingleLine {
   const fontSpec = buildFontSpec(candidateFontPx, variant, fontFamily, theme)
   const prepared = prepareWithSegments(text, fontSpec, FUME_PRETEXT_OPTIONS)
-  const lineHeight = Math.round(
-    candidateFontPx *
-      (variant === 'hero' ? FUME_HERO_LINE_HEIGHT_RATIO : FUME_BODY_LINE_HEIGHT_RATIO)
-  )
+  // 与 §7.5 共用同一份取整实现：二分时的行高必须与装箱时的行高逐位相同
+  const lineHeight = resolveLineHeight(candidateFontPx, variant)
 
   return {
     fontPx: candidateFontPx,
