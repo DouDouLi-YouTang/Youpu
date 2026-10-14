@@ -9,6 +9,7 @@ import {
 import { defineBackground } from './definition'
 import FoliaFallbackGradient from './shared/FoliaFallbackGradient.vue'
 import LatentBackground from './latent/LatentBackground.vue'
+import NomandBackground from './nomand/NomandBackground.vue'
 
 /**
  * 背景模式注册表 —— 6 个 entry 的**静态**表 + order 排序 + 未命中回退默认模式。
@@ -20,9 +21,11 @@ import LatentBackground from './latent/LatentBackground.vue'
  * 为什么 `assertFoliaModeList` 要在**模块求值**时跑：这是「加了一个模式目录但忘了
  * 登记 order / label」的唯一低成本拦截点。放在函数里就得有人调用它，等于没做。
  *
- * ⚠️ 未实现的模式暂时指向 `FoliaFallbackGradient`（主题底色渐变）。这是**过渡态**：
+ * ⚠️ 尚未落地的模式暂时指向 `FoliaFallbackGradient`（主题底色渐变）。这是**过渡态**：
  * 每个模式的实际组件落地时，把对应那一行的 `component` 换掉即可，表格形状不要动 ——
  * order / labelKey / labelFallback 三列已经按规格逐字对齐（§1.5）。
+ *
+ * 已落地：latent、nomand。待落地：common、monet、sora、url。
  */
 
 const builtinEntries: FoliaBackgroundRegistryEntry[] = [
@@ -45,7 +48,7 @@ const builtinEntries: FoliaBackgroundRegistryEntry[] = [
     order: FOLIA_BACKGROUND_ORDER.nomand,
     labelKey: 'options.visualizerBackgroundModeNomand',
     labelFallback: 'Nomand',
-    component: FoliaFallbackGradient
+    component: NomandBackground
   }),
   defineBackground({
     mode: 'latent',

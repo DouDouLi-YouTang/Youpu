@@ -30,7 +30,7 @@ const MIN_IMAGE_SIZE = 1024
 
 export interface PaperShaderOptions {
   fragmentShader: string
-  uniforms: ShaderMountUniforms
+  uniforms: PaperShaderUniformInput
   /** 0 = 不启动 paper 自己的 rAF（静态 shader 不该有持续开销） */
   speed?: number
   frame?: number
@@ -45,6 +45,16 @@ export interface PaperShaderOptions {
   /** 日志用模式名（WebGL 不可用时 warn 一次） */
   mode: string
 }
+
+/**
+ * 入参侧的 uniform 值：**比 `ShaderMountUniforms` 宽一层，允许 URL 字符串**。
+ *
+ * 坑：`@paper-design/shaders` 的 `ShaderMountUniforms` 只声明了「已经加载完的
+ * `HTMLImageElement`」，但运行时 `resolveShaderUniformImages`（也就是我们复刻的那个函数）
+ * 本来就接受 URL 字符串、异步载图再上传。直接按 d.ts 写就会逼调用方把字符串强转成图片类型，
+ * 掩盖真实语义。所以这里在「挂载前」这一层显式放宽，载图后一定收敛回 `ShaderMountUniforms`。
+ */
+export type PaperShaderUniformInput = Record<string, ShaderMountUniforms[string] | string>
 
 export interface PaperShaderHandle {
   /** 挂载后的 WebGL canvas（lose context 用） */
@@ -109,7 +119,7 @@ function loadShaderImage(url: string): Promise<HTMLImageElement> {
 
 /** 把 uniform 里的 URL 字符串换成已加载（且已放大）的 HTMLImageElement。 */
 export async function resolveShaderUniformImages(
-  uniforms: ShaderMountUniforms
+  uniforms: PaperShaderUniformInput
 ): Promise<ShaderMountUniforms> {
   const resolved: ShaderMountUniforms = {}
   const pending: Promise<void>[] = []

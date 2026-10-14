@@ -14,6 +14,9 @@ vi.mock('../folia/shared/FoliaFallbackGradient.vue', () => ({
 vi.mock('../folia/latent/LatentBackground.vue', () => ({
   default: { name: 'LatentBackgroundStub' }
 }))
+vi.mock('../folia/nomand/NomandBackground.vue', () => ({
+  default: { name: 'NomandBackgroundStub' }
+}))
 
 import {
   appendFoliaBackgroundEntry,
