@@ -18,9 +18,16 @@
  */
 
 import type { LyricLine } from '@/domain/lyric'
+import type { SubtitleContentMode } from '../../immersive-settings.model'
 
-/** 副字幕的内容档位：不显示 / 只译文 / 只罗马音 / 两个都给 */
-export type SubtitleContentMode = 'none' | 'translation' | 'romanization' | 'both'
+/**
+ * 副字幕的内容档位：两个都给 / 只译文 / 只罗马音 / 隐藏。
+ *
+ * ⚠️ 类型本体在 `immersive-settings.model`（它同时是「一条设置」与「本层的入参」，
+ * 定义放在数据层才是正确方向，见那边的说明），这里**原样再导出** —— 本层与两个
+ * 皮肤都继续从本文件 import，不必知道它住在哪。
+ */
+export type { SubtitleContentMode }
 
 /** 轨道角色。'both' 档里罗马音在前、译文在后 —— 顺序是刻意的，见下。 */
 export type SubtitleTrackRole = 'romanization' | 'translation'

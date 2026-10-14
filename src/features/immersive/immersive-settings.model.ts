@@ -29,6 +29,15 @@ export type KaraokeAnimation = 'float' | 'slide'
 export type LyricAlignmentPct = 30 | 50
 export type LyricTiming = 'smooth' | 'sharp' | 'lazy' | 'easeout'
 export type ContributorDisplay = 'show' | 'hover' | 'hide'
+/**
+ * 底部副字幕的内容档位：两个都给 / 只译文 / 只罗马音 / 隐藏。
+ *
+ * ⚠️ 类型定义在**这里**而不是 `skins/shared/subtitle-tracks.ts`：它同时是
+ * 「一条设置」与「副字幕解析层的入参」，而设置是更上游的概念 —— 定义放下游会让
+ * 数据层反过来 import 皮肤层（model 是纯叶子，不能依赖任何东西，见文件头）。
+ * 副字幕层改为从这里 import 并原样再导出，老引用不用改。
+ */
+export type SubtitleContentMode = 'both' | 'translation' | 'romanization' | 'none'
 /** remain = 显示剩余; total = 显示已播(点击切换) */
 export type TimeIndicator = 'remain' | 'total'
 
@@ -99,6 +108,15 @@ export interface ImmersiveSettings {
   lyricFontSize: number // 16–64 px, default 32
   lyricRomajiSizeEm: number // 0.3–1.5 em, default 0.6
   lyricTranslationSizeEm: number // 0.3–1.5 em, default 1
+  /**
+   * 底部副字幕显示哪几档。**沉浸页通用项**（不是「经典」面板的外观项）：
+   * 它是「这一页的副字幕要不要显示罗马音 / 译文」，与正在放哪个面板无关，
+   * 所以「倾诉」「流光」「浮名」都读它（与明暗主题、底栏四项同一类）。
+   *
+   * 默认 `'both'`（罗马音在前、译文在后）—— 与上游 `classic` / `fume` 的既有表现一致；
+   * 上游的默认档是 `'translation'`，本项目刻意取 `'both'`（2026-10-15 用户定）。
+   */
+  subtitleContentMode: SubtitleContentMode
   lyricFade: boolean
   lyricZoom: boolean
   lyricBlur: boolean
@@ -164,6 +182,8 @@ export function createDefaultSettings(): ImmersiveSettings {
     lyricFontSize: 32,
     lyricRomajiSizeEm: 0.6,
     lyricTranslationSizeEm: 1,
+    // 罗马音 + 译文两行（用户 2026-10-15 定：保留两行，但要能通过设置关掉）
+    subtitleContentMode: 'both',
     lyricFade: true,
     lyricZoom: true,
     lyricBlur: false,

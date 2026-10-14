@@ -74,6 +74,7 @@ const EXPECTED_KEYS = [
   'rotateCurvature',
   'songInfoAlign',
   'staticFluid',
+  'subtitleContentMode',
   'textGlow',
   'textShadow',
   'timeIndicator'
@@ -125,6 +126,12 @@ describe('createDefaultSettings 与其他模块耦合的默认值（改动属于
       'Microsoft JhengHei UI',
       'Microsoft JhengHei'
     ])
+  })
+
+  it('副字幕默认「罗马音 + 译文」两行（2026-10-15 用户定：保留两行，但要能关）', () => {
+    // 上游默认是 'translation'（只译文），本项目刻意取 'both' —— 这条断言的作用是
+    // 拦住「顺手对齐上游默认值」的改动：那会让底栏悄悄少一行，且没有任何报错。
+    expect(createDefaultSettings().subtitleContentMode).toBe('both')
   })
 })
 
