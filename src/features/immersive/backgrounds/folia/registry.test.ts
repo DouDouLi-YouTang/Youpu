@@ -20,6 +20,9 @@ vi.mock('../folia/nomand/NomandBackground.vue', () => ({
 vi.mock('../folia/monet/MonetBackground.vue', () => ({
   default: { name: 'MonetBackgroundStub' }
 }))
+vi.mock('../folia/sora/SoraBackground.vue', () => ({
+  default: { name: 'SoraBackgroundStub' }
+}))
 
 import {
   appendFoliaBackgroundEntry,

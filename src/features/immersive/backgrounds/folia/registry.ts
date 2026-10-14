@@ -11,6 +11,7 @@ import FoliaFallbackGradient from './shared/FoliaFallbackGradient.vue'
 import LatentBackground from './latent/LatentBackground.vue'
 import MonetBackground from './monet/MonetBackground.vue'
 import NomandBackground from './nomand/NomandBackground.vue'
+import SoraBackground from './sora/SoraBackground.vue'
 
 /**
  * 背景模式注册表 —— 6 个 entry 的**静态**表 + order 排序 + 未命中回退默认模式。
@@ -26,7 +27,7 @@ import NomandBackground from './nomand/NomandBackground.vue'
  * 每个模式的实际组件落地时，把对应那一行的 `component` 换掉即可，表格形状不要动 ——
  * order / labelKey / labelFallback 三列已经按规格逐字对齐（§1.5）。
  *
- * 已落地：latent、monet、nomand。待落地：common、sora、url。
+ * 已落地：latent、monet、nomand、sora。待落地：common、url。
  */
 
 const builtinEntries: FoliaBackgroundRegistryEntry[] = [
@@ -71,7 +72,7 @@ const builtinEntries: FoliaBackgroundRegistryEntry[] = [
     order: FOLIA_BACKGROUND_ORDER.sora,
     labelKey: 'options.visualizerBackgroundModeSora',
     labelFallback: 'Sora',
-    component: FoliaFallbackGradient
+    component: SoraBackground
   })
 ]
 
