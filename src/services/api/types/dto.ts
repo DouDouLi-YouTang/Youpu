@@ -349,6 +349,28 @@ export interface LyricResponseDto {
   source?: { name?: string } | string | null
 }
 
+/**
+ * `/song/chorus` 的单条副歌区间。时间单位**毫秒**（与歌词时间戳同源，
+ * mapper 不需要做秒→毫秒换算；上游 Folia 的 `parseNeteaseChorusRanges` 才需要，
+ * 因为它内部的歌词时间是秒）。响应里还有 `id` / `ugcLocked` 等字段，本项目不用。
+ */
+export interface ChorusRangeDto {
+  startTime: number
+  endTime: number
+}
+
+/**
+ * `/song/chorus` response body.
+ *
+ * 该接口同时给出 `chorus` 与 `data` 两个等价数组（实测 2058263032 两者内容相同），
+ * 不同版本/上游分支可能只给其中一个，故两者都可选，规整逻辑见 `normalizeChorusRanges`。
+ */
+export interface ChorusResponseDto {
+  code: number
+  chorus?: ChorusRangeDto[] | null
+  data?: ChorusRangeDto[] | null
+}
+
 // ---------------------------------------------------------------------------
 // Auth / QR-login DTOs
 // ---------------------------------------------------------------------------

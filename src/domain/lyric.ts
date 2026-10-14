@@ -17,12 +17,39 @@ export interface LyricWord {
 export interface LyricLine {
   /** Timestamp in milliseconds from the start of the track. */
   timeMs: number
+  /**
+   * 行结束时间（毫秒）。**只有音源本身给出了行时长时才有值** —— 目前是 YRC 行头
+   * `[startTime,duration]` 的 `startTime + duration`。老 LRC 只有起始时间戳，
+   * 该字段为 undefined，由消费方按「下一行起始」推算。
+   * 之所以要保留它：上游 Folia 用真实行结束时间判定「这一行是否还在屏幕上」
+   * （超过 renderEndTime 就清空舞台），以及「行间空窗是否够长、要补插曲行」。
+   * 若一律用下一行起始当结束时间，长间奏时行下标永远不会失效，舞台也就不会清空。
+   */
+  endTimeMs?: number
   text: string
   translation?: string
   /** 罗马音/音译歌词（romalrc/yromalrc），存在时作为当前行附属文本显示。 */
   romaji?: string
   /** 逐字时间戳(YRC)。存在时可渲染逐字卡拉OK动画;无逐字数据时为 undefined。 */
   words?: LyricWord[]
+  /**
+   * 副歌行标记，数据来自 `/song/chorus` 的副歌时间区间（见 `ChorusRange`）。
+   * 用于「流光」副歌行的合唱涟漪，以及「浮名」的 hero 变体选择。
+   * 无副歌数据时为 undefined（不写 false，避免「无数据」与「确认不是副歌」混淆）。
+   */
+  isChorus?: boolean
+}
+
+/**
+ * 副歌时间区间（毫秒）。
+ *
+ * 放在 domain 层而不是 `endpoints/chorus.api.ts`：它会被 store 的 state 持有、
+ * 被 mapper 消费，属于歌词领域模型的一部分；endpoints 层的 `ChorusRangeDto`
+ * 才是传输形状（带 id/ugcLocked 等本项目不用的字段）。
+ */
+export interface ChorusRange {
+  startTime: number
+  endTime: number
 }
 
 /** 歌词贡献者中的单个艺人/用户元信息 */

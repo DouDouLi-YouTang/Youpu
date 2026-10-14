@@ -1,4 +1,4 @@
-import type { LyricContributors, LyricData, LyricLine } from '@/domain/lyric'
+import type { ChorusRange, LyricContributors, LyricData, LyricLine } from '@/domain/lyric'
 import { parseLrc } from '@/features/lyric/parse-lrc'
 import { parseJsonLrc } from '@/features/lyric/parse-json-lrc'
 import { parseYrc } from '@/features/lyric/parse-yrc'
@@ -53,6 +53,10 @@ export function mapLyricDto(dto: LyricResponseDto): LyricData {
     // YRC 逐字行
     lines = yrcLines.map((l) => ({
       timeMs: l.timeMs,
+      // 行时长只有 YRC 行头给得出；durationMs 非有限或 <= 0 时留 undefined，
+      // 让消费方按「下一行起始」推算（见 LyricLine.endTimeMs 注释）。
+      endTimeMs:
+        Number.isFinite(l.durationMs) && l.durationMs > 0 ? l.timeMs + l.durationMs : undefined,
       text: l.text,
       words: l.words
     }))
@@ -95,6 +99,66 @@ export function mapLyricDto(dto: LyricResponseDto): LyricData {
   const isPureMusic = !hasLyric || /纯音乐/.test(dto.lrc?.lyric ?? '')
 
   return { lines, hasLyric, isPureMusic, contributors: mapContributors(dto) }
+}
+
+/** 副歌判定里行尾的兜底时长(ms),与各皮肤 adapter 的 5 秒兜底同值。 */
+const CHORUS_FALLBACK_LINE_DURATION_MS = 5000
+
+/**
+ * 推算用于副歌判定的行结束时间(毫秒)。取值顺序与上游 `parserCore` 的
+ * `lineEndTime` 一致:
+ *  1. 行自带真实行尾(`endTimeMs`,目前只有 YRC 行头给得出);
+ *  2. 下一行的起始(歌词时间戳天然就是上一行的结束);
+ *  3. 播放时长(最后一行能覆盖到曲末);
+ *  4. 都不行 → 起始 + 5 秒。
+ *
+ * 刻意不 import `features/immersive` 下的 adapter:数据层不能反向依赖 UI 皮肤,
+ * 这里保留一份等价实现,数值一致性由本文件与各 adapter 的单测各自钉住。
+ */
+function resolveChorusLineEndMs(
+  line: LyricLine,
+  nextLine: LyricLine | undefined,
+  playerDurationMs: number
+): number {
+  const start = line.timeMs
+  const explicitEnd = line.endTimeMs
+  if (typeof explicitEnd === 'number' && Number.isFinite(explicitEnd) && explicitEnd > start) {
+    return explicitEnd
+  }
+  const nextStart = nextLine?.timeMs
+  if (typeof nextStart === 'number' && Number.isFinite(nextStart) && nextStart > start) {
+    return nextStart
+  }
+  if (Number.isFinite(playerDurationMs) && playerDurationMs > start) {
+    return playerDurationMs
+  }
+  return start + CHORUS_FALLBACK_LINE_DURATION_MS
+}
+
+/**
+ * 把 `/song/chorus` 的副歌区间标注到歌词行上。判定口径照抄上游
+ * `applyNeteaseChorusByTime`:一行只要与任一区间**有重叠**即为副歌
+ * (`lineStart < rangeEnd && lineEnd > rangeStart`,正好相接不算重叠)。
+ *
+ * 未命中的行**不写** `isChorus: false`:「没有副歌数据」与「确认不是副歌」在
+ * 变体选择(浮名的 hero / 流光的涟漪)里语义不同,写 false 会把两者抹平。
+ *
+ * 区间为空时原样返回入参,与上游的早退一致(调用方多为「无副歌」的常见路径,
+ * 没必要为了新引用去复制整份行数组)。非空时返回新数组 + 新行对象,
+ * 让 Pinia 的响应式更新可靠触发。
+ */
+export function applyChorusRanges(
+  lines: LyricLine[],
+  ranges: ChorusRange[],
+  playerDurationMs: number
+): LyricLine[] {
+  if (ranges.length === 0 || lines.length === 0) return lines
+  return lines.map((line, index) => {
+    const lineStart = line.timeMs
+    const lineEnd = resolveChorusLineEndMs(line, lines[index + 1], playerDurationMs)
+    const isChorus = ranges.some((range) => lineStart < range.endTime && lineEnd > range.startTime)
+    return isChorus ? { ...line, isChorus: true } : { ...line }
+  })
 }
 
 /**
