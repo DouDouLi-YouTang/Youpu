@@ -83,6 +83,7 @@ import {
   releaseFumeSnapshots,
   type FumeSnapshotCache
 } from './render/snapshot-cache'
+import { createFumeRetiredSnapshotQueue } from './render/retired-snapshot-queue'
 import { FUME_BLOCK_MEASURE } from './measure/fume-block-measure'
 import { FUME_IDLE_TIME_DRIFT } from './fume-adapter'
 
@@ -140,8 +141,25 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
    */
   const cameraState = createFumeCameraState()
 
-  /** 静态快照缓存：跨帧存活（§11.1） */
-  const snapshotCache: FumeSnapshotCache = createFumeSnapshotCache()
+  /**
+   * 静态快照缓存：跨帧存活（§11.1）。
+   *
+   * ⚠️ 是 `let` 而不是 `const`：文章 / 主题变化时它会被**整张换掉**
+   * （见 `retireSnapshotCache`），换下来的那张进分批释放队列。
+   */
+  let snapshotCache: FumeSnapshotCache = createFumeSnapshotCache()
+
+  /**
+   * 已退休、正在分批释放的快照缓存（性能修复，2026-10-14）。
+   *
+   * 为什么不在切歌那一帧一次清完：实测 300 张 512×256 全清要 14.1ms ——
+   * 那一帧必定掉，而切歌本来就已经有排版要跑。改成每帧放一小批之后，
+   * 同样的活被摊到十几帧里，每帧不到 1ms。
+   *
+   * 队列本体住在 `render/retired-snapshot-queue.ts`：那里的「搬运时重新编号」是
+   * 一段有静默 bug 风险的逻辑（键会撞），单独成文件才钉得住。
+   */
+  const retiredSnapshots = createFumeRetiredSnapshotQueue()
 
   /**
    * 实时区块的量化栅格（§11.5）。**只有 Linux 降级档会真正用到它**
@@ -219,6 +237,25 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
 
   let rafId: number | null = null
   let disposed = false
+
+  /**
+   * 把当前快照缓存**整张退休**：换一张新的给后续帧用，旧的排队分批释放。
+   *
+   * 为什么是「换一张」而不是「原地标记」：文章 / 主题一变，旧缓存里的每一张都作废，
+   * 后续帧必须立刻看不到它们（否则会贴出上一套配色的字）。换引用是一步到位的，
+   * 不需要给每条记录加一个「作废」标志，也就不会出现「漏标一条」这种 bug。
+   */
+  function retireSnapshotCache(): void {
+    if (snapshotCache.size === 0) return
+    retiredSnapshots.retire(snapshotCache)
+    snapshotCache = createFumeSnapshotCache()
+  }
+
+  /** 立刻释放全部快照（**只在卸载时用**：那时没有「下一帧」可以摊） */
+  function releaseAllSnapshotsNow(): void {
+    releaseFumeSnapshots(snapshotCache, Number.POSITIVE_INFINITY)
+    retiredSnapshots.releaseAll()
+  }
 
   /** 暂停 + 已经有文章 → 画完这一帧就停（§16.4）；空态时仍要转背景 */
   function shouldKeepFrames(): boolean {
@@ -352,7 +389,7 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
     const themeFingerprint = resolveThemeFingerprint(theme)
     if (themeFingerprint !== lastThemeFingerprint) {
       lastThemeFingerprint = themeFingerprint
-      releaseFumeSnapshots(snapshotCache, Number.POSITIVE_INFINITY)
+      retireSnapshotCache()
       liveRaster.clear()
     }
 
@@ -384,9 +421,13 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
       hasPrintedContent = false
       lastFrameAt = null
       syncFumeCameraToArticle(cameraState, article)
-      // 快照里烤了颜色 / 字体 / 尺寸，文章一换必须全清（§11.1）
-      releaseFumeSnapshots(snapshotCache, Number.POSITIVE_INFINITY)
-      // 栅格同理：它烤的是同一批颜色与字体（§11.5 的 clear 走同一条路径）
+      // 快照里烤了颜色 / 字体 / 尺寸，文章一换必须全换（§11.1）。
+      // 走「整张退休 + 分批释放」而不是一次清完，见 `retireSnapshotCache`。
+      retireSnapshotCache()
+      // 栅格同理：它烤的是同一批颜色与字体（§11.5 的 clear 走同一条路径）。
+      // ⚠️ 栅格**仍然同步清**：它与快照的存活语义不同 —— 栅格是「正在打印的块」，
+      // 数量与在屏块数同阶（实测 ≤ 30 张，不是快照那种几百张），同步清的开销
+      // 远小于一次 `clearRect`，而推迟释放会让旧字在新文章的头几帧里被贴出来。
       liveRaster.clear()
       // 渐隐总时长只跟「全篇时间线 + textHoldRatio」有关，两者随文章一起换（§6.3）
       passedFadeDurationMs = resolveFumePassedFadeDurationMs(
@@ -564,6 +605,7 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
     // ── ⑦ 清缓存 + 续帧 ──────────────────────────────────────────────────
     // 两个 Map 遍历都是小常数，比挂定时器更可靠（§16.4）
     liveRaster.sweep(now)
+    retiredSnapshots.releaseBatch()
     releaseFumeSnapshots(snapshotCache, now)
     if (shouldKeepFrames()) rafId = requestAnimationFrame(draw)
   }
@@ -597,8 +639,9 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
     disposed = true
     if (rafId !== null) cancelAnimationFrame(rafId)
     rafId = null
-    // 卸载时把快照画布全部释放（§11.1）：只 delete 不够，要先把尺寸归零
-    releaseFumeSnapshots(snapshotCache, Number.POSITIVE_INFINITY)
+    // 卸载时把快照画布全部释放（§11.1）：只 delete 不够，要先把尺寸归零。
+    // ⚠️ 这里**不能**走分批：组件卸载之后不会再有下一帧，排队就等于永久泄漏。
+    releaseAllSnapshotsNow()
     liveRaster.clear()
   })
 

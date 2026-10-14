@@ -14,7 +14,8 @@ import type { FumeLine, FumeViewportSize } from './core/fume-types'
  *  1. **三段式**：rAF → `setTimeout(0/96)` → 版本号复核（不是同步算、也不是直接 timeout）；
  *  2. **首次不防抖**：第一版 0ms 立刻算（前奏不能空屏），之后才 96ms；
  *  3. **过期请求丢弃**：排程后又改输入，旧请求绝不能写回 `article`；
- *  4. **算完之后再查一次**：这条是切歌场景的唯一保险（`runLayout` 内是同步长任务）。
+ *  4. **分片期间也能丢弃**：排版被切成若干片让出主线程，切歌时旧任务必须在
+ *     下一个让出点就作废（否则切歌会白跑完剩下的几十次排版）。
  *
  * 测量层用**假实现**：真实现要 pretext + canvas，node 下会抛错，
  * 而本测试的对象是调度不是测量（§15.5 的分工）。
@@ -50,10 +51,17 @@ vi.mock('./measure/fume-article-measure', () => ({
 
 const { useFumeLayout } = await import('./use-fume-layout')
 
-/** 可控排程器：把 rAF 与定时器都收进队列，由测试显式推进 */
+/**
+ * 可控排程器：把 rAF 与定时器都收进队列，由测试显式推进。
+ *
+ * `yieldToMainThread` 立刻 resolve（不排进队列）：本测试的对象是**调度语义**，
+ * 不是让出机制本身 —— 让出点立刻返回等价于「主线程马上就能继续跑」，
+ * 于是所有分片会在同一轮微任务里跑完，测试仍然是一次 `flush()` 就能断言结果。
+ */
 function createScheduler() {
   let frameCallback: (() => void) | null = null
   let delayed: { callback: () => void; ms: number } | null = null
+  let yieldCount = 0
   return {
     scheduler: {
       requestFrame: (callback: () => void) => {
@@ -69,16 +77,27 @@ function createScheduler() {
       },
       cancelDelay: () => {
         delayed = null
+      },
+      yieldToMainThread: () => {
+        yieldCount += 1
+        return Promise.resolve()
       }
     },
-    /** 走完「这一帧 + 定时器」两段 */
-    flush() {
+    /**
+     * 走完「这一帧 + 定时器」两段，再把分片排版的微任务排干。
+     *
+     * ⚠️ 必须 `await`：`runLayout` 现在是 `async` 的，结果写在微任务之后。
+     * 一次宏任务等待（`setTimeout(0)`）就足以让队列里的全部微任务跑完，
+     * 所以这里不需要「等 N 个 tick」这种脆弱的写法。
+     */
+    async flush() {
       const frame = frameCallback
       frameCallback = null
       frame?.()
       const timer = delayed
       delayed = null
       timer?.callback()
+      await new Promise<void>((resolve) => setTimeout(resolve, 0))
     },
     /** 只走第一段（rAF），停在定时器前 —— 用来观察防抖时长 */
     flushFrame() {
@@ -91,6 +110,10 @@ function createScheduler() {
     },
     get hasFrame(): boolean {
       return frameCallback !== null
+    },
+    /** 已发生的让出次数（用来确认排版真的是分片跑的） */
+    get yieldCount(): number {
+      return yieldCount
     }
   }
 }
@@ -128,13 +151,16 @@ function mountLayout(lines: Ref<FumeLine[]> = ref([makeLine()])) {
     lines,
     viewport,
     fontKey,
-    flush: (): void => scheduler.flush(),
+    flush: (): Promise<void> => scheduler.flush(),
     flushFrame: (): void => scheduler.flushFrame(),
     get pendingDelayMs(): number | null {
       return scheduler.pendingDelayMs
     },
     get hasFrame(): boolean {
       return scheduler.hasFrame
+    },
+    get yieldCount(): number {
+      return scheduler.yieldCount
     }
   }
 }
@@ -144,7 +170,7 @@ describe('useFumeLayout 调度（§7.9）', () => {
     vi.clearAllMocks()
   })
 
-  it('首次请求：rAF 之后立刻（0ms）算，不防抖', () => {
+  it('首次请求：rAF 之后立刻（0ms）算，不防抖', async () => {
     const layout = mountLayout()
     expect(layout.isLayoutPending.value).toBe(true)
     expect(layout.article.value).toBeNull()
@@ -152,14 +178,18 @@ describe('useFumeLayout 调度（§7.9）', () => {
     layout.flushFrame()
     expect(layout.pendingDelayMs).toBe(0)
 
-    layout.flush()
+    await layout.flush()
     expect(layout.article.value).not.toBeNull()
     expect(layout.isLayoutPending.value).toBe(false)
+    // ⚠️ 这里**不断言** `yieldCount` 的具体值：假测量快到常常一次 8ms 预算都用不完
+    // （整个搜索在一个同步片里跑完 —— 那正是「不卡」的理想情形），但全量跑测试时
+    // 并行进程的 CPU 竞争又可能让它多让出一两次。让出机制本身由
+    // `core/article-layout-chunked.test.ts` 用假时钟确定性地钉住。
   })
 
-  it('排过一次之后再改输入：走 96ms 防抖', () => {
+  it('排过一次之后再改输入：走 96ms 防抖', async () => {
     const layout = mountLayout()
-    layout.flush()
+    await layout.flush()
 
     layout.lines.value = [makeLine({ fullText: '换了一行' })]
     layout.flushFrame()
@@ -189,10 +219,10 @@ describe('useFumeLayout 调度（§7.9）', () => {
     expect(layout.article.value).toBeNull()
   })
 
-  it('排程后又改输入：旧请求被丢弃（article 不会写回旧结果）', () => {
+  it('排程后又改输入：旧请求被丢弃（article 不会写回旧结果）', async () => {
     const layout = mountLayout()
     // 让第一版先落地，拿到一个已知的文章
-    layout.flush()
+    await layout.flush()
     const firstArticle = layout.article.value
     expect(firstArticle).not.toBeNull()
 
@@ -200,64 +230,64 @@ describe('useFumeLayout 调度（§7.9）', () => {
     layout.flushFrame()
     // ⚠️ 在定时器触发之前再改一次：旧的 delay 回调必须失效
     layout.lines.value = [makeLine({ fullText: '第三首' })]
-    layout.flush()
+    await layout.flush()
 
     // 两次改动只应留下最后一版，且不能把第一版写回去
     expect(layout.article.value).not.toBe(firstArticle)
     expect(layout.isLayoutPending.value).toBe(false)
   })
 
-  it('同步排版期间切歌：第二道版本号复核拦住旧结果', () => {
+  it('分片排版期间切歌：旧任务在下一个让出点就作废，不写回旧结果', async () => {
     const layout = mountLayout()
-    layout.flush()
+    await layout.flush()
     const firstArticle = layout.article.value
 
-    // 在 delay 回调**执行到一半**时改输入：用假测量函数制造「跑排版时输入变了」
+    // 让第二版走完排程，停在 delay 回调之前
     layout.lines.value = [makeLine({ fullText: '旧' })]
     layout.flushFrame()
-    const pending = layout.pendingDelayMs
-    expect(pending).toBe(96)
+    expect(layout.pendingDelayMs).toBe(96)
 
-    // 手动推进：先改输入（版本号++），再跑旧的 delay 回调
+    // 先改输入（版本号++），再跑旧的 delay 回调：旧任务会在**第一个让出点**
+    // 就发现版本号过期并放弃，绝不会把「旧」那一版写回来
     layout.lines.value = [makeLine({ fullText: '新' })]
-    layout.flush()
+    await layout.flush()
 
     // 旧回调的 version 已过期，所以既不能写回旧文章，也不该把 pending 提前清掉
     // ——新请求会自己走完流程
-    layout.flush()
+    await layout.flush()
     expect(layout.article.value).not.toBe(firstArticle)
     expect(layout.isLayoutPending.value).toBe(false)
   })
 
-  it('缓存命中：同样的输入再排一次会复用同一个文章对象', () => {
+  it('缓存命中：同样的输入再排一次会复用同一个文章对象', async () => {
     const first = mountLayout()
-    first.flush()
+    await first.flush()
     const cachedArticle = first.article.value
 
     // 换一个 hook 实例（模拟「切到别的面板再切回来」），输入完全相同
     const second = mountLayout()
-    second.flush()
+    await second.flush()
     expect(second.article.value).toBe(cachedArticle)
   })
 
-  it('缓存失效：行内容变了就不复用（缓存键含行指纹）', () => {
+  it('缓存失效：行内容变了就不复用（缓存键含行指纹）', async () => {
     const first = mountLayout()
-    first.flush()
+    await first.flush()
     const cachedArticle = first.article.value
 
     const second = mountLayout(ref([makeLine({ fullText: '完全不同的歌词内容' })]))
-    second.flush()
+    await second.flush()
     expect(second.article.value).not.toBe(cachedArticle)
   })
 
-  it('timing 在命中缓存时保留上一次的值（不是 null）', () => {
+  it('timing 在命中缓存时保留上一次的值（不是 null）', async () => {
     const first = mountLayout()
-    first.flush()
+    await first.flush()
     const cachedTiming = first.timing.value
     expect(cachedTiming).not.toBeNull()
 
     const second = mountLayout()
-    second.flush()
+    await second.flush()
     expect(second.timing.value).toBeNull() // 新实例自己还没跑过
     expect(cachedTiming?.attempts).toBeGreaterThan(0)
   })

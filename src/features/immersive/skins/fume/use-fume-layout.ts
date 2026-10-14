@@ -18,6 +18,23 @@
  *   （拖动窗口时只在停下来之后排一次）；
  * - **版本号**：丢弃过期请求。
  *
+ * ## 排版本身也是可中断的（性能修复，2026-10-14）
+ *
+ * 三段式只决定了「什么时候**开始**排版」，不决定「开始之后占住主线程多久」。
+ * 实测 50 行 ≈ 1.0s、120 行 ≈ 3.1s 的同步排版在拖动窗口 / 切歌时会整屏冻住，
+ * 因为期间一帧都出不来。所以第四步改成了**分片执行**：
+ * ```
+ * 版本号++  →  rAF  →  setTimeout(0 / 96)  →  版本号复核  →  分片跑排版（每片 ≤ 8ms）
+ *                                                        ↑____________ 让出主线程 ______|
+ * ```
+ * 分片由 `core/article-layout-chunked.ts` 驱动，每片结束时 `await` 一次让出主线程，
+ * 画面继续出帧。**排版结果与原来逐字相同**（同一套参数、同一个顺序），
+ * 变的只是「什么时候让出」。
+ *
+ * 取消链路沿用同一个版本号：分片每片开头问一次 `shouldAbort`，所以切歌 / 再次
+ * resize 之后，旧任务最多再跑完当前这一片（≤ 8ms + 一块的溢出）就作废，
+ * 绝不会写回旧结果。
+ *
  * ## 版本号为什么检查两次
  *
  * `buildArticleLayout` 是**同步长任务** —— 它跑的时候主线程是死的，但跑完之后
@@ -49,7 +66,8 @@
 
 import { onBeforeUnmount, ref, shallowRef, watch, type Ref } from 'vue'
 
-import { buildArticleLayout, type FumeArticleLayoutTiming } from './core/article-layout'
+import type { FumeArticleLayoutTiming } from './core/article-layout'
+import { buildArticleLayoutChunked } from './core/article-layout-chunked'
 import { buildLayoutCacheKey, type FumeLayoutThemeKey } from './core/layout-key'
 import type { FumeArticleLayout, FumeLine, FumeViewportSize } from './core/fume-types'
 import { FUME_ARTICLE_MEASURE } from './measure/fume-article-measure'
@@ -92,6 +110,17 @@ export interface FumeLayoutScheduler {
   cancelFrame(id: number): void
   delay(callback: () => void, ms: number): number
   cancelDelay(id: number): void
+  /**
+   * 让出主线程一次（分片排版的「下一片可以跑了」信号）。
+   *
+   * 为什么不用 `setTimeout(0)`：定时器有 4ms 的嵌套下限，33 片就是 130ms 起步，
+   * 而且它排在同优先级的定时器队列里，会被别的定时器插队。
+   * 为什么不用 `requestAnimationFrame`：那样每片都要等一整帧（16.7ms），
+   * 排版总时长直接翻倍，而分片的目的是「不卡」而不是「慢」。
+   * `MessageChannel` 的 `postMessage` 是一次**宏任务**：让得干净（同一片里不会再被
+   * 微任务续上）、又没有额外延迟。Electron 渲染进程一定有它。
+   */
+  yieldToMainThread(): Promise<void>
 }
 
 /**
@@ -116,6 +145,20 @@ export const DEFAULT_FUME_LAYOUT_SCHEDULER: FumeLayoutScheduler = {
   },
   cancelDelay(id) {
     clearTimeout(id)
+  },
+  yieldToMainThread() {
+    // ⚠️ 每次都新建一条 `MessageChannel`：它是一次性的（用完就丢），
+    // 复用一条反而要处理「上一次的 resolve 还没被调用」这种交错状态。
+    // 一条 `MessageChannel` 的开销远低于它换来的那 8ms 让出。
+    return new Promise<void>((resolve) => {
+      const channel = new MessageChannel()
+      channel.port1.onmessage = () => {
+        channel.port1.close()
+        channel.port2.close()
+        resolve()
+      }
+      channel.port2.postMessage(null)
+    })
   }
 }
 
@@ -204,8 +247,14 @@ export function useFumeLayout(options: UseFumeLayoutOptions): UseFumeLayoutResul
     }
   }
 
-  /** 真正跑一次排版（已经过了第一道版本号复核） */
-  function runLayout(version: number): void {
+  /**
+   * 真正跑一次排版（已经过了第一道版本号复核）。
+   *
+   * ⚠️ 是 `async` 的：排版被切成若干片，每片之间让出主线程。这让第二道版本号复核
+   * 从「理论上需要」变成**真正会用到** —— 分片期间用户切歌是常态，而每一片开始时
+   * 都会用版本号把过期任务拦下（见 `shouldAbort`）。
+   */
+  async function runLayout(version: number): Promise<void> {
     const lines = options.lines.value
     const viewport = options.viewport.value
     const layoutTheme = options.layoutTheme.value
@@ -221,14 +270,24 @@ export function useFumeLayout(options: UseFumeLayoutOptions): UseFumeLayoutResul
       next = lastFumeLayoutCache.article
     } else {
       try {
-        const result = buildArticleLayout({
-          lines,
-          viewport,
-          layoutTheme,
-          lyricsFontScale,
-          heroScale,
-          measure: FUME_ARTICLE_MEASURE
-        })
+        const result = await buildArticleLayoutChunked(
+          {
+            lines,
+            viewport,
+            layoutTheme,
+            lyricsFontScale,
+            heroScale,
+            measure: FUME_ARTICLE_MEASURE
+          },
+          {
+            yieldToMainThread: () => scheduler.yieldToMainThread(),
+            // 版本号变了 = 这次的结果已经没人要了：立刻停下，别把剩下的 30 次
+            // 排版白跑完（那正是「切歌后卡一下」的来源）
+            shouldAbort: () => version !== requestVersion || disposed
+          }
+        )
+        // `null` = 被中止；不写回任何东西，`isLayoutPending` 交给新请求管理
+        if (!result) return
         next = result.article
         timing.value = result.timing
       } catch (error) {
@@ -244,7 +303,9 @@ export function useFumeLayout(options: UseFumeLayoutOptions): UseFumeLayoutResul
       }
     }
 
-    // ⚠️ 第二道复核：上面那次排版是同步长任务，期间用户可能已经切歌
+    // ⚠️ 第二道复核：上面那次排版跨了若干个宏任务，期间用户可能已经切歌
+    //（分片执行让这条从「理论保险」变成真正会命中的路径：`shouldAbort` 只能拦在
+    // 让出点上，最后一片跑完之后到这里之间仍有一小段窗口）
     if (version !== requestVersion) return
 
     lastFumeLayoutCache = { key, fontKey, article: next }
@@ -277,7 +338,10 @@ export function useFumeLayout(options: UseFumeLayoutOptions): UseFumeLayoutResul
         delayId = null
         // ① 第一道复核：从排程到真正执行之间，输入可能已经变了
         if (version !== requestVersion) return
-        runLayout(version)
+        // ⚠️ 不 await：`runLayout` 现在是分片执行的，它自己会在每一片开始时
+        // 用版本号判断该不该继续。这里 await 只会把「谁在等谁」变得难以阅读，
+        // 而没有任何调用方需要这个 Promise 的结果。
+        void runLayout(version)
       }, delay)
     })
   }

@@ -13,6 +13,16 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
  * 所以位图尺寸与 `setTransform` 的唯一权威在绘制层（`use-fume-stage` 的每帧流程第一条），
  * 本组件只提供「逻辑尺寸变了」这个信号与上下文 —— 两处都写 `canvas.width`
  * 是明确的 bug 来源（谁后写谁生效，且改尺寸会清空画布）。
+ *
+ * ## 尺寸上报为什么按帧合并（性能修复，2026-10-14）
+ *
+ * 拖动窗口时 `ResizeObserver` 的节奏与绘制帧**不同步**：一次拖动里它会回调几十次，
+ * 而每次回调都 `emit` 就等于每次都把「视口变了」广播出去 —— 排版那边会一次次重新排程，
+ * 相机 / 背景 / 画布也跟着重算。真正需要的只有**每帧一个最终尺寸**，
+ * 所以这里记下最新值、用 rAF 合并成每帧最多一次上报。
+ *
+ * 这不是节流（没有丢帧、也没有推迟到拖动结束）：拖动停下之后那一帧仍然会按最终尺寸
+ * 上报一次，只是把同一帧内的多次抖动合成一次。
  */
 
 const emit = defineEmits<{
@@ -30,12 +40,35 @@ let observer: ResizeObserver | null = null
 let context: CanvasRenderingContext2D | null = null
 /** 上一次上报的逻辑尺寸；只在真变了才 emit（拖动窗口会连续触发几十次） */
 let lastSize = { width: 0, height: 0 }
+/** 本帧待上报的最新尺寸；`null` = 没有待处理的变更 */
+let pendingSize: { width: number; height: number } | null = null
+let sizeFrameId: number | null = null
 
 function reportSize(width: number, height: number): void {
   if (width <= 0 || height <= 0) return
   if (width === lastSize.width && height === lastSize.height) return
   lastSize = { width, height }
   emit('resize', { width, height })
+}
+
+/**
+ * 把最新尺寸压进本帧的合并槽；尺寸与上次上报的完全相同时不排帧、也不 emit。
+ *
+ * `pendingSize` 非空时即使当前值等于 `lastSize` 也要覆盖它 —— 否则「这一帧内
+ * 先变大再变回来」会丢掉最后一次上报，视口就停在中间那个尺寸上。
+ */
+function scheduleSizeReport(width: number, height: number): void {
+  if (width <= 0 || height <= 0) return
+  if (width === lastSize.width && height === lastSize.height && pendingSize === null) return
+  pendingSize = { width, height }
+  if (sizeFrameId !== null) return
+  // ⚠️ 裸调的 `requestAnimationFrame` 会被 no-undef 拦下（只有 `.ts` 文件里不会）
+  sizeFrameId = window.requestAnimationFrame(() => {
+    sizeFrameId = null
+    const size = pendingSize
+    pendingSize = null
+    if (size) reportSize(size.width, size.height)
+  })
 }
 
 onMounted(() => {
@@ -58,12 +91,15 @@ onMounted(() => {
     const box = entry.borderBoxSize?.[0]
     const width = box ? box.inlineSize : entry.contentRect.width
     const height = box ? box.blockSize : entry.contentRect.height
-    reportSize(width, height)
+    scheduleSizeReport(width, height)
   })
   observer.observe(host)
 })
 
 onBeforeUnmount(() => {
+  if (sizeFrameId !== null) window.cancelAnimationFrame(sizeFrameId)
+  sizeFrameId = null
+  pendingSize = null
   observer?.disconnect()
   observer = null
   context = null

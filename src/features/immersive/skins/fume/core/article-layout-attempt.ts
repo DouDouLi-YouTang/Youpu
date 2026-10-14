@@ -103,7 +103,7 @@ export interface FumeArticleMeasure {
 }
 
 /** `buildArticleLayoutAttempt` 的公共入参（省得每个重载都抄一遍） */
-interface FumeAttemptContext {
+export interface FumeAttemptContext {
   lines: readonly FumeLine[]
   viewport: FumeViewportSize
   layoutTheme: FumeLayoutThemeKey
@@ -278,6 +278,23 @@ export function buildArticleLayoutAttempt(
   context: FumeAttemptContext,
   options: FumeLayoutAttemptOptions
 ): FumeArticleLayout | FumeArticleLayoutMetrics | null {
+  const attempt = createArticleLayoutAttempt(context, options)
+  let step = attempt.next()
+  while (!step.done) step = attempt.next()
+  return step.value
+}
+
+/**
+ * 与 {@link buildArticleLayoutAttempt} **逐字等价**的分片版本（性能修复，见
+ * `article-layout.ts` 文件头的说明）：每处理完一个块 `yield` 一次。
+ *
+ * 让出点是**块之间**而不是块内部：一次 `prepareSingleLine`（pretext 换行 + 字号二分）
+ * 内部若被打断，前后两半就可能读到不同的测量缓存，那才是真正的行为变更。
+ */
+export function* createArticleLayoutAttempt(
+  context: FumeAttemptContext,
+  options: FumeLayoutAttemptOptions
+): Generator<void, FumeArticleLayout | FumeArticleLayoutMetrics | null, void> {
   const { lines, viewport, layoutTheme, lyricsFontScale, heroScale, measure, now } = context
   if (viewport.width <= 0 || viewport.height <= 0 || lines.length === 0) return null
 
@@ -312,7 +329,7 @@ export function buildArticleLayoutAttempt(
   const placementState = createPlacementState(columns, geometry.verticalMargin)
   const forcedHeroIndex = chooseFallbackHeroBlockIndex(filteredLines, countRenderable)
 
-  filteredLines.forEach(({ line, index }, blockIndex) => {
+  for (const [blockIndex, { line, index }] of filteredLines.entries()) {
     if (timing) timing.lines += 1
     const variant = chooseBlockVariant(
       line,
@@ -354,26 +371,32 @@ export function buildArticleLayoutAttempt(
           })
     if (timing) timing.placementMs += now() - placementStart
 
-    if (!shouldBuildRenderDetails) return
-
-    const renderStart = timing ? now() : 0
-    blocks.push(
-      buildBlock(
-        line,
-        index,
-        variant,
-        prepared,
-        size,
-        placement,
-        blockMetrics.blockWidth,
-        blockMetrics.innerWidth,
-        fontFamily,
-        layoutTheme,
-        measure
+    // ⚠️ 这里用 `if` 包住而不是提前 `return`/`continue`：本函数是生成器，
+    // `return` 会**终止整个生成器**（measure 模式只出指标、不建 renderLines，
+    // 但循环必须走完才能算出列高），而 `continue` 会跳过下面的 `yield` ——
+    // 偏偏 measure 模式才是耗时的那一半，最需要让出。
+    if (shouldBuildRenderDetails) {
+      const renderStart = timing ? now() : 0
+      blocks.push(
+        buildBlock(
+          line,
+          index,
+          variant,
+          prepared,
+          size,
+          placement,
+          blockMetrics.blockWidth,
+          blockMetrics.innerWidth,
+          fontFamily,
+          layoutTheme,
+          measure
+        )
       )
-    )
-    if (timing) timing.renderDetailsMs += now() - renderStart
-  })
+      if (timing) timing.renderDetailsMs += now() - renderStart
+    }
+
+    yield
+  }
 
   const articleHeight = Math.max(0, ...placementState.columnHeights) + geometry.verticalMargin
 

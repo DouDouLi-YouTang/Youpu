@@ -20,6 +20,7 @@ import {
   FUME_PAPER_WIDTH_MIN_PX,
   FUME_TARGET_HEIGHT_SCREENS,
   buildArticleLayout,
+  createArticleLayoutSearch,
   resolveColumnGap,
   resolveLayoutScore,
   resolveMaxColumns,
@@ -630,5 +631,32 @@ describe('buildArticleLayout（§7.8 顶层搜索）', () => {
 
     expect(resolveMaxColumns(resolvePaperWidth(input.viewport))).toBe(3)
     expect(timing.attempts).toBe(24)
+  })
+
+  it('生成器版与同步版逐字等价（分片只是调度，不改结果）', () => {
+    const input = {
+      lines: makeLines(20),
+      viewport: VIEWPORT,
+      layoutTheme: THEME,
+      lyricsFontScale: 1,
+      heroScale: 1,
+      measure: makeMeasure(),
+      now: () => 0
+    }
+
+    const sync = buildArticleLayout(input)
+
+    // 手动把生成器跑到底：不做任何让出，等价于同步执行
+    const search = createArticleLayoutSearch(input)
+    let step = search.next()
+    let yieldCount = 0
+    while (!step.done) {
+      yieldCount += 1
+      step = search.next()
+    }
+
+    expect(yieldCount).toBeGreaterThan(0) // 让出点确实存在
+    expect(step.value.timing).toEqual(sync.timing)
+    expect(step.value.article).toEqual(sync.article)
   })
 })

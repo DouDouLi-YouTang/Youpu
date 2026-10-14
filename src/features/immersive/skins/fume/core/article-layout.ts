@@ -16,6 +16,17 @@
  * 所以最坏情况是 `4 × 8 = 32` 次完整排版 + 1 次全量。这也是为什么它必须被挪出
  * 渲染路径（§7.9：rAF → setTimeout(0/96) → 版本号）。
  *
+ * ## 搜索本身是可中断的（性能修复，2026-10-14）
+ *
+ * 挪出渲染路径只解决了「什么时候开始」，没解决「跑起来之后占住主线程多久」：
+ * 实测 50 行 ≈ 1.0s、120 行 ≈ 3.1s 是**一整段同步长任务**，期间一帧都出不来，
+ * 表现为拖窗口 / 切歌时画面冻住。所以循环被拆成 {@link createArticleLayoutSearch}
+ * 这个**可单步推进的状态机**，由 `article-layout-chunked.ts` 在尝试之间让出主线程。
+ *
+ * ⚠️ 拆的是**时机**不是**结果**：同步入口 `buildArticleLayout` 与分片入口驱动的是
+ * 同一个状态机、同一批参数、同一个顺序，所以两者选中的列数 / 密度 / 文章逐字相同
+ * （单测里有一条等价性断言钉住这一点）。
+ *
  * ## 评分为什么「偏低全额、偏高只算 14%」
  *
  * 目标是「理想情况下整页要滚 2.45 屏」。排出来偏矮（内容不够铺满）会让画面显得空，
@@ -31,7 +42,7 @@
  */
 
 import {
-  buildArticleLayoutAttempt,
+  createArticleLayoutAttempt,
   createAttemptTiming,
   type FumeArticleMeasure
 } from './article-layout-attempt'
@@ -39,6 +50,7 @@ import { clamp } from './fume-math'
 import type { FumeLayoutThemeKey } from './layout-key'
 import type {
   FumeArticleLayout,
+  FumeArticleLayoutMetrics,
   FumeLayoutAttemptOptions,
   FumeLayoutAttemptTiming,
   FumeLine,
@@ -186,6 +198,26 @@ export interface FumeArticleLayoutInput {
  * 把它放到 rAF → setTimeout 之后，绝不能在 `computed` 里直接调。
  */
 export function buildArticleLayout(input: FumeArticleLayoutInput): FumeArticleLayoutResult {
+  const search = createArticleLayoutSearch(input)
+  let step = search.next()
+  while (!step.done) step = search.next()
+  return step.value
+}
+
+/**
+ * 与 {@link buildArticleLayout} **逐字等价**的分片版本（性能修复，见文件头）。
+ *
+ * 每 `yield` 一次 = 「刚跑完一次完整排版，可以让出主线程了」。让出的时机是
+ * **尝试之间**而不是尝试内部：一次尝试（一次字号二分 + 装箱）本身就包含
+ * `pretext` 换行与逐字素测量，切碎了会让同一次二分的前后两半读到不同的输入，
+ * 那才是真正的行为变更。以尝试为界则是纯粹的调度变更。
+ *
+ * 返回值的语义与同步版完全一致：生成器跑完时 `value` 就是
+ * {@link FumeArticleLayoutResult}，中途 `value` 是 `undefined`。
+ */
+export function* createArticleLayoutSearch(
+  input: FumeArticleLayoutInput
+): Generator<void, FumeArticleLayoutResult, void> {
   const { lines, viewport, layoutTheme, lyricsFontScale, heroScale, measure } = input
   const now = input.now ?? (() => performance.now())
 
@@ -236,7 +268,10 @@ export function buildArticleLayout(input: FumeArticleLayoutInput): FumeArticleLa
       const densityScale = (low + high) / 2
       timing.attempts += 1
 
-      const metrics = buildArticleLayoutAttempt(attemptContext, {
+      // ⚠️ `yield*` 而不是直接调用：把内层「每排完一块」的让出点**透传**出去。
+      // 若在这里直接跑同步版，一次尝试（约 30ms）就成了一片的最小粒度，
+      // 拖窗口时仍会有可感的顿挫。
+      const metrics = (yield* createArticleLayoutAttempt(attemptContext, {
         paperWidth,
         viewportHeight,
         columns,
@@ -245,7 +280,7 @@ export function buildArticleLayout(input: FumeArticleLayoutInput): FumeArticleLa
         seedKey,
         mode: 'measure',
         timing: columnTiming
-      })
+      })) as FumeArticleLayoutMetrics | null
       if (!metrics) continue
 
       const score = resolveLayoutScore(metrics.height, targetHeight)
@@ -274,7 +309,12 @@ export function buildArticleLayout(input: FumeArticleLayoutInput): FumeArticleLa
     accumulateTiming(timing.measure, columnTiming)
   }
 
-  const article = bestOptions ? buildArticleLayoutAttempt(attemptContext, bestOptions) : null
+  // 最后那次 render 是**全量构建**（建 renderLines / blocks），代价与一次 measure
+  // 同级，所以它前面也留一个让出点，免得它和上一片拼成一段双倍长的阻塞
+  yield
+  const article = bestOptions
+    ? ((yield* createArticleLayoutAttempt(attemptContext, bestOptions)) as FumeArticleLayout | null)
+    : null
   timing.finalHeight = article?.height ?? 0
 
   return { article, timing }
