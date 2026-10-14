@@ -93,6 +93,22 @@ export interface SmoothClock {
   bands(): SkinAudioBands
   /** 当前歌词行下标（-1 = 尚未到首行）。同一个 rAF 里算出，与 `time()` 同帧 */
   currentLineIndex(): number
+  /**
+   * 订阅本帧回调（在 `time()` 更新之后、同一帧内同步调用）。
+   *
+   * ## 为什么要有它，而不是每个消费方自己跑一条 rAF
+   *
+   * 「流光」的一行有十几个词，每个词都要按时间判一次三态。若每个词各跑一条 rAF：
+   *  1. 一屏就是十几条独立回调，浏览器要逐个调度，且**互相之间不在同一帧**——
+   *     `time()` 读的是同一份值，但读的时刻差半帧，边界上的词会在不同帧翻转；
+   *  2. 更糟的是多行切换（`AnimatePresence` 同时挂着新旧两行）时回调数翻倍。
+   *
+   * 订阅制把「逐帧」这件事收敛成**一条** rAF：所有词在同一帧里拿到同一个时间，
+   * 状态翻转天然同步。回调里**不要**写响应式状态以外的东西，也不要建立响应式依赖。
+   *
+   * 返回值是退订函数；调用方必须在卸载时退订（`use-glow-word-status` 负责这件事）。
+   */
+  onFrame(callback: () => void): () => void
 }
 
 /**
@@ -115,6 +131,15 @@ export function useSmoothClock(): SmoothClock {
   let clock: ClockState | null = null
   /** 上一帧的墙上时刻（算帧间隔用） */
   let lastStamp: number | null = null
+
+  /**
+   * 本帧回调订阅者。
+   *
+   * 用 `Set` 而不是数组：退订是 O(1)，且遍历中新增 / 删除订阅者不会让下标错位
+   * （`for...of` 遍历 Set 时删除已访问项是安全的，新增项会在本轮被访问到 ——
+   * 新增的订阅者本来就是本帧才挂上来的，多跑一次无副作用）。
+   */
+  const frameCallbacks = new Set<() => void>()
 
   /**
    * 音频真值（毫秒，含 lyricOffset）。
@@ -177,18 +202,28 @@ export function useSmoothClock(): SmoothClock {
     // 下标按「未加 stagger 的时钟」算，再自行加提前量 —— 与 useActiveLyricIndex 同口径
     const stagger = settings.lyricStagger ? 200 : 0
     frameLineIndex.value = resolveLineIndex(frameTime.value + stagger)
+
+    // 订阅者在时间与下标都更新完之后才被调用 —— 它们读到的必然是**同一帧**的完整快照
+    for (const callback of frameCallbacks) callback()
   }
 
   rafId = requestAnimationFrame(tick)
   onBeforeUnmount(() => {
     if (rafId !== null) cancelAnimationFrame(rafId)
     rafId = null
+    frameCallbacks.clear()
   })
 
   return {
     time: () => frameTime.value,
     isPlaying: () => player.isPlaying,
     bands: () => toSkinBands(audioBands.value),
-    currentLineIndex: () => frameLineIndex.value
+    currentLineIndex: () => frameLineIndex.value,
+    onFrame: (callback: () => void): (() => void) => {
+      frameCallbacks.add(callback)
+      return () => {
+        frameCallbacks.delete(callback)
+      }
+    }
   }
 }
