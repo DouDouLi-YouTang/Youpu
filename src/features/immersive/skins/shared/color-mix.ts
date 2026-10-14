@@ -25,7 +25,12 @@
  * 渲染层会**逐字素**问同一个主题色（一首歌每帧上千次），而正则匹配与 `parseInt` 是
  * 这里唯一的成本。所以按「归一化后的颜色串」做一次有界缓存（插入序淘汰，上限 512）。
  * 缓存的是**解析结果**（通道或分支标记），不是最终字符串 —— 因为同一个颜色的 alpha 每帧都变。
+ *
+ * 淘汰规则本身住在 `shared/bounded-cache.ts`：F2 的字素测量缓存（§4.7）也要用同一条，
+ * 于是按当时预留的计划提到了更底层，两个调用点共享同一份实现。
  */
+
+import { rememberBounded } from './bounded-cache'
 
 /** 解析出来的 RGB 通道 */
 interface Channels {
@@ -52,22 +57,6 @@ const parsedColors = new Map<string, ParsedColor>()
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
-}
-
-/**
- * 按插入序淘汰的有界写入：满了就先删最旧的一条。
- *
- * 单独写在这里而不是抽成公共工具：目前只有颜色解析需要它；
- * §4.7 的字形测量缓存（F2）落地时若也要用，再一起提到更底层的模块，
- * 现在提前抽等于为一个调用点发明一个抽象。
- */
-function rememberBounded<T>(cache: Map<string, T>, key: string, value: T, limit: number): T {
-  if (!cache.has(key) && cache.size >= limit) {
-    const oldest = cache.keys().next()
-    if (!oldest.done) cache.delete(oldest.value)
-  }
-  cache.set(key, value)
-  return value
 }
 
 /** 解析一个颜色串（不做 trim，调用方已完成归一化） */
