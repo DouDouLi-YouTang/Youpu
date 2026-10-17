@@ -5,7 +5,7 @@ import GeometricBackground from '@/features/immersive/backgrounds/GeometricBackg
 import { useImmersiveSettingsStore } from '@/features/immersive/immersive-settings.store'
 import { useLyricStore } from '@/stores/lyric.store'
 import { usePlayerStore } from '@/stores/player.store'
-import { resolveSubtitleTracks } from '../shared/subtitle-tracks'
+import { resolveSubtitleSlots, resolveSubtitleTracks } from '../shared/subtitle-tracks'
 import type { SkinContext } from '../types'
 import TiltLine from './TiltLine.vue'
 import {
@@ -95,6 +95,33 @@ const lineKey = computed(() => `${lyric.songId ?? 'none'}:${currentIndex.value}`
  */
 const subtitleRows = computed(() =>
   resolveSubtitleTracks(currentLine.value, settings.subtitleContentMode)
+)
+
+/**
+ * 副字幕的**定长槽位**（倾诉专有，见 `shared/subtitle-tracks.resolveSubtitleSlots`）。
+ *
+ * 倾诉的副字幕在**正常流**里，舞台是"扣掉副字幕后剩下的高度"（tilt.scss /
+ * docs/tilt-porting-notes.md §3.1）。若按"缺哪档就少一行"渲染，换行到一句没有罗马音的
+ * 歌词时这一格就没了 —— 舞台随之变高，居中的歌词当场跳一下（实测 11px / 26px）。
+ * 所以按**档位**固定槽位数量，缺文本的槽只占位（`visibility: hidden`，不渲染任何
+ * 可见内容，见 tilt.scss 的 `.is-placeholder`）—— 舞台高度于是与本行有没有副字幕无关。
+ *
+ * 两档都填同一串时共享层会去重成一条（`resolveSubtitleTracks` 的规则 4），
+ * 槽位这一层**照旧给两格**：这是刻意的 —— 去重是按行内容变的，跟着它变槽位数
+ * 等于把上面那个抖动又请回来。
+ */
+const subtitleSlots = computed(() =>
+  resolveSubtitleSlots(subtitleRows.value, settings.subtitleContentMode)
+)
+
+/**
+ * 槽位内容身份：变化即重播淡入（`v-if` + `:key` 让 Vue 换掉整块节点）。
+ *
+ * 用**文本**而不是行下标：拿不到下标（那是各皮肤自己的行源），而文本变了就说明换行 /
+ * 换档了。空白槽不进 key —— 否则"这一句没有副字幕"的两行之间也会重播一次动画。
+ */
+const subtitleKey = computed(() =>
+  subtitleRows.value.map((row) => `${row.role}:${row.text}`).join('|')
 )
 
 const panelRef = ref<HTMLElement | null>(null)
@@ -212,15 +239,26 @@ function handleSeek(): void {
         </div>
       </div>
 
-      <!-- 底部副字幕（罗马音 / 译文）：字号档内置在 tilt.scss，不受设置面板影响 -->
-      <div v-if="subtitleRows.length" class="tilt-subtitles">
+      <!--
+        底部副字幕（罗马音 / 译文）：字号档内置在 tilt.scss，不受设置面板影响。
+
+        渲染的是**定长槽位**（见 subtitleSlots）：档位里有几档就占几格，缺文本的那格
+        渲染一个不可见的占位行（`visibility: hidden` + 不换行空格，只为止住高度）。
+        `:key` 让换行时整块换节点，从而重播 tilt.scss 里那段淡入（数字来自
+        SUBTITLE_SWAP_MOTION）。
+      -->
+      <div v-if="subtitleSlots.length > 0" :key="subtitleKey" class="tilt-subtitles">
         <p
-          v-for="row in subtitleRows"
-          :key="row.role"
+          v-for="slot in subtitleSlots"
+          :key="slot.role"
           class="tilt-subtitle"
-          :class="row.role === 'romanization' ? 'is-romaji' : 'is-translation'"
+          :class="[
+            slot.role === 'romanization' ? 'is-romaji' : 'is-translation',
+            { 'is-placeholder': slot.text.length === 0 }
+          ]"
+          :aria-hidden="slot.text ? undefined : 'true'"
         >
-          {{ row.text }}
+          {{ slot.text || '\u00A0' }}
         </p>
       </div>
     </div>

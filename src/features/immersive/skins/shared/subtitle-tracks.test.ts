@@ -6,12 +6,15 @@ import {
   SECONDARY_TRACK_GAP_EM,
   SECONDARY_TRACK_OPACITY,
   SECONDARY_TRACK_SIZE_FACTOR,
+  SUBTITLE_SWAP_MOTION,
   UPCOMING_PREVIEW_LIMIT,
   buildSubtitleGlowGradient,
   buildSubtitleTextShadow,
   hasReadableText,
   resolveSubtitleClampSize,
   resolveSubtitleFontSizes,
+  resolveSubtitleRoles,
+  resolveSubtitleSlots,
   resolveSubtitleTracks,
   resolveUpcomingPreview,
   scaleSubtitleFontSize
@@ -211,5 +214,60 @@ describe('次级轨道字号缩放', () => {
     for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(scaleSubtitleFontSize(size, bad)).toBe(size)
     }
+  })
+})
+
+describe('定长槽位（倾诉的正常流布局靠它）', () => {
+  it('档位决定槽位数量与顺序', () => {
+    expect(resolveSubtitleRoles('both')).toEqual(['romanization', 'translation'])
+    expect(resolveSubtitleRoles('romanization')).toEqual(['romanization'])
+    expect(resolveSubtitleRoles('translation')).toEqual(['translation'])
+  })
+
+  it('none 档没有槽位（隐藏副字幕时连留位都不该有）', () => {
+    expect(resolveSubtitleRoles('none')).toEqual([])
+    expect(resolveSubtitleSlots([{ role: 'translation', text: '奔向夜晚' }], 'none')).toEqual([])
+  })
+
+  it('缺的档给空串而不是"少一格"（倾诉的舞台高度靠这一点才不会跳）', () => {
+    expect(resolveSubtitleSlots([{ role: 'translation', text: '奔向夜晚' }], 'both')).toEqual([
+      { role: 'romanization', text: '' },
+      { role: 'translation', text: '奔向夜晚' }
+    ])
+    expect(resolveSubtitleSlots([], 'both')).toEqual([
+      { role: 'romanization', text: '' },
+      { role: 'translation', text: '' }
+    ])
+  })
+
+  it('两档同串被去重成一条时，槽位**照旧给两格**（跟着去重变槽位数等于把抖动请回来）', () => {
+    const rows = resolveSubtitleTracks({ romaji: 'let it be', translation: 'let it be' }, 'both')
+    expect(rows).toHaveLength(1)
+    expect(resolveSubtitleSlots(rows, 'both')).toEqual([
+      { role: 'romanization', text: 'let it be' },
+      { role: 'translation', text: '' }
+    ])
+  })
+
+  it('槽位内容与 resolveSubtitleTracks 的结果一致（同一个轨道解析口径）', () => {
+    const rows = resolveSubtitleTracks(
+      { romaji: 'yoru ni kakeru', translation: '奔向夜晚' },
+      'both'
+    )
+    const slots = resolveSubtitleSlots(rows, 'both')
+    expect(slots.map((slot) => slot.text)).toEqual(rows.map((row) => row.text))
+  })
+})
+
+describe('换行淡入档', () => {
+  /**
+   * 这三个数字被两个消费方各拼一次（motion-v 与 CSS 动画），所以锁一下取值范围 ——
+   * 归零会让换行变成"硬切"（用户报的就是这个），负位移则是往上飘。
+   */
+  it('时长为正、起始位移向下为正、两种缓动名都非空', () => {
+    expect(SUBTITLE_SWAP_MOTION.durationMs).toBeGreaterThan(0)
+    expect(SUBTITLE_SWAP_MOTION.offsetPx).toBeGreaterThan(0)
+    expect(SUBTITLE_SWAP_MOTION.motionEase).not.toBe('')
+    expect(SUBTITLE_SWAP_MOTION.cssEase).not.toBe('')
   })
 })

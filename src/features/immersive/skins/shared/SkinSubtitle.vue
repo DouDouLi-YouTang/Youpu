@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'motion-v'
 import { colorWithAlpha } from './color-mix'
 import {
   SECONDARY_TRACK_SIZE_FACTOR,
+  SUBTITLE_SWAP_MOTION,
   buildSubtitleGlowGradient,
   buildSubtitleTextShadow,
   scaleSubtitleFontSize,
@@ -64,6 +65,29 @@ import {
  * 换行时它整块淡入上移 10px。**这一层与最外层的 AnimatePresence 不是一回事**：
  * 外层管"整块字幕在不在"（有无副字幕），内层管"同一块字幕换了内容"。
  * 少了内层，换行时文字是**硬切**的 —— 上游是滑上来的。
+ *
+ * ## 换行时**同一时刻只能有一个 stack**（不要给内层套 AnimatePresence）
+ *
+ * `.skin-subtitle-stack` 是 `inline-block`，靠父层 `.skin-subtitles` 的
+ * `text-align: center` 居中 —— 也就是说它的落点由**父层里有哪些兄弟**共同决定。
+ * 只要换行时新旧两份同时存在，居中基准就变了：
+ *
+ *  - `AnimatePresence` 默认的 sync：退场的那份留在文档流里，两份被当成一行并排，
+ *    整行宽度翻倍再对半居中 —— 实测（1280px、两行副字幕）换行瞬间两个 stack
+ *    共存 34 帧，可读文字横向跳 **153px**，退场结束后弹回。
+ *  - 换成 `mode="popLayout"`（退场的那份脱离文档流）能救回可读文字，但**救不了残影**：
+ *    motion-v 是按「退场元素当时的 offsetLeft」写绝对定位的，而我们这个父层是
+ *    shrink-to-fit，新内容一进来父层就重新居中了 —— 残影于是被钉在**新内容的左边缘**
+ *    淡出。实测最坏情况（662px 的长行 → 66px 的短行）残影瞬间跳 **+298px**。
+ *
+ * 所以这里**不套 AnimatePresence**：靠 `:key` 让 Vue 直接换掉节点（旧内容当场消失），
+ * 新节点的 `initial → animate` 仍然会播（淡入 + 上移 10px），而整棵子树里
+ * **任何时刻只有一个 stack**，居中基准只由它自己决定 —— 可读文字与残影都零位移。
+ * 上游本来就只做"新的进来"（见上），旧内容不单独退场。
+ *
+ * ⚠️ 三个动画数字（200ms / 10px / easeOut）住在 `subtitle-tracks.ts` 的
+ * `SUBTITLE_SWAP_MOTION` 里，因为「倾诉」的副字幕不走 motion-v、要用同一组数字写
+ * CSS 动画（见那边与 `tilt.scss`）。写在这里等于同一件事有两个出处。
  */
 const props = defineProps<{
   /** 已解析好的轨道（罗马音在前、译文在后；可能只有一条，也可能为空） */
@@ -113,6 +137,16 @@ const stackKey = computed(() => {
   }
   return (props.preview ?? []).join('|')
 })
+
+/** 字幕栈的淡入参数（共享档位 → motion-v 的秒制 / 数值） */
+const swapMotion = {
+  initial: { opacity: 0, y: SUBTITLE_SWAP_MOTION.offsetPx },
+  animate: { opacity: 1, y: 0 },
+  transition: {
+    duration: SUBTITLE_SWAP_MOTION.durationMs / 1000,
+    ease: SUBTITLE_SWAP_MOTION.motionEase
+  }
+}
 </script>
 
 <template>
@@ -141,42 +175,39 @@ const stackKey = computed(() => {
       <div class="skin-subtitle-content">
         <!--
           内层 keyed 层：换行时整块淡入上移 10px（见文件头）。
-          `mode="wait"` 不适用：这里只关心"新的进来"，旧内容不需要单独退场
-          （外层 AnimatePresence 已经处理了整块消失）。
+          **故意不套 AnimatePresence** —— 换行时新旧两份共存会改变居中基准，
+          残影与可读文字都会被带偏（实测细节见文件头）；`:key` 直接换节点即可。
         -->
-        <AnimatePresence>
-          <motion.div
-            :key="stackKey"
-            class="skin-subtitle-stack"
-            :initial="{ opacity: 0, y: 10 }"
-            :animate="{ opacity: 1, y: 0 }"
-            :exit="{ opacity: 0 }"
-            :transition="{ duration: 0.2, ease: 'easeOut' }"
-          >
-            <template v-if="rows.length > 0">
-              <p
-                v-for="(row, index) in rows"
-                :key="row.role"
-                class="skin-subtitle"
-                :class="index > 0 ? 'is-secondary' : 'is-primary'"
-                :style="{ fontSize: index > 0 ? secondaryFontSize : translationFontSize }"
-              >
-                {{ row.text }}
-              </p>
-            </template>
+        <motion.div
+          :key="stackKey"
+          class="skin-subtitle-stack"
+          :initial="swapMotion.initial"
+          :animate="swapMotion.animate"
+          :transition="swapMotion.transition"
+        >
+          <template v-if="rows.length > 0">
+            <p
+              v-for="(row, index) in rows"
+              :key="row.role"
+              class="skin-subtitle"
+              :class="index > 0 ? 'is-secondary' : 'is-primary'"
+              :style="{ fontSize: index > 0 ? secondaryFontSize : translationFontSize }"
+            >
+              {{ row.text }}
+            </p>
+          </template>
 
-            <template v-else>
-              <p
-                v-for="(text, index) in preview"
-                :key="index"
-                class="skin-subtitle is-upcoming"
-                :style="{ fontSize: upcomingFontSize }"
-              >
-                {{ text }}
-              </p>
-            </template>
-          </motion.div>
-        </AnimatePresence>
+          <template v-else>
+            <p
+              v-for="(text, index) in preview"
+              :key="index"
+              class="skin-subtitle is-upcoming"
+              :style="{ fontSize: upcomingFontSize }"
+            >
+              {{ text }}
+            </p>
+          </template>
+        </motion.div>
       </div>
     </motion.div>
   </AnimatePresence>

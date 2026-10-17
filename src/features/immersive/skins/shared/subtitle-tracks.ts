@@ -62,12 +62,10 @@ export function resolveSubtitleTracks(
   line: Pick<LyricLine, 'romaji' | 'translation'> | null | undefined,
   mode: SubtitleContentMode
 ): SubtitleTrack[] {
-  if (!line || mode === 'none') return []
-
-  const roles: SubtitleTrackRole[] = mode === 'both' ? ['romanization', 'translation'] : [mode]
+  if (!line) return []
 
   const tracks: SubtitleTrack[] = []
-  for (const role of roles) {
+  for (const role of resolveSubtitleRoles(mode)) {
     const raw = role === 'romanization' ? line.romaji : line.translation
     const text = raw?.trim()
     if (!text || !hasReadableText(text)) continue
@@ -75,6 +73,42 @@ export function resolveSubtitleTracks(
     tracks.push({ role, text })
   }
   return tracks
+}
+
+/**
+ * 当前档位**可能出现**哪几条轨道，顺序即渲染顺序（罗马音在前、译文在后）。
+ *
+ * 与 {@link resolveSubtitleTracks} 的分工：那个回答"这一行**实际**显示哪几行"
+ * （缺的档不出现），这个回答"这一档**最多**能有哪几行"（与行数据无关）。
+ * 需要后者的只有一个场景 —— **在正常流里占位的布局**（见下面的 slots 说明）。
+ *
+ * `'none'` 返回空数组：隐藏档位下底栏永远没有内容，连留位都不该有。
+ */
+export function resolveSubtitleRoles(mode: SubtitleContentMode): SubtitleTrackRole[] {
+  if (mode === 'none') return []
+  return mode === 'both' ? ['romanization', 'translation'] : [mode]
+}
+
+/**
+ * 把一行解析成**定长槽位**：槽位数量由档位决定，缺的档给空文本（`''`）。
+ *
+ * 「流光」「浮名」不需要它 —— 那两个皮肤的底栏是 `absolute` 贴底的，缺一行只会让
+ * 整块**向上**长高，贴着底边的那一行纹丝不动（见共用组件 `SkinSubtitle.vue`）。
+ *
+ * 「倾诉」需要：它的副字幕在**正常流**里（舞台是"扣掉副字幕后剩下的高度"，
+ * 见 tilt.scss 与 docs/tilt-porting-notes.md §3.1），于是副字幕一少一行，舞台就跟着
+ * 变高、居中的歌词跟着跳 —— 实测换行瞬间 `.tilt-stage-inner` 纵向跳 **11px**
+ * （2 行 → 1 行）、**26px**（2 行 → 0 行）。用定长槽位把那一格**留在原地**
+ * （空槽只占位、不渲染任何可见内容），舞台高度就与本行有没有副字幕无关了。
+ *
+ * ⚠️ 空槽是空字符串而不是"这一档不存在"：调用方靠它区分"要渲染占位行"与"没有这一档"。
+ */
+export function resolveSubtitleSlots(
+  rows: readonly SubtitleTrack[],
+  mode: SubtitleContentMode
+): SubtitleTrack[] {
+  const textByRole = new Map(rows.map((row) => [row.role, row.text]))
+  return resolveSubtitleRoles(mode).map((role) => ({ role, text: textByRole.get(role) ?? '' }))
 }
 
 /**
@@ -115,6 +149,32 @@ export function scaleSubtitleFontSize(fontSize: string, factor = 1): string {
  * 上游取值链：`resolvedOpacity = subtitleOverlayOpacity ?? 0.6`。
  */
 export const SUBTITLE_OVERLAY_OPACITY = 0.6
+
+/**
+ * 换行时字幕栈的淡入档：**opacity 0 → 1、y 10px → 0、200ms。**
+ *
+ * 上游是同一个 overlay 组件里那层 keyed `motion.div`（见 `SkinSubtitle.vue` 的文件头），
+ * 三个 Folia 系皮肤看到的是**同一次换行动画** —— 所以数字只能有一份出处，两个
+ * 消费方各自映射：
+ *  - `shared/SkinSubtitle.vue`（流光 / 浮名）—— 直接喂给 motion-v 的 `initial / animate`；
+ *  - `skins/tilt/tilt.scss`（倾诉）—— 倾诉的副字幕不走 motion-v，它用 CSS 动画。
+ *    CSS 没法 import 这个常量，所以那边是**渲染侧的副本**
+ *    （`animation` 简写里的 200ms / ease-out 与 keyframes 里的 10px），
+ *    由 `tilt/tilt-subtitle-swap.test.ts` 逐值锁死 —— 改这里而不改那边会直接红测试。
+ *
+ * `motionEase` 与 `cssEase` 是**同一条曲线**的两种写法（easeOut 与 CSS 的 ease-out
+ * 都是 `cubic-bezier(0, 0, 0.58, 1)`），各用各的 API 拼写。
+ */
+export const SUBTITLE_SWAP_MOTION = {
+  /** 淡入时长（毫秒）—— motion-v 的 `duration` 是秒，换算在共用组件里做 */
+  durationMs: 200,
+  /** 起始位移（px）：从下方 10px 滑到位 */
+  offsetPx: 10,
+  /** motion-v 的缓动名 */
+  motionEase: 'easeOut',
+  /** CSS 的缓动名 */
+  cssEase: 'ease-out'
+} as const
 
 /**
  * 「下一句预览」最多显示几行 —— 上游 `nextLines` 取 2 行。
