@@ -328,6 +328,44 @@ describe('buildArticleLayoutAttempt（§7.7）', () => {
     expect(article.lastChronologicalRenderEndTimeMs).toBeGreaterThanOrEqual(lines[5].endTimeMs)
   })
 
+  /**
+   * `blockBySourceLineIndex` 的**下标空间**：键是「传给排版的这个数组」的下标。
+   *
+   * 皮肤传进来的行是**补过插曲行**的那一份（`shared/interlude-lines`），于是下标
+   * 描述的是那份数组 —— 而 `ctx.currentLineIndex()` 数的是 store 的**原始行**。
+   * 两者在有插曲行的歌上会差出「当前行之前插了几行」，用错的那一个去查表不会查空
+   * （原始下标仍然是合法键），只会**命中前面某一块**，于是相机停在上一句、
+   * 纸上的打印已经走到后面 —— 表现为「歌词跟歌曲进度对不上」，且不报任何错。
+   *
+   * 所以这条断言锁的是：下标必须与排版入参同源（SkinFume 给相机的是逐帧时钟的
+   * 行下标，而时钟与排版读的是同一个 `lines`）。
+   */
+  it('插曲行占据下标：查表必须用与排版入参同源的下标，原始行下标会命中前面一块', () => {
+    // 造一份「补过插曲行」的数组：真行 0 / 1 / 2，行 0 与行 1 之间插了一行 `......`
+    const interlude = makeLine('......', { startTimeMs: 2200, endTimeMs: 2900 })
+    const augmented = [
+      makeLine('第一句', { startTimeMs: 1000, endTimeMs: 2000 }),
+      interlude,
+      makeLine('第二句', { startTimeMs: 3000, endTimeMs: 4000 })
+    ]
+    const context = {
+      lines: augmented,
+      viewport: VIEWPORT,
+      layoutTheme: THEME,
+      lyricsFontScale: 1,
+      heroScale: 1,
+      measure: makeMeasure(),
+      now: () => 0
+    }
+
+    const article = buildArticleLayoutAttempt(context, baseOptions)!
+
+    // 排版入参的下标 → 正确的行
+    expect(article.blockBySourceLineIndex.get(2)!.line.fullText).toBe('第二句')
+    // store 原始行下标 1（真行 1 = 第二句）查到的却是插曲行 —— 错位的那一格
+    expect(article.blockBySourceLineIndex.get(1)!.line.fullText).toBe('......')
+  })
+
   it('放置顺序 = 按种子打乱（不是时间序），但结果确定', () => {
     const context = {
       lines: makeLines(12),

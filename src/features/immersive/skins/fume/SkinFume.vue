@@ -265,7 +265,23 @@ useFumeStage({
   backgroundOpacityMultiplier: FUME_BACKGROUND_OPACITY_MULTIPLIER,
   currentTimeMs: () => clock.time(),
   audioLevels: () => toFumeAudioLevels(clock.bands()),
-  currentLineIndex: () => props.ctx.currentLineIndex(),
+  /**
+   * 相机焦点用的行下标 —— **必须与 `article` 同源**。
+   *
+   * 文章是按 `fumeLines` 排的，而 `fumeLines` 来自**补过插曲行**的 `lines`
+   * （见上面 `lines` 的说明），所以 `article.blockBySourceLineIndex` 的键是
+   * **含插曲行的那一份数组**的下标。
+   *
+   * ⚠️ 不能用 `props.ctx.currentLineIndex()`：它数的是 store 的**原始行**
+   * （`useActiveLyricIndex` 只遍历 `lyric.lines`），两者在**有插曲行的歌**上
+   * 会差出「当前行之前有几个插曲行」那么多格 —— 相机于是停在前面的某一句上，
+   * 而纸上的打印已经走到后面去了。表现就是「歌词跟歌曲进度对不上」，
+   * 且只在这类歌曲上出现（`attachInterludeLines` 只补 >3s 的空窗）。
+   *
+   * 逐帧时钟的行下标与 `lines` 是同一个数组、同一个 rAF 里算出来的，
+   * 是唯一正确的来源（「流光」的 `useSkinActiveLine` 走的就是它）。
+   */
+  currentLineIndex: () => clock.currentLineIndex(),
   onPrintedContent: handlePrintedContent,
   playing: isPlaying,
   /**
