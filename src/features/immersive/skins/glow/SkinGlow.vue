@@ -193,10 +193,7 @@ const emptyState = computed(() =>
 const subtitleRows = computed(() => {
   const rows = resolveSubtitleTracks(activeLine.line.value, settings.subtitleContentMode)
   if (rows.length > 0) return rows
-  return resolveSubtitleTracks(
-    activeLine.recentCompletedLine.value,
-    settings.subtitleContentMode
-  )
+  return resolveSubtitleTracks(activeLine.recentCompletedLine.value, settings.subtitleContentMode)
 })
 
 /**
