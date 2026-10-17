@@ -30,6 +30,7 @@ import type { AudioControllerCallbacks } from '@/composables/useAudioElement'
 import { getPersonalFm, trashFmSong } from '@/services/api/endpoints/fm.api'
 import { getIntelligencePlaylist } from '@/services/api/endpoints/intelligence.api'
 import { getLikeList, likeSong } from '@/services/api/endpoints/like.api'
+import { shouldApplyPlayerDuration } from '@/utils/media-duration'
 import { usePlayQueueStore } from './play-queue.store'
 import { usePlaybackHistoryStore } from './playback-history.store'
 import { useAuthStore } from './auth.store'
@@ -710,10 +711,18 @@ export const usePlayerStore = defineStore('player', {
      *
      * 绝不在这里改 this.state:进度事件只带进度、不带状态,状态只由 onStateChange
      * (syncState)驱动 —— 否则切歌/缓冲期间的一条进度回调会把状态覆盖成错误的旧值。
+     *
+     * 时长只在**实质变化**时写回：部分内核的 `audio.duration` 会以毫秒级小数反复
+     * 微调，逐次写入会让所有依赖 `player.durationMs` 的 computed 每 250ms 重算一遍。
+     * 「浮名」的排版缓存键包含它，于是 96ms 防抖永远等不到执行的时机 —— 表现就是
+     * 歌词早已显示、排版加载卡却一直挂着。判定与阈值收在共享层（见
+     * `src/utils/media-duration.ts` 的 `shouldApplyPlayerDuration`）。
      */
     syncPosition(snapshot: AudioSnapshot): void {
       this.currentTimeMs = snapshot.currentTimeMs
-      if (snapshot.durationMs > 0) this.durationMs = snapshot.durationMs
+      if (shouldApplyPlayerDuration(this.durationMs, snapshot.durationMs)) {
+        this.durationMs = snapshot.durationMs
+      }
     },
 
     /** Mirror the audio controller's state + position into the store. */
@@ -723,7 +732,9 @@ export const usePlayerStore = defineStore('player', {
       if (this.state === 'error' && audioState !== 'error') return
       this.state = audioState
       this.currentTimeMs = snapshot.currentTimeMs
-      if (snapshot.durationMs > 0) this.durationMs = snapshot.durationMs
+      if (shouldApplyPlayerDuration(this.durationMs, snapshot.durationMs)) {
+        this.durationMs = snapshot.durationMs
+      }
       this.updateMediaSessionPlaybackState()
     },
 

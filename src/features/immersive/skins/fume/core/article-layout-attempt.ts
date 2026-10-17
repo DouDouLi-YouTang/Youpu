@@ -71,6 +71,67 @@ export interface FumePreparedSingleLineLike {
   layout: FumeBlock['layout']
 }
 
+/** 顶层搜索的轻量产物：只保留确定块高所需的字号与视觉行数。 */
+export interface FumeMeasuredSingleLineLike {
+  fontPx: number
+  lineCount: number
+}
+
+/**
+ * 从完整排版产物提取测量所需的两个字段。
+ *
+ * 测试夹具与旧的自定义测量实现只需提供 `prepareSingleLine`；生产实现会走更轻的
+ * `measureSingleLine`。把兼容适配放在 core 内，接口仍是单一来源，调用点无需知道
+ * 某个测量器是否实现了快路径。
+ */
+export function toMeasuredSingleLine(
+  prepared: FumePreparedSingleLineLike
+): FumeMeasuredSingleLineLike {
+  return { fontPx: prepared.fontPx, lineCount: prepared.layout.lines.length }
+}
+
+interface FumeMeasureSingleLineInput {
+  variant: FumeBlockVariant
+  lyricsFontScale: number
+  densityScale: number
+  heroScale: number
+  layoutTheme: FumeLayoutThemeKey
+}
+
+function measureMeasureSingleLine(
+  measure: FumeArticleMeasure,
+  text: string,
+  fontFamily: string,
+  width: number,
+  input: FumeMeasureSingleLineInput
+): FumeMeasuredSingleLineLike {
+  if (measure.measureSingleLine) {
+    return measure.measureSingleLine(
+      text,
+      fontFamily,
+      width,
+      input.variant,
+      input.lyricsFontScale,
+      input.densityScale,
+      input.heroScale,
+      input.layoutTheme
+    )
+  }
+
+  return toMeasuredSingleLine(
+    measure.prepareSingleLine(
+      text,
+      fontFamily,
+      width,
+      input.variant,
+      input.lyricsFontScale,
+      input.densityScale,
+      input.heroScale,
+      input.layoutTheme
+    )
+  )
+}
+
 /**
  * 排版需要的测量能力（全部由 `measure/` 提供，见文件头）。
  *
@@ -98,6 +159,22 @@ export interface FumeArticleMeasure {
     heroScale: number,
     theme: FumeLayoutThemeKey
   ): FumePreparedSingleLineLike
+  /**
+   * 与 `prepareSingleLine` 完全相同地搜索字号，但只返回行数。
+   *
+   * `measure` 模式只读取 `fontPx + lineCount`；这条接口避免为顶层搜索的
+   * 上千个候选物化逐行文本。它不参与最终渲染，因此不会降低文章数据完整度。
+   */
+  measureSingleLine?(
+    text: string,
+    fontFamily: string,
+    width: number,
+    variant: FumeBlockVariant,
+    lyricsFontScale: number,
+    densityScale: number,
+    heroScale: number,
+    theme: FumeLayoutThemeKey
+  ): FumeMeasuredSingleLineLike
   /** 片段逐字素实测偏移（§4.7） */
   measureSegmentGlyphOffsets(text: string, fontSpec: string): number[]
 }
@@ -152,18 +229,27 @@ interface FumeBlockSize {
   blockHeight: number
 }
 
-function resolveBlockSize(
-  prepared: FumePreparedSingleLineLike,
+function resolveBlockSizeFromCount(
+  fontPx: number,
+  lineCount: number,
   variant: FumeBlockVariant
 ): FumeBlockSize {
-  const lineHeight = resolveLineHeight(prepared.fontPx, variant)
+  // 与 §7.5 共用同一份取整实现：搜索与最终渲染的块高必须逐位相同
+  const lineHeight = resolveLineHeight(fontPx, variant)
   return {
-    fontPx: prepared.fontPx,
+    fontPx,
     lineHeight,
     blockGap: resolveBlockGap(lineHeight, variant),
     // paddingY 恒为 0（§7.3），块高就是「视觉行数 × 行高」
-    blockHeight: prepared.layout.lines.length * lineHeight
+    blockHeight: lineCount * lineHeight
   }
+}
+
+function resolveMeasuredBlockSize(
+  prepared: FumeMeasuredSingleLineLike,
+  variant: FumeBlockVariant
+): FumeBlockSize {
+  return resolveBlockSizeFromCount(prepared.fontPx, prepared.lineCount, variant)
 }
 
 /**
@@ -341,19 +427,39 @@ export function* createArticleLayoutAttempt(
     const blockMetrics = resolveBlockMetrics(variant, geometry)
 
     const prepareStart = timing ? now() : 0
-    const prepared = measure.prepareSingleLine(
-      line.fullText,
-      fontFamily,
-      blockMetrics.innerWidth,
-      variant,
-      lyricsFontScale,
-      densityScale,
-      heroScale,
-      layoutTheme
-    )
+    let prepared: FumePreparedSingleLineLike | null = null
+    let measured: FumeMeasuredSingleLineLike
+
+    if (shouldBuildRenderDetails) {
+      prepared = measure.prepareSingleLine(
+        line.fullText,
+        fontFamily,
+        blockMetrics.innerWidth,
+        variant,
+        lyricsFontScale,
+        densityScale,
+        heroScale,
+        layoutTheme
+      )
+      measured = toMeasuredSingleLine(prepared)
+    } else {
+      measured = measureMeasureSingleLine(
+        measure,
+        line.fullText,
+        fontFamily,
+        blockMetrics.innerWidth,
+        {
+          variant,
+          lyricsFontScale,
+          densityScale,
+          heroScale,
+          layoutTheme
+        }
+      )
+    }
     if (timing) timing.prepareLayoutMs += now() - prepareStart
 
-    const size = resolveBlockSize(prepared, variant)
+    const size = resolveMeasuredBlockSize(measured, variant)
 
     const placementStart = timing ? now() : 0
     const placement =
@@ -375,7 +481,7 @@ export function* createArticleLayoutAttempt(
     // `return` 会**终止整个生成器**（measure 模式只出指标、不建 renderLines，
     // 但循环必须走完才能算出列高），而 `continue` 会跳过下面的 `yield` ——
     // 偏偏 measure 模式才是耗时的那一半，最需要让出。
-    if (shouldBuildRenderDetails) {
+    if (shouldBuildRenderDetails && prepared) {
       const renderStart = timing ? now() : 0
       blocks.push(
         buildBlock(

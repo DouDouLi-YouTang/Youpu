@@ -17,7 +17,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /** 假 pretext 的状态：每次调用的入参都留档，供断言反查 */
 const spy = vi.hoisted(() => ({
+  prepareCalls: 0,
+  measurePrepareCalls: 0,
+  layoutCalls: 0,
+  layoutWithLinesCalls: 0,
   fonts: [] as string[],
+  layoutFonts: [] as string[],
   lineHeights: [] as number[]
 }))
 
@@ -26,37 +31,70 @@ const spy = vi.hoisted(() => ({
  *
  * 用「字素数」而不是 `text.length`：CJK 与 emoji 都是单字素多码元，
  * 用 UTF-16 长度会让测试里的期望值跟真实测量口径对不上。
+ *
+ * 四个导出各记一个计数器：`prepare` / `prepareWithSegments` 分开记，是为了钉住
+ * 「测量路径用 `prepare`、渲染路径用 `prepareWithSegments`」这条接线；
+ * `layout` / `layoutWithLines` 分开记，是为了钉住「宽度模型答得出来时一次真测量都不做」。
  */
-vi.mock('@chenglou/pretext', () => ({
-  prepareWithSegments: (text: string, font: string) => {
-    spy.fonts.push(font)
+vi.mock('@chenglou/pretext', () => {
+  const createPrepared = (text: string, font: string, withSegments: boolean) => {
     const match = /(\d+(?:\.\d+)?)px/.exec(font)
     const fontPx = match ? Number(match[1]) : 0
     const graphemeCount = [...text].length
-    return {
-      segments: [text],
+    const prepared: Record<string, unknown> = {
+      font,
       widths: [graphemeCount * fontPx],
+      kinds: ['text'],
+      chunks: [{ startSegmentIndex: 0, endSegmentIndex: 1, consumedEndSegmentIndex: 1 }],
+      simpleLineWalkFastPath: true,
       breakableFitAdvances: [new Array<number>(graphemeCount).fill(fontPx)]
     }
-  },
-  layoutWithLines: (prepared: { widths: number[] }, maxWidth: number, lineHeight: number) => {
-    spy.lineHeights.push(lineHeight)
-    const width = prepared.widths[0] ?? 0
-    const lineCount = Math.max(Math.ceil(width / maxWidth), 1)
-    return {
-      lineCount,
-      height: lineCount * lineHeight,
-      lines: [
-        {
-          text: '',
-          width: Math.min(width, maxWidth),
-          start: { segmentIndex: 0, graphemeIndex: 0 },
-          end: { segmentIndex: 0, graphemeIndex: 0 }
-        }
-      ]
+    if (withSegments) prepared.segments = [text]
+    return prepared
+  }
+
+  const lineCountFor = (prepared: { widths: number[] }, maxWidth: number): number =>
+    Math.max(Math.ceil((prepared.widths[0] ?? 0) / maxWidth), 1)
+
+  return {
+    prepare: (text: string, font: string) => {
+      spy.measurePrepareCalls += 1
+      spy.fonts.push(font)
+      return createPrepared(text, font, false)
+    },
+    prepareWithSegments: (text: string, font: string) => {
+      spy.prepareCalls += 1
+      spy.fonts.push(font)
+      return createPrepared(text, font, true)
+    },
+    layout: (prepared: { widths: number[] }, maxWidth: number, lineHeight: number) => {
+      spy.layoutCalls += 1
+      spy.layoutFonts.push(String((prepared as { font?: string }).font ?? ''))
+      spy.lineHeights.push(lineHeight)
+      const lineCount = lineCountFor(prepared, maxWidth)
+      return { lineCount, height: lineCount * lineHeight }
+    },
+    layoutWithLines: (prepared: { widths: number[] }, maxWidth: number, lineHeight: number) => {
+      spy.layoutWithLinesCalls += 1
+      spy.layoutFonts.push(String((prepared as { font?: string }).font ?? ''))
+      spy.lineHeights.push(lineHeight)
+      const width = prepared.widths[0] ?? 0
+      const lineCount = lineCountFor(prepared, maxWidth)
+      return {
+        lineCount,
+        height: lineCount * lineHeight,
+        lines: [
+          {
+            text: '',
+            width: Math.min(width, maxWidth),
+            start: { segmentIndex: 0, graphemeIndex: 0 },
+            end: { segmentIndex: 0, graphemeIndex: 0 }
+          }
+        ]
+      }
     }
   }
-}))
+})
 
 import {
   FUME_BODY_FONT_PX_RANGE,
@@ -64,6 +102,7 @@ import {
   FUME_HERO_FONT_PX_RANGE,
   FUME_HERO_FONT_WEIGHT,
   buildFontSpec,
+  buildMeasuredSingleLine,
   buildPreparedSingleLine,
   clearSegmentMeasureCache,
   measureSegmentGlyphOffsets,
@@ -71,6 +110,23 @@ import {
   resolveFumeFontFamily,
   resolveThemeFontWeight
 } from './text-measure'
+
+/** 清空测量缓存与全部计数器：每条用例都从「冷启动」开始，计数才有可比性 */
+function resetSpies(): void {
+  clearSegmentMeasureCache()
+  spy.prepareCalls = 0
+  spy.measurePrepareCalls = 0
+  spy.layoutCalls = 0
+  spy.layoutWithLinesCalls = 0
+  spy.fonts.length = 0
+  spy.layoutFonts.length = 0
+  spy.lineHeights.length = 0
+}
+
+/** 从字体串里取字号（`780 32px serif` → 32） */
+function fontPxFromSpec(fontSpec: string): number {
+  return Number(/(\d+(?:\.\d+)?)px/.exec(fontSpec)?.[1] ?? 0)
+}
 
 /** 假 canvas 上下文：只实现被用到的 `font` 与 `measureText`（每字符 10px） */
 function makeCanvasStub(): {
@@ -247,8 +303,7 @@ describe('measureSegmentGlyphOffsets（§4.7）', () => {
 
 describe('buildPreparedSingleLine（§4.10 字号二分）', () => {
   beforeEach(() => {
-    spy.fonts.length = 0
-    spy.lineHeights.length = 0
+    resetSpies()
   })
 
   it('宽度足够时二分逼近上界（8 次迭代后 low = 58 - 40 / 256）', () => {
@@ -289,27 +344,99 @@ describe('buildPreparedSingleLine（§4.10 字号二分）', () => {
   })
 
   it('行高取整，且 hero / body 用不同系数（1.02 / 1.06）', () => {
-    buildPreparedSingleLine('ab', 'serif', 100, 'hero', 1, 1, 1, null)
-    const heroLineHeights = [...spy.lineHeights]
-    const heroFonts = [...spy.fonts]
+    const hero = buildPreparedSingleLine('ab', 'serif', 100, 'hero', 1, 1, 1, null)
+    expect(spy.layoutWithLinesCalls).toBe(1)
+    const heroLineHeight = Math.round(fontPxFromSpec(spy.layoutFonts[0]) * 1.02)
+    expect(spy.lineHeights[0]).toBe(heroLineHeight)
+    expect(hero.layout.height).toBe(heroLineHeight)
 
-    spy.fonts.length = 0
-    spy.lineHeights.length = 0
+    resetSpies()
 
-    buildPreparedSingleLine('ab', 'serif', 100, 'body', 1, 1, 1, null)
-    const bodyLineHeights = [...spy.lineHeights]
-    const bodyFonts = [...spy.fonts]
+    const body = buildPreparedSingleLine('ab', 'serif', 100, 'body', 1, 1, 1, null)
+    expect(spy.layoutWithLinesCalls).toBe(1)
+    const bodyLineHeight = Math.round(fontPxFromSpec(spy.layoutFonts[0]) * 1.06)
+    expect(spy.lineHeights[0]).toBe(bodyLineHeight)
+    expect(body.layout.height).toBe(bodyLineHeight)
+  })
 
-    expect(heroLineHeights).toHaveLength(8)
-    expect(bodyLineHeights).toHaveLength(8)
+  it('相同文本与字体串第二次命中 prepared 缓存，但布局仍按当前宽度重算', () => {
+    const first = buildPreparedSingleLine('缓存命中', 'serif', 120, 'body', 1, 1, 1, null)
+    const callsAfterFirst = { rich: spy.prepareCalls, measure: spy.measurePrepareCalls }
 
-    heroLineHeights.forEach((lineHeight, index) => {
-      const fontPx = Number(/(\d+(?:\.\d+)?)px/.exec(heroFonts[index])?.[1] ?? 0)
-      expect(lineHeight).toBe(Math.round(fontPx * 1.02))
+    const second = buildPreparedSingleLine('缓存命中', 'serif', 120, 'body', 1, 1, 1, null)
+
+    // 两条缓存都要命中：宽度模型的参考测量，与渲染用的 prepareWithSegments
+    expect(spy.prepareCalls).toBe(callsAfterFirst.rich)
+    expect(spy.measurePrepareCalls).toBe(callsAfterFirst.measure)
+    expect(second.fontPx).toBe(first.fontPx)
+    expect(second.layout).not.toBe(first.layout)
+  })
+})
+
+// ─────────── 候选判定走宽度模型（2026-10-17 性能修复） ───────────
+
+describe('宽度模型快路径（§4.10 的候选判定）', () => {
+  beforeEach(() => {
+    resetSpies()
+  })
+
+  it('模型答得出来时一次真测量都不做', () => {
+    buildMeasuredSingleLine('abcdefg', 'serif', 600, 'body', 1, 1, 1, null)
+
+    expect(spy.layoutCalls).toBe(0)
+    expect(spy.prepareCalls).toBe(0)
+    // 宽度模型的参考测量只做一次（参考字号那一次）
+    expect(spy.measurePrepareCalls).toBe(1)
+  })
+
+  it('与逐候选精确搜索选出同一个字号 / 行数（等价性）', () => {
+    const fast = buildMeasuredSingleLine('abcdefg', 'serif', 600, 'body', 1, 1, 1, null)
+
+    resetSpies()
+
+    const exact = buildMeasuredSingleLine('abcdefg', 'serif', 600, 'body', 1, 1, 1, null, {
+      exact: true
     })
-    bodyLineHeights.forEach((lineHeight, index) => {
-      const fontPx = Number(/(\d+(?:\.\d+)?)px/.exec(bodyFonts[index])?.[1] ?? 0)
-      expect(lineHeight).toBe(Math.round(fontPx * 1.06))
-    })
+
+    expect(spy.layoutCalls).toBe(8)
+    expect(exact.fontPx).toBe(fast.fontPx)
+    expect(exact.lineCount).toBe(fast.lineCount)
+  })
+
+  it('收敛点在安全带内（余量 0.2px）时退回真实测量复核', () => {
+    // 单字素在模型口径下「宽度 = 字号」：hero 第一个候选 38px、块宽 38.2px → 余量 0.2px
+    buildMeasuredSingleLine('a', 'serif', 38.2, 'hero', 1, 1, 1, null)
+
+    expect(spy.layoutCalls).toBeGreaterThan(0)
+  })
+
+  it('兜底那一档必须精确：返回真实行数而不是占位值 2', () => {
+    const result = buildMeasuredSingleLine('abcdefghij', 'serif', 10, 'body', 1, 1, 1, null)
+
+    expect(result.fontPx).toBe(FUME_BODY_FONT_PX_RANGE.low)
+    // 模型口径下这行宽 = 10 字素 × 10px = 100px，块宽 10px → 10 行
+    expect(result.lineCount).toBe(10)
+  })
+
+  it('渲染路径只做一次 prepareWithSegments，测量路径只做 prepare', () => {
+    buildPreparedSingleLine('abcd', 'serif', 400, 'body', 1, 1, 1, null)
+
+    expect(spy.layoutWithLinesCalls).toBe(1)
+    expect(spy.prepareCalls).toBe(1)
+    expect(spy.measurePrepareCalls).toBe(1)
+  })
+
+  it('测量阶段与渲染阶段的行数一致：自愈分支不会被走到', () => {
+    const measured = buildMeasuredSingleLine('abcd', 'serif', 400, 'body', 1, 1, 1, null)
+
+    resetSpies()
+
+    const prepared = buildPreparedSingleLine('abcd', 'serif', 400, 'body', 1, 1, 1, null)
+
+    expect(prepared.fontPx).toBe(measured.fontPx)
+    expect(prepared.layout.lineCount).toBe(measured.lineCount)
+    // 自愈会额外跑 8 次精确二分（每次一个 prepare + 一个 layout），这里必须没有
+    expect(spy.layoutCalls).toBe(0)
+    expect(spy.measurePrepareCalls).toBe(1)
   })
 })

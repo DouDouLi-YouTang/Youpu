@@ -175,7 +175,7 @@ const fumeLines = computed(() => toFumeLines(lines.value, player.durationMs))
  * 也就是排版与绘制用**同一个**尺寸来源（`FumeStage` 的 resize 事件），
  * 不会出现「画布已按新尺寸画、排版还用旧尺寸」的帧。
  */
-const { article, isLayoutPending } = useFumeLayout({
+const { article, isLayoutPending, isViewportRefreshPending } = useFumeLayout({
   lines: fumeLines,
   viewport: stageSize,
   layoutTheme,
@@ -202,7 +202,8 @@ const {
   clock,
   lines,
   palette,
-  isLayoutPending,
+  // resize 时旧文章仍会继续画，不算「没有内容」：只有真正切歌 / 首排才让空态让位。
+  isLayoutPending: computed(() => isLayoutPending.value && !isViewportRefreshPending.value),
   hasArticle: computed(() => article.value !== null)
 })
 
@@ -364,13 +365,16 @@ defineExpose({
       @resize="(size) => (stageSize = size)"
     >
       <!-- 空态：居中一层（宿主的 flex 静态定位，见 shared/skin-empty.scss） -->
-      <div v-if="emptyState && !isLayoutPending" class="fume-empty-layer">
+      <div
+        v-if="emptyState && !(isLayoutPending && !isViewportRefreshPending)"
+        class="fume-empty-layer"
+      >
         <SkinEmptyState :state="emptyState" :font-size="emptyFontSize" />
       </div>
 
       <!-- 正在排版：盖在空态之上（切歌瞬间两者会同时满足条件，卡优先） -->
       <Transition name="fume-pending-fade">
-        <FumeLayoutPending v-if="isLayoutPending" />
+        <FumeLayoutPending v-if="isLayoutPending && !isViewportRefreshPending" />
       </Transition>
 
       <!-- 底部副字幕（罗马音 / 译文，或"接下来两句"预览）：不吃事件 -->

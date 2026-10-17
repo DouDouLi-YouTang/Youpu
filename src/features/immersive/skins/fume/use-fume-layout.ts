@@ -198,6 +198,17 @@ export interface UseFumeLayoutResult {
   /** `true` = 已经受理了请求但还没出结果（用来画「正在排版」加载卡，§7.9） */
   isLayoutPending: Ref<boolean>
   /**
+   * `true` = 这次 pending 只是在为**尺寸变化**重排，屏幕上已经有上一版文章可继续显示。
+   *
+   * resize 不是切歌：旧文章的字、时间、绘制数据全都有效，只是几何按旧视口算的。
+   * 把它继续铺在画布上，等新一版在后台排完再替换，既不会露出空白，也不需要让
+   * 加载卡盖住屏幕中央。首次排版 / 切歌时旧文章属于上一首，不能这样复用。
+   *
+   * `isLayoutPending` 保持「后台还有活」的原语义；UI 是否显示加载卡应看
+   * `isLayoutPending && !isViewportRefreshPending`。
+   */
+  isViewportRefreshPending: Ref<boolean>
+  /**
    * 最近一次**真的跑了排版**的采样（§7.8 的 timing）。
    *
    * 命中缓存时保持上一次的值而不是清空：清空会让「刚切回上一首」的调试读数变成
@@ -220,6 +231,7 @@ export function useFumeLayout(options: UseFumeLayoutOptions): UseFumeLayoutResul
   const scheduler = options.scheduler ?? DEFAULT_FUME_LAYOUT_SCHEDULER
   const article = shallowRef<FumeArticleLayout | null>(null)
   const isLayoutPending = ref(false)
+  const isViewportRefreshPending = ref(false)
   const timing = shallowRef<FumeArticleLayoutTiming | null>(null)
 
   /**
@@ -235,6 +247,22 @@ export function useFumeLayout(options: UseFumeLayoutOptions): UseFumeLayoutResul
   let frameId: number | null = null
   let delayId: number | null = null
   let disposed = false
+  /**
+   * 本实例是否已经**显示过**文章。
+   *
+   * 不能复用 `hasResolvedArticle`：从别的面板切回来时模块级缓存可能命中，
+   * 但本实例此刻画布上还没有任何文章；那种情况必须显示加载卡，不能当成 resize。
+   */
+  let hasVisibleArticle = false
+  /**
+   * 最近一次成功排版时的**非视口**输入指纹。
+   *
+   * 视口变化与切歌都会让缓存键失效，但两者对 UI 的语义完全不同：
+   * 前者可以继续显示旧文章，后者必须立刻换成加载卡（旧文章是上一首的词）。
+   * 用「去掉视口后的键」区分二者，比在 watch 里分别监听六个输入更不容易漏项 ——
+   * 将来排版键新增字段时，这里自动跟着走。
+   */
+  let lastContentKey: string | null = null
 
   function cancelPending(): void {
     if (frameId !== null) {
@@ -262,6 +290,13 @@ export function useFumeLayout(options: UseFumeLayoutOptions): UseFumeLayoutResul
     const heroScale = options.heroScale.value
 
     const key = buildLayoutCacheKey(lines, viewport, layoutTheme, lyricsFontScale, { heroScale })
+    const contentKey = buildLayoutCacheKey(
+      lines,
+      { width: 0, height: 0 },
+      layoutTheme,
+      lyricsFontScale,
+      { heroScale }
+    )
 
     const fontKey = options.fontKey.value
 
@@ -310,8 +345,11 @@ export function useFumeLayout(options: UseFumeLayoutOptions): UseFumeLayoutResul
 
     lastFumeLayoutCache = { key, fontKey, article: next }
     hasResolvedArticle = next !== null
+    lastContentKey = contentKey
     article.value = next
+    hasVisibleArticle = next !== null
     isLayoutPending.value = false
+    isViewportRefreshPending.value = false
   }
 
   /** 受理一次重排请求（输入变化时被 watch 调用） */
@@ -324,13 +362,35 @@ export function useFumeLayout(options: UseFumeLayoutOptions): UseFumeLayoutResul
     if (!(viewport.width > 0 && viewport.height > 0) || options.lines.value.length === 0) {
       // 没有可排的输入：立刻回到空态，不要留一个永远 pending 的加载卡
       hasResolvedArticle = false
+      hasVisibleArticle = false
+      lastContentKey = null
       article.value = null
       isLayoutPending.value = false
+      isViewportRefreshPending.value = false
       return
     }
 
+    const contentKey = buildLayoutCacheKey(
+      options.lines.value,
+      { width: 0, height: 0 },
+      options.layoutTheme.value,
+      options.lyricsFontScale.value,
+      { heroScale: options.heroScale.value }
+    )
+    const isViewportOnlyChange =
+      hasVisibleArticle &&
+      article.value !== null &&
+      lastContentKey !== null &&
+      contentKey === lastContentKey
+
     isLayoutPending.value = true
-    const delay = hasResolvedArticle ? LAYOUT_REBUILD_DEBOUNCE_MS : 0
+    isViewportRefreshPending.value = isViewportOnlyChange
+    /**
+     * resize 没有「用户还在连续拖动」之外的歧义，直接 0ms 开跑：
+     * `FumeStage` 已经把同一帧的多次 ResizeObserver 回调合并成一次，
+     * 再叠 96ms 只会让旧文章多撑一版。切歌等其它重建仍保留 96ms 防抖。
+     */
+    const delay = hasResolvedArticle && !isViewportOnlyChange ? LAYOUT_REBUILD_DEBOUNCE_MS : 0
 
     frameId = scheduler.requestFrame(() => {
       frameId = null
@@ -379,5 +439,5 @@ export function useFumeLayout(options: UseFumeLayoutOptions): UseFumeLayoutResul
     cancelPending()
   })
 
-  return { article, isLayoutPending, timing }
+  return { article, isLayoutPending, isViewportRefreshPending, timing }
 }

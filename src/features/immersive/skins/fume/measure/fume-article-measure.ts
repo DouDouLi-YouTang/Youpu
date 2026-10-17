@@ -16,6 +16,7 @@
 import type { FumeArticleMeasure } from '../core/article-layout-attempt'
 import {
   buildFontSpec,
+  buildMeasuredSingleLine,
   buildPreparedSingleLine,
   measureSegmentGlyphOffsets,
   resolveFumeFontFamily
@@ -32,5 +33,6 @@ export const FUME_ARTICLE_MEASURE: FumeArticleMeasure = {
   resolveFontFamily: resolveFumeFontFamily,
   buildFontSpec,
   prepareSingleLine: buildPreparedSingleLine,
+  measureSingleLine: buildMeasuredSingleLine,
   measureSegmentGlyphOffsets
 }

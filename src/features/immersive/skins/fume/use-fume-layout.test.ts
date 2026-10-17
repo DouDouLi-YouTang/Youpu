@@ -187,11 +187,45 @@ describe('useFumeLayout 调度（§7.9）', () => {
     // `core/article-layout-chunked.test.ts` 用假时钟确定性地钉住。
   })
 
-  it('排过一次之后再改输入：走 96ms 防抖', async () => {
+  it('排过一次之后再改歌词：走 96ms 防抖', async () => {
     const layout = mountLayout()
     await layout.flush()
 
     layout.lines.value = [makeLine({ fullText: '换了一行' })]
+    layout.flushFrame()
+    expect(layout.pendingDelayMs).toBe(96)
+  })
+
+  it('只改视口：继续保留旧文章、不显示加载卡，并且 0ms 立刻开跑', async () => {
+    const layout = mountLayout()
+    await layout.flush()
+    const firstArticle = layout.article.value
+    expect(firstArticle).not.toBeNull()
+
+    layout.viewport.value = { width: 1000, height: 600 }
+
+    // 旧文章仍在画布上，UI 不需要用沙漏卡盖住它
+    expect(layout.article.value).toBe(firstArticle)
+    expect(layout.isLayoutPending.value).toBe(true)
+    expect(layout.isViewportRefreshPending.value).toBe(true)
+
+    layout.flushFrame()
+    expect(layout.pendingDelayMs).toBe(0)
+
+    await layout.flush()
+    expect(layout.isLayoutPending.value).toBe(false)
+    expect(layout.isViewportRefreshPending.value).toBe(false)
+    expect(layout.article.value).not.toBe(firstArticle)
+  })
+
+  it('只改歌词：不算视口刷新，加载卡必须接管（旧文章是上一首）', async () => {
+    const layout = mountLayout()
+    await layout.flush()
+
+    layout.lines.value = [makeLine({ fullText: '另一首' })]
+
+    expect(layout.isLayoutPending.value).toBe(true)
+    expect(layout.isViewportRefreshPending.value).toBe(false)
     layout.flushFrame()
     expect(layout.pendingDelayMs).toBe(96)
   })
