@@ -23,14 +23,15 @@ const settings = useImmersiveSettingsStore()
 const backgroundOptions = computed<{ label: string; value: FoliaBackgroundChoice }[]>(() => {
   const entries = foliaBackgroundEntries()
   const byMode = new Map(entries.map((entry) => [entry.mode, entry]))
-  // 固定顺序对齐背景注册表的中文/原始标签，避免 7 项按钮在 360px 面板里挤压。
+  // 本项目没有 Embed 的候选内容入口，因此不展示 `url`。FoliaBackground 在
+  // config.url 为空时会整块不渲染，只留下空背景；把它列为可选项等于提供一个
+  // 必然白屏的按钮。其余模式按注册表顺序展示。
   const order: FoliaBackgroundChoice[] = [
     'native',
     'common',
     'monet',
     'nomand',
     'latent',
-    'url',
     'sora'
   ]
   return order.map((mode) => {
