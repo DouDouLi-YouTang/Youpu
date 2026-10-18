@@ -68,6 +68,10 @@ export default {
       to: 'scripts/start-api-server.cjs'
     },
     {
+      from: 'config/api-server.json',
+      to: 'config/api-server.json'
+    },
+    {
       from: 'build/icon.ico',
       to: 'icon.ico'
     }

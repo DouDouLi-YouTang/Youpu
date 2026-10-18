@@ -13,7 +13,8 @@
 npm run dev
 ```
 
-- 会同时起后端（3000）与 electron-vite dev。若 3000 被占用，先关掉旧的 dev 实例。
+- 会同时起后端与 electron-vite dev；后端端口统一由 `config/api-server.json` 决定（默认 3010）。
+  若该端口被占用，先关掉旧实例，或临时用 `YOUPU_API_PORT=3011 npm run dev` 覆盖。
 - 建议把渲染进程的 DevTools 打开（`Ctrl+Shift+I`，或主进程菜单里的开发者工具），第 1 节几处需要看 Console。
 
 ---

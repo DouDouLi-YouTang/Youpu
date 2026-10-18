@@ -174,7 +174,22 @@ function assertAllowedChannel(channel: string): asserts channel is DesktopChanne
   }
 }
 
+/**
+ * 主进程通过 `additionalArguments` 注入 API 地址。
+ *
+ * Web 构建（纯浏览器）没有 preload，`window.muiceDesktop` 为 undefined，
+ * 此时由渲染层回退到 `VITE_API_BASE_URL` 或默认值 —— 见 api-client。
+ */
+function readApiBaseUrl(): string | null {
+  const prefix = '--youpu-api-base-url='
+  const argument = process.argv.find((item) => item.startsWith(prefix))
+  if (!argument) return null
+  const value = argument.slice(prefix.length).trim()
+  return value || null
+}
+
 const desktopApi = {
+  apiBaseUrl: readApiBaseUrl(),
   invoke<T>(channel: DesktopChannel): Promise<T> {
     assertAllowedChannel(channel)
     return ipcRenderer.invoke(channel) as Promise<T>

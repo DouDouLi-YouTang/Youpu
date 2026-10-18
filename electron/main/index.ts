@@ -1,6 +1,13 @@
 import AdmZip from 'adm-zip'
 import { execFile, fork, spawn, type ChildProcess } from 'node:child_process'
-import { createReadStream, createWriteStream, mkdirSync, statSync, truncateSync } from 'node:fs'
+import {
+  createReadStream,
+  createWriteStream,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  truncateSync
+} from 'node:fs'
 import { cp, mkdir, open, readFile, readdir, rm, rmdir, stat, unlink } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path'
@@ -405,13 +412,43 @@ function getServerDir(): string {
   return join(getProjectRoot(), 'server')
 }
 
+/**
+ * 读取 `config/api-server.json`：主进程与开发后端共用同一份端口配置。
+ *
+ * 只依赖 `app.isPackaged` 与相对路径，不 import CJS 脚本 —— 主进程是 ESM 打包产物，
+ * 直接 require 相对路径会在 asar / 打包目录下解析失败。读取失败时回退 3000，
+ * 与旧行为一致（不会因配置缺失而拒绝启动）。
+ */
+function readEmbeddedApiServerConfig(): { host: string; port: number } {
+  const defaultHost = '127.0.0.1'
+  const defaultPort = 3000
+  try {
+    const raw = JSON.parse(
+      readFileSync(join(getProjectRoot(), 'config', 'api-server.json'), 'utf-8')
+    ) as { host?: unknown; port?: unknown }
+    const host =
+      process.env.YOUPU_API_HOST?.trim() ||
+      (typeof raw.host === 'string' ? raw.host.trim() : '') ||
+      defaultHost
+    const port = Number(process.env.YOUPU_API_PORT || raw.port)
+    return {
+      host,
+      port: Number.isInteger(port) && port >= 1 && port <= 65535 ? port : defaultPort
+    }
+  } catch {
+    return { host: defaultHost, port: defaultPort }
+  }
+}
+
 /** gh-proxy 加速前缀(直连 GitHub 国内超时)。 */
 const GH_PROXY = 'https://gh-proxy.com/'
 /** api-enhanced 源仓库全名(owner/repo)。 */
 const API_ENHANCED_REPO = 'NeteaseCloudMusicApiEnhanced/api-enhanced'
 
-const API_SERVER_HOST = '127.0.0.1'
-const API_SERVER_PORT = 3000
+/** 内嵌 API 服务的地址：由根目录 config/api-server.json 决定（可用环境变量临时覆盖）。 */
+const apiServerConfig = readEmbeddedApiServerConfig()
+const API_SERVER_HOST = apiServerConfig.host
+const API_SERVER_PORT = apiServerConfig.port
 
 type ApiServerMode = 'development' | 'packaged'
 
@@ -725,6 +762,11 @@ function startDevelopmentApiServer(): ChildProcess {
     cwd: getProjectRoot(),
     windowsHide: true,
     stdio: 'ignore',
+    env: {
+      ...process.env,
+      YOUPU_API_HOST: API_SERVER_HOST,
+      YOUPU_API_PORT: String(API_SERVER_PORT)
+    },
     // Windows 上 npm 是 .cmd 脚本,Node 18+ 起(CVE-2024-27980 补丁)不带 shell 直接 spawn
     // .cmd/.bat 会抛 spawn EINVAL(errno -4071)。开 shell 让 cmd.exe 解析 .cmd 脚本。
     shell: process.platform === 'win32'
@@ -1003,6 +1045,9 @@ function createMainWindow(): BrowserWindow {
       // Mis-pointing this leaves `window.muiceDesktop` undefined in renderer
       // and every titlebar button click resolves to a no-op via the catch.
       preload: join(__dirname, '../preload/index.mjs'),
+      // 渲染层拿不到主进程的配置模块，端口通过启动参数注入；preload 再把它挂到
+      // window.muiceDesktop.apiBaseUrl（见 electron/preload/index.ts）。
+      additionalArguments: [`--youpu-api-base-url=http://${API_SERVER_HOST}:${API_SERVER_PORT}`],
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
@@ -1391,14 +1436,16 @@ async function startPackagedApiServer(): Promise<boolean> {
   // 与 dev 的 server:dev 对齐:加载 netease-dns-preload.cjs 劫持网易云域名到
   // 可达 IPv4。用 execArgv 而非 NODE_OPTIONS,避免安装路径含空格时引号解析问题。
   const dnsPreload = join(process.resourcesPath, 'scripts', 'netease-dns-preload.cjs')
-  // 若 3000 已被占用但 HTTP 探活失败(僵尸/半死进程),先尽力释放端口再 fork,
+  // 若配置端口已被占用但 HTTP 探活失败(僵尸/半死进程),先尽力释放端口再 fork,
   // 否则子进程 listen EADDRINUSE → 立即 exit 1,前端一直显示后端连不上。
   const portBusy = await probeApiServerPort(500)
   if (portBusy.ok) {
     const httpAlive = await probeApiServerHttp(1500)
     if (httpAlive.ok) return true
-    console.warn('[api-server] 端口 3000 被占用但 HTTP 无响应,尝试释放后重启')
-    getApiServerLogStream()?.write('[api-server] 端口 3000 被占用但 HTTP 无响应,尝试释放后重启\n')
+    console.warn(`[api-server] 端口 ${API_SERVER_PORT} 被占用但 HTTP 无响应,尝试释放后重启`)
+    getApiServerLogStream()?.write(
+      `[api-server] 端口 ${API_SERVER_PORT} 被占用但 HTTP 无响应,尝试释放后重启\n`
+    )
     if (process.platform === 'win32') {
       try {
         await new Promise<void>((resolve) => {
@@ -1417,14 +1464,19 @@ async function startPackagedApiServer(): Promise<boolean> {
       } catch {
         // 释放失败仍继续 fork,由子进程日志暴露 EADDRINUSE
       }
-      await waitForPortState(false, 3000)
+      await waitForPortState(false, API_SERVER_PORT)
     }
   }
   const child = fork(join(process.resourcesPath, 'scripts', 'start-api-server.cjs'), [], {
     cwd: serverDir,
     stdio: 'pipe',
     execArgv: ['--require', dnsPreload, '--dns-result-order=ipv4first'],
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: '1',
+      HOST: API_SERVER_HOST,
+      PORT: String(API_SERVER_PORT)
+    }
   })
   trackApiServerProcess(child)
   const ready = await waitForPortState(true, 20000)
@@ -1484,19 +1536,23 @@ if (!gotSingleInstanceLock) {
     registerCoverProtocol()
     registerIpcHandlers()
     registerDownloadIpcHandlers(() => mainWindow)
-    try {
-      const ready = await startPackagedApiServer()
-      if (!ready) {
-        console.warn('[api-server] 打包后端启动后端口未就绪(20s 内未监听到 3000)')
+    // 仅打包模式启动内嵌后端；开发模式的后端由 concurrently 的 `server:dev` 负责。
+    // `startPackagedApiServer()` 在 dev 下必然返回 false，不能据此打印“端口未就绪”。
+    if (app.isPackaged) {
+      try {
+        const ready = await startPackagedApiServer()
+        if (!ready) {
+          console.warn(`[api-server] 打包后端启动后端口未就绪(20s 内未监听到 ${API_SERVER_PORT})`)
+          getApiServerLogStream()?.write(
+            `[api-server] 打包后端启动后端口未就绪(20s 内未监听到 ${API_SERVER_PORT})\n`
+          )
+        }
+      } catch (error) {
+        console.error('[api-server] 打包后端启动异常', error)
         getApiServerLogStream()?.write(
-          '[api-server] 打包后端启动后端口未就绪(20s 内未监听到 3000)\n'
+          `[api-server] 打包后端启动异常: ${error instanceof Error ? error.stack || error.message : String(error)}\n`
         )
       }
-    } catch (error) {
-      console.error('[api-server] 打包后端启动异常', error)
-      getApiServerLogStream()?.write(
-        `[api-server] 打包后端启动异常: ${error instanceof Error ? error.stack || error.message : String(error)}\n`
-      )
     }
     // 自动化测试钩子(仅开发/联调用):设置 YOUPU_TEST_AUTO_UPDATE=1 并配合
     // YOUPU_UPDATE_FEED_URL 指向本地更新源后,启动应用会自动走完

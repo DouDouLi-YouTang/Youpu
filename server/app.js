@@ -18,6 +18,8 @@ async function start() {
   await require('./server').serveNcmApi({
     checkVersion: false,
     host: process.env.HOST || '127.0.0.1',
+    // Desktop 默认端口由 config/api-server.json 经启动器注入；这里保留 3000
+    // 只是独立运行 vendored server 时的历史默认值。
     port: Number(process.env.PORT || 3000),
   })
 }

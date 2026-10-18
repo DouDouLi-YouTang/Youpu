@@ -111,6 +111,10 @@ npm install
 npm run dev
 ```
 
+内嵌后端的地址统一在 `config/api-server.json`（默认 `127.0.0.1:3010`）。若端口被占用，
+改这一个文件即可；也可以临时用 `YOUPU_API_PORT=3011 npm run dev` 覆盖（PowerShell 写法为
+`$env:YOUPU_API_PORT = '3011'; npm run dev`）。
+
 如果 Electron 下载不动，可以先用国内镜像：
 
 ```powershell

@@ -131,6 +131,8 @@ declare global {
   }
 
   interface MuiceDesktopApi {
+    /** 主进程注入的内嵌 API 地址（如 http://127.0.0.1:3010）；浏览器环境为 null */
+    apiBaseUrl: string | null
     invoke<T>(
       channel:
         | 'window:minimize'
