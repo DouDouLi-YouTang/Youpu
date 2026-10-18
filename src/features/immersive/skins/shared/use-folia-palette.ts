@@ -26,9 +26,8 @@
  * 语义上的「是不是浅色」，所以在这里给出。
  */
 
-import { computed, onBeforeUnmount, ref, watch, type ComputedRef, type Ref } from 'vue'
+import { computed, type ComputedRef, type Ref } from 'vue'
 
-import { useImmersiveSettingsStore } from '../../immersive-settings.store'
 import type { KeywordSourceLine } from './song-theme/keyword-colors'
 import { useSongTheme } from './song-theme/use-song-theme'
 import type { WordColorEntry } from './word-coloring'
@@ -78,43 +77,7 @@ export function useFoliaPalette(sources: FoliaPaletteSources): {
   /** 逐词配色（关键词着色）；为空数组时逐词渲染退化成整行同色 */
   wordColors: ComputedRef<WordColorEntry[]>
 } {
-  const settings = useImmersiveSettingsStore()
-  const isDaylight = ref(false)
-
-  const { colors, wordColors } = useSongTheme(sources)
-
-  /** 系统偏好（只在 `colorScheme === 'auto'` 时被读） */
-  let systemDark = true
-  const query =
-    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      ? window.matchMedia('(prefers-color-scheme: dark)')
-      : null
-  if (query) {
-    systemDark = query.matches
-    const onChange = (event: MediaQueryListEvent): void => {
-      systemDark = event.matches
-      refresh()
-    }
-    query.addEventListener('change', onChange)
-    onBeforeUnmount(() => query.removeEventListener('change', onChange))
-  }
-
-  function refresh(): void {
-    isDaylight.value =
-      settings.folia.colorScheme === 'light' ||
-      (settings.folia.colorScheme === 'auto' && !systemDark)
-  }
-
-  /**
-   * 明暗档变化只影响 `isDaylight`（以及 `colors` 选哪一档，那一侧由 `useSongTheme` 自己监听）。
-   * `accentColorVariant` **刻意不再监听**：本面板的四个颜色是「这首歌的颜色」，
-   * 不是用户选的全局主色变体（全局变体由控制条的 `--rnp-accent-color` 承担，
-   * 见 `use-color-extraction`）。两套东西服务的对象不同，混在一起会让
-   * 「每首歌的颜色」被用户的全局偏好覆盖掉。
-   */
-  watch(() => [settings.folia.colorScheme, settings.accentColorVariant], refresh, {
-    immediate: true
-  })
+  const { colors, wordColors, isDaylight } = useSongTheme(sources)
 
   const palette = computed<FoliaPalette>(() => ({
     background: colors.value.backgroundColor,

@@ -178,4 +178,12 @@ describe('buildKeywordColors', () => {
     expect(buildKeywordColors([], '#ea580c', '#09090b')).toEqual([])
     expect(buildKeywordColors(['孤独'], 'not-a-color', '#09090b')).toEqual([])
   })
+
+  it('可关闭饱和度下限，让单色方案的关键词不被重新染成彩色', () => {
+    const [entry] = buildKeywordColors(['孤独'], '#52525b', '#f4f4f5', {
+      minSaturation: 0
+    })
+
+    expect(hexToHsl(entry.color)!.s).toBeLessThan(0.2)
+  })
 })

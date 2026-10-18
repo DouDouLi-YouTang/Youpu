@@ -32,7 +32,7 @@
  * 而不是判断 `coverUrl` 是否相等 —— 同一张封面重开也会发新请求，令牌更准确。
  */
 
-import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch, type ComputedRef, type Ref } from 'vue'
 
 import { useImmersiveSettingsStore } from '@/features/immersive/immersive-settings.store'
 import type { FoliaColorScheme } from '@/features/immersive/immersive-settings.model'
@@ -55,16 +55,14 @@ const THEME_CACHE_LIMIT = 64
 interface CachedTheme {
   light: SongThemeColors
   dark: SongThemeColors
-  wordColors: WordColorEntry[]
 }
 
 /**
  * 模块级缓存：键是**封面 URL + 歌曲 id**。
  *
  * 为什么键里要带歌曲 id：同一张封面可以被多首歌共用（同一张专辑、
- * 或者取色失败时多首歌共用一个兜底图），而**关键词是按歌词挑的**，
- * 两首歌的 `wordColors` 不该互相覆盖。封面色盘本身只依赖 URL，
- * 但把两件事缓存成一条记录更简单，代价只是多几条记录。
+ * 或者取色失败时多首歌共用一个兜底图）。封面色盘本身只依赖 URL；
+ * 歌曲 id 同时参与生成随机源，保证取色失败时每首歌也能得到稳定而不同的主题。
  */
 const themeCache = new Map<string, CachedTheme>()
 
@@ -113,6 +111,8 @@ export interface UseSongThemeResult {
   wordColors: ComputedRef<WordColorEntry[]>
   /** 取色是否已经出过结果（首帧为 false，此时用的是中性兜底） */
   ready: Ref<boolean>
+  /** 当前配色方案是否解析为白天档（`'auto'` 已按系统偏好折算） */
+  isDaylight: ComputedRef<boolean>
 }
 
 /**
@@ -163,10 +163,26 @@ export function useSongTheme({
 
   let requestToken = 0
 
-  function resolveSystemDark(): boolean {
-    return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+  /**
+   * 系统明暗偏好必须是响应式的。
+   *
+   * 如果在 `colors` 的 computed 里直接读 `matchMedia().matches`，系统切换时
+   * Vue 不知道这个值变了，`colors` 与依赖它的 `wordColors` 都会停在旧档。
+   * 把 media query 的 change 事件写进 ref，再让 computed 读取 ref，
+   * 三套 Folia 主题的颜色才会在系统主题切换后同步更新。
+   */
+  const systemDark = ref(
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
       ? window.matchMedia('(prefers-color-scheme: dark)').matches
       : true
+  )
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    const query = window.matchMedia('(prefers-color-scheme: dark)')
+    const onChange = (event: MediaQueryListEvent): void => {
+      systemDark.value = event.matches
+    }
+    query.addEventListener('change', onChange)
+    onBeforeUnmount(() => query.removeEventListener('change', onChange))
   }
 
   /**
@@ -178,7 +194,10 @@ export function useSongTheme({
   function buildWordColors(accentColor: string, backgroundColor: string): WordColorEntry[] {
     const lines = lyricLines.value
     if (lines.length === 0) return []
-    return buildKeywordColors(pickKeywords(lines), accentColor, backgroundColor)
+    return buildKeywordColors(pickKeywords(lines), accentColor, backgroundColor, {
+      // 单色方案的关键词也必须保持低饱和，不能被默认的 0.45 饱和度下限重新染成彩色。
+      minSaturation: settings.folia.colorMode === 'mono' ? 0 : undefined
+    })
   }
 
   /** 跑一次完整推导（含缓存命中） */
@@ -192,12 +211,7 @@ export function useSongTheme({
 
     const built: CachedTheme = {
       light: generated.light,
-      dark: generated.dark,
-      // 关键词色从**暗色档**的强调色派生：两个档共用一套 wordColors
-      // （上游契约也是「wordColors 两档相同」，它表示歌词的语义而非某一档的配色）。
-      // 取暗色档是因为歌词主体面板默认在暗色下使用，且暗色档的强调色饱和度更高、
-      // 在两种底上都更可辨。
-      wordColors: buildWordColors(generated.dark.accentColor, generated.dark.backgroundColor)
+      dark: generated.dark
     }
 
     writeCache(key, built)
@@ -230,30 +244,27 @@ export function useSongTheme({
   // 封面或歌曲变了就重新取色（`immediate` 让首帧就开始跑）
   watch([coverUrl, songId], () => void load(), { immediate: true })
 
-  /**
-   * 歌词变化（同一首歌的歌词晚于封面到达、或切到有逐字数据的版本）时，
-   * **只重算逐词配色**，不必重新取色 —— 封面色盘与歌词无关。
-   */
-  watch(lyricLines, () => {
-    const current = applied.value
-    if (!current) return
-    current.wordColors = buildWordColors(current.dark.accentColor, current.dark.backgroundColor)
-  })
-
-  const colors = computed<SongThemeColors>(() => {
-    const isLight =
+  const isDaylight = computed<boolean>(
+    () =>
       settings.folia.colorScheme === 'light' ||
-      (settings.folia.colorScheme === 'auto' && !resolveSystemDark())
-    return resolveModeColors(settings.folia.colorMode, applied.value, isLight)
-  })
-
-  /**
-   * 逐词配色只在 `wordColoring` 开启时生效；关闭时返回空数组，
-   * 让两个皮肤自然回退到 accentColor，不需要在渲染层再判一次。
-   */
-  const wordColors = computed<WordColorEntry[]>(() =>
-    settings.folia.wordColoring ? (applied.value?.wordColors ?? []) : []
+      (settings.folia.colorScheme === 'auto' && !systemDark.value)
   )
 
-  return { colors, wordColors, ready }
+  const colors = computed<SongThemeColors>(() =>
+    resolveModeColors(settings.folia.colorMode, applied.value, isDaylight.value)
+  )
+
+  /**
+   * 逐词配色从**当前生效的四色**派生，而不是缓存里固定取暗色档。
+   *
+   * 这样固定配色方案、明暗档变化与歌词晚到时都会使用同一套口径：
+   * 关键词跟随当前方案，且对比度按当前底色重新求解。
+   */
+  const wordColors = computed<WordColorEntry[]>(() => {
+    if (!settings.folia.wordColoring) return []
+    const active = colors.value
+    return buildWordColors(active.accentColor, active.backgroundColor)
+  })
+
+  return { colors, wordColors, ready, isDaylight }
 }

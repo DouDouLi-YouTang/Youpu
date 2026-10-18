@@ -449,14 +449,16 @@ export function pickKeywords(
 export function buildKeywordColors(
   keywords: readonly string[],
   accentColor: string,
-  backgroundColor: string
+  backgroundColor: string,
+  options: { minSaturation?: number } = {}
 ): WordColorEntry[] {
   if (keywords.length === 0) return []
 
   const accentHsl = hexToHsl(accentColor)
   if (!accentHsl) return []
 
-  const saturation = Math.max(KEYWORD_MIN_SATURATION, accentHsl.s)
+  const minSaturation = options.minSaturation ?? KEYWORD_MIN_SATURATION
+  const saturation = Math.max(minSaturation, accentHsl.s)
   const backgroundIsLight = (hexToHsl(backgroundColor)?.l ?? 0) > 0.5
   const [minLightness, maxLightness] = backgroundIsLight
     ? KEYWORD_LIGHTNESS_LIGHT_BG
