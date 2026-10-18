@@ -88,6 +88,8 @@ export interface FoliaSettings {
   colorScheme: ColorScheme
   /** 底部副歌词显示哪几档；`'none'` = 隐藏 */
   subtitleContentMode: SubtitleContentMode
+  /** 副歌词的模糊效果（辉光底 / 下一句预览）；关闭后保持清晰 */
+  subtitleBlur: boolean
   /** 文字配色方案；默认 `'song'`，保留逐歌主题 */
   colorMode: FoliaColorScheme
   /** 背景模式；`native` = 各皮肤原本的背景（倾诉几何 / 流光 common / 浮名手绘纸面） */
@@ -269,6 +271,7 @@ export function createDefaultSettings(): ImmersiveSettings {
     folia: {
       colorScheme: 'dark',
       subtitleContentMode: 'both',
+      subtitleBlur: true,
       colorMode: 'song',
       backgroundMode: 'native',
       backgroundOpacity: 100,

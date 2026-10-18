@@ -100,3 +100,8 @@
   // 是**渐隐渐显**，不是硬切。少了这条，长间奏里预览行会一跳一跳地换。
   transition: all 0.5s;
 }
+
+// 关闭「副歌词模糊效果」时的预览行：保留淡入淡出，去掉文字模糊。
+.skin-subtitle.is-upcoming.is-clear {
+  filter: none;
+}

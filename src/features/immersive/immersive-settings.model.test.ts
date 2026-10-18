@@ -140,6 +140,7 @@ describe('createDefaultSettings 与其他模块耦合的默认值（改动属于
     expect(s.folia).toEqual({
       colorScheme: 'dark',
       subtitleContentMode: 'both',
+      subtitleBlur: true,
       colorMode: 'song',
       backgroundMode: 'native',
       backgroundOpacity: 100,

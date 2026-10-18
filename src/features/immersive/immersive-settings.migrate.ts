@@ -119,6 +119,7 @@ export function normalizeFoliaSettings(target: { folia?: Partial<FoliaSettings> 
       SUBTITLE_CONTENT_MODES,
       defaults.subtitleContentMode
     ),
+    subtitleBlur: typeof raw.subtitleBlur === 'boolean' ? raw.subtitleBlur : defaults.subtitleBlur,
     colorMode: pickEnum(raw.colorMode, FOLIA_COLOR_SCHEMES, defaults.colorMode),
     backgroundMode: pickEnum(raw.backgroundMode, FOLIA_BACKGROUND_CHOICES, defaults.backgroundMode),
     backgroundOpacity: clampNumber(raw.backgroundOpacity, 0, 100, defaults.backgroundOpacity),

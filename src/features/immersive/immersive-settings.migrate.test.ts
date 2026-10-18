@@ -225,6 +225,7 @@ describe('normalizeFoliaSettings 补齐 / 纠正嵌套设置', () => {
       ...createDefaultSettings().folia,
       colorScheme: 'light',
       subtitleContentMode: 'translation',
+      subtitleBlur: false,
       colorMode: 'mono',
       backgroundMode: 'sora',
       backgroundOpacity: 42,
@@ -245,6 +246,7 @@ describe('normalizeFoliaSettings 补齐 / 纠正嵌套设置', () => {
       colorScheme: 'light',
       colorMode: 'daylight',
       subtitleContentMode: 'both',
+      subtitleBlur: true,
       backgroundMode: 'native',
       backgroundOpacity: 100,
       backgroundBlur: 0,
@@ -257,6 +259,7 @@ describe('normalizeFoliaSettings 补齐 / 纠正嵌套设置', () => {
       folia: {
         colorScheme: 'sepia',
         subtitleContentMode: 'lyrics',
+        subtitleBlur: 'yes',
         colorMode: 'rainbow',
         backgroundMode: 'unknown',
         backgroundOpacity: 900,
@@ -268,6 +271,7 @@ describe('normalizeFoliaSettings 补齐 / 纠正嵌套设置', () => {
     expect(target.folia).toEqual({
       colorScheme: 'dark',
       subtitleContentMode: 'both',
+      subtitleBlur: true,
       colorMode: 'song',
       backgroundMode: 'native',
       backgroundOpacity: 100,
@@ -445,6 +449,7 @@ describe('store.bootstrapSettings 启动引导', () => {
     raw.folia = {
       colorScheme: 'nope',
       subtitleContentMode: 'nope',
+      subtitleBlur: 'nope',
       colorMode: 'nope',
       backgroundMode: 'nope',
       backgroundOpacity: 900,

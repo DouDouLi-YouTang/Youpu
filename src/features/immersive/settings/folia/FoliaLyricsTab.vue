@@ -32,6 +32,10 @@ const subtitleOptions = [
       />
       <span class="setting-note">控制倾诉、流光、浮名的罗马音与译文显示</span>
     </div>
+    <div class="setting-row">
+      <a-checkbox v-model:checked="settings.folia.subtitleBlur">副歌词模糊效果</a-checkbox>
+      <span class="setting-note">关闭后辉光底与下一句预览保持清晰</span>
+    </div>
   </section>
 </template>
 

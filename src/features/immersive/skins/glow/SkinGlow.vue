@@ -359,6 +359,7 @@ function handleSeek(): void {
       :opacity="SUBTITLE_OVERLAY_OPACITY"
       :translation-font-size="subtitleFontSizes.translation"
       :upcoming-font-size="subtitleFontSizes.upcoming"
+      :blur="settings.folia.subtitleBlur"
     />
   </div>
 </template>

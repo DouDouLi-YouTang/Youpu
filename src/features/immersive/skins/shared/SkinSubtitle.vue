@@ -104,6 +104,8 @@ const props = defineProps<{
   translationFontSize: string
   /** 预览行的字号（clamp 字符串） */
   upcomingFontSize: string
+  /** 是否保留副字幕的模糊效果（辉光底与下一句预览）；默认 true */
+  blur?: boolean
 }>()
 
 /**
@@ -165,7 +167,7 @@ const swapMotion = {
       }"
     >
       <!-- 辉光底：垫在文字后面的椭圆渐变，外扩 + 模糊见样式表 -->
-      <div class="skin-subtitle-glow" aria-hidden="true" :style="glowStyle" />
+      <div v-if="blur !== false" class="skin-subtitle-glow" aria-hidden="true" :style="glowStyle" />
 
       <!--
         内容层：上游的 `px-1.5 py-0.5`（内边距 6px / 2px）。
@@ -202,6 +204,7 @@ const swapMotion = {
               v-for="(text, index) in preview"
               :key="index"
               class="skin-subtitle is-upcoming"
+              :class="{ 'is-clear': blur === false }"
               :style="{ fontSize: upcomingFontSize }"
             >
               {{ text }}

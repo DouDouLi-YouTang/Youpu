@@ -88,6 +88,8 @@ export interface UseFumeOverlayResult {
   emptyState: ComputedRef<SkinEmptyState | null>
   subtitleRows: ComputedRef<SubtitleTrack[]>
   upcomingPreview: ComputedRef<string[]>
+  /** 副歌词是否保留模糊效果（Folia 共享设置） */
+  subtitleBlur: ComputedRef<boolean>
   /** 副字幕的**基准**字号（次级轨道的降档由共享组件内部做） */
   subtitleFontSize: string
   upcomingFontSize: string
@@ -152,6 +154,7 @@ export function useFumeOverlay(options: UseFumeOverlayOptions): UseFumeOverlayRe
     if (rows.length > 0) return rows
     return resolveSubtitleTracks(recentCompletedLine.value, settings.folia.subtitleContentMode)
   })
+  const subtitleBlur = computed(() => settings.folia.subtitleBlur)
 
   /**
    * 「下一句」预览。**当前行有可读副字幕就不显示预览**（上游语义）。
@@ -206,6 +209,7 @@ export function useFumeOverlay(options: UseFumeOverlayOptions): UseFumeOverlayRe
     emptyState,
     subtitleRows,
     upcomingPreview,
+    subtitleBlur,
     subtitleFontSize,
     upcomingFontSize,
     emptyFontSize,

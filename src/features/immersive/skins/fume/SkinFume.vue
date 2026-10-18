@@ -85,6 +85,7 @@ const {
   emptyState,
   subtitleRows,
   upcomingPreview,
+  subtitleBlur,
   subtitleFontSize,
   upcomingFontSize,
   emptyFontSize,
@@ -234,6 +235,7 @@ defineExpose({
         :opacity="FUME_SUBTITLE_OVERLAY_OPACITY"
         :translation-font-size="subtitleFontSize"
         :upcoming-font-size="upcomingFontSize"
+        :blur="subtitleBlur"
       />
     </FumeStage>
   </div>
