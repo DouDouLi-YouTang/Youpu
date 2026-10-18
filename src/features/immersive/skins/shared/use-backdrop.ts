@@ -48,9 +48,7 @@ export function useBackdrop() {
    * 按设置种类取，而不是让 Folia 的白天/夜间只影响歌词调色板。
    */
   const activeColorScheme = computed(() =>
-    activeSkin.value.settingsKind === 'folia'
-      ? settings.folia.colorScheme
-      : settings.colorScheme
+    activeSkin.value.settingsKind === 'folia' ? settings.folia.colorScheme : settings.colorScheme
   )
 
   /**

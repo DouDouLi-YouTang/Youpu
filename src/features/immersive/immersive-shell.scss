@@ -48,7 +48,12 @@
 
   &.rnp-light {
     --rnp-accent-color-shade-2: var(--rnp-accent-color-shade-2-light, #0f0f0f) !important;
-    --rnp-accent-color-shade-2-rgb: var(--rnp-accent-color-shade-2-light-rgb, 15, 15, 15) !important;
+    --rnp-accent-color-shade-2-rgb: var(
+      --rnp-accent-color-shade-2-light-rgb,
+      15,
+      15,
+      15
+    ) !important;
     --rnp-accent-color-overlay: #fff !important;
     --rnp-accent-color-bg: #f0f0f0 !important;
     --rnp-accent-color-bg-rgb: 240, 240, 240 !important;
