@@ -3,13 +3,13 @@
  *
  * ## 为什么需要这一层（与「流光」的 `glow-adapter.ts` 同构）
  *
- * 浮名**没有设置面板**（用户 2026-10-14 拍板，与「倾诉」一致）。Folia 那一堆
- * 面板字段在本项目里全部内置成常量，但**不能**把它们内联散落到各处：
+ * 浮名使用 Folia 三主题共享设置；Folia 那一堆
+ * 排版与绘制参数在本项目里内置成常量，但**不能**把它们内联散落到各处：
  *  - 布局缓存键（§7.1）要吃 `heroScale` 与字体栈；
  *  - 每帧绘制要吃 `glowIntensity`、`backgroundObjectOpacity`、`showText` / `staticMode`；
  *  - 时间轴要吃 `cameraTrackingMode` / `cameraSpeed`。
  *
- * 一旦内联，同一个"默认值"就有了好几个出处；将来接设置面板时更不知道要改几处。
+ * 一旦内联，同一个值就有了好几个出处；将来暴露更多调节项时更不知道要改几处。
  * 所以这里集中一份，**唯一**的取值出处，其余模块只引用常量。
  *
  * ## 为什么 `disableGeometricBackground` 不在这里
@@ -62,10 +62,10 @@ export const FUME_SHOW_PRINT_STAMP = !FUME_TUNING.hidePrintSymbols
 export const FUME_BACKGROUND_OPACITY_MULTIPLIER = FUME_TUNING.backgroundObjectOpacity * 2
 
 /**
- * 全局字号倍率（§14.1：本项目没有设置面板，一律取默认值）。
+ * 全局字号倍率（§14.1：当前不暴露经典排版滑杆，一律取默认值）。
  *
  * 它与 `heroScale` 都参与 §7.1 的缓存键与 §4.10 的字号二分，所以**必须**是常量而不是
- * 内联的 `1`：将来接设置面板时只有这一处要改（与 `FUME_HERO_SCALE` 同一考虑）。
+ * 内联的 `1`：将来暴露字号设置时只有这一处要改（与 `FUME_HERO_SCALE` 同一考虑）。
  */
 export const FUME_LYRICS_FONT_SCALE = 1
 

@@ -144,14 +144,13 @@ export function useFumeOverlay(options: UseFumeOverlayOptions): UseFumeOverlayRe
   /**
    * 副字幕轨道（罗马音在前、译文在后；可读性门槛与去重在共享层）。
    *
-   * 档位取自沉浸页通用项 `settings.subtitleContentMode`（默认 `'both'`）。
-   * 它是「这一页的副字幕显示哪几档」，不是「经典面板的外观项」，所以本面板
-   * 虽然没有设置，仍然跟随它（与明暗主题、底栏四项同一类）—— 与「流光」同款取舍。
+   * 档位取自 Folia 共享设置 `settings.folia.subtitleContentMode`（默认 `'both'`），
+   * 由「歌词」页签控制。
    */
   const subtitleRows = computed(() => {
-    const rows = resolveSubtitleTracks(activeLine.line.value, settings.subtitleContentMode)
+    const rows = resolveSubtitleTracks(activeLine.line.value, settings.folia.subtitleContentMode)
     if (rows.length > 0) return rows
-    return resolveSubtitleTracks(recentCompletedLine.value, settings.subtitleContentMode)
+    return resolveSubtitleTracks(recentCompletedLine.value, settings.folia.subtitleContentMode)
   })
 
   /**

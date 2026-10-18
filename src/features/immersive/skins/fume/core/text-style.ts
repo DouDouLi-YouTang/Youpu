@@ -12,13 +12,13 @@
  *
  * ## 本项目的形态：唱过的字永不淡出
  *
- * 浮名在本项目**没有设置面板**（见 `skins/types.ts` 的 `hasSettings`），
- * `textHoldRatio` 恒为默认值 1 → `effectiveTextHoldStyle` 恒为 `'standard'`。
+ * 浮名的主题配色来自 Folia 共享设置与逐歌取色，但 `textHoldRatio` 没有暴露设置，
+ * 恒为默认值 1 → `effectiveTextHoldStyle` 恒为 `'standard'`。
  * 于是 §6.2 的 dim 与 §8.4 的双快照交叉淡出在正常路径下**走不到**。
  *
  * 但这两块实现仍然保留，理由有两条：
  * 1. §8.4 的 `resolveFumeStaticLayers` 只有在 dim 分支上才需要第二个快照 ——
- *    删掉它，将来一接设置面板就要重写整条快照链路；
+ *    删掉它，将来一接「文字停留样式」设置就要重写整条快照链路；
  * 2. 单测要能覆盖 `dimmed` 分支（0.11 / 0.075 这两个数字很容易被打错一位）。
  */
 
@@ -190,8 +190,8 @@ export function resolveFumePassedFadeDurationMs(
  * （配置项包含词）。默认口径会漏掉「词比配置项长」的场景，例如配置写「零れ落ち」、
  * 词是「零れ落ちて」—— 浮名的逐字素上色要求这种也命中，否则关键词在长词里会漏掉。
  *
- * 本项目没有主题级 `wordColors`（沉浸设置里没有这个入口），所以实际上总是回退到
- * `theme.accentColor`。保留这条调用链是为了让「词色从哪来」只有一个答案。
+ * 主题级 `wordColors` 由 Folia 共享设置里的「逐词关键词着色」控制；关闭时
+ * `useSongTheme` 返回空数组，这里自然回退到 `theme.accentColor`。
  */
 export function getActiveColor(wordText: string, theme: FumeTheme): string {
   return resolveWordColor(wordText, theme.wordColors, theme.accentColor, {

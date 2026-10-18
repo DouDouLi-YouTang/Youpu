@@ -37,7 +37,7 @@
  * 3. **`FumeCameraState` 放在这里**（Folia 放在 `fumeCameraStep.ts`）：同理，
  *    stage 契约要引用它，而 types 必须是依赖图的根（§1.2）。
  * 4. **主题只保留本面板真正读的字段**（`FumeTheme`）：Folia 的 `Theme` 还带 AI 主题、
- *    provider、`lyricsIcons` 等。本项目没有设置面板、没有 AI 主题，主题色来自 CSS 变量；
+ *    provider、`lyricsIcons` 等。本项目没有 AI 主题，主题色来自逐歌取色；
  *    多搬字段只会让人以为「这里能调」。
  */
 

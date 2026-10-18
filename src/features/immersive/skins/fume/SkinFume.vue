@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 
 import { useLyricStore } from '@/stores/lyric.store'
 import { usePlayerStore } from '@/stores/player.store'
+import { useImmersiveSettingsStore } from '../../immersive-settings.store'
+import FoliaSkinBackground from '../shared/FoliaSkinBackground.vue'
 import { useFoliaPalette } from '../shared/use-folia-palette'
 import { attachInterludeLines } from '../shared/interlude-lines'
 import { useSmoothClock, type SkinAudioBands } from '../shared/use-smooth-clock'
@@ -49,17 +51,18 @@ import FumeLayoutPending from './components/FumeLayoutPending.vue'
  * - 每帧绘制：`use-fume-stage.ts`（§11.3 的七步流程，含相机与背景）
  * - 主题与调参：`shared/use-folia-palette` + `fume-adapter.ts` 的 `FUME_*` 常量
  *
- * ## ⚠️ 本面板没有设置（用户 2026-10-14 拍板）
+ * ## 设置
  *
- * 与「流光」「倾诉」同款取舍：外观全部固定，不读 store 里的面板外观字段。
- * 所有档位来自 `fume-adapter.ts` 的 `FUME_*` 常量。
- * 仍然跟随的沉浸页通用项：明暗主题、专辑主色、底栏四项、演示模式、歌词偏移。
+ * 使用 Folia 三主题共享的 `settings.folia`：明暗、配色方案、副歌词档位、
+ * 背景模式、逐词着色。排版 / 相机 / 打印参数仍来自 `fume-adapter.ts` 的 `FUME_*` 常量。
+ * 跟随的沉浸页通用项：专辑主色、底栏四项、演示模式、歌词偏移。
  *
- * ## 为什么自己铺一层纯色底
+ * ## 原生背景与覆盖背景
  *
  * Folia 的浮名会把外壳几何背景关掉（`disableGeometricBackground`，§12.6），
- * 只留一层 `theme.backgroundColor`。本项目没有那套外壳背景注册表，所以由皮肤
- * 自己铺 —— 不铺的话会直接透出沉浸页原有的背景，观感完全不对。
+ * 只留一层 `theme.backgroundColor`。原生档仍由画布绘制手绘纸面，并由皮肤根铺
+ * `theme.backgroundColor`；用户选择覆盖背景时，画布背景场景设为 `null`，根节点
+ * 透明，由 `FoliaSkinBackground` 提供背景，canvas 只负责歌词文字。
  */
 
 /**
@@ -73,6 +76,7 @@ const props = defineProps<{ ctx: SkinContext }>()
 
 const player = usePlayerStore()
 const lyric = useLyricStore()
+const settings = useImmersiveSettingsStore()
 /**
  * 面板配色 —— 逐歌主题（从封面推出来，每首歌不同；口径见 `shared/use-folia-palette`）。
  * `lyricLines` 只用于挑**关键词**（逐词配色），封面色盘与歌词无关。
@@ -116,7 +120,7 @@ watch(fontState, clearSegmentMeasureCache, { immediate: true, flush: 'sync' })
  * （见 `shared/use-folia-palette.ts` 的映射表），只有 `name` 是浮名特有的：
  * 它参与背景种子与排版缓存键。
  *
- * `animationIntensity` 固定 `'normal'`：本面板没有设置面板，而强度档只影响
+ * `animationIntensity` 固定 `'normal'`：Folia 共享设置不暴露强度档，而强度档只影响
  * 辉光基量（§8.1）。
  *
  * `wordColors` 来自逐歌主题（`useFoliaPalette` 的第三个返回值）——
@@ -208,11 +212,13 @@ const {
 })
 
 /**
- * 背景场景（§7.10）。`world` 就是文章尺寸；没有文章时用视口 ×1.8 兜底，
- * 于是前奏期间背景照常转动（§16.4 的唯一空转场景）。
+ * 背景场景（§7.10）。原生档才由 canvas 绘制手绘纸面；覆盖背景时返回 `null`，
+ * 避免两套背景叠在一起。`world` 就是文章尺寸；没有文章时用视口 ×1.8 兜底，
+ * 于是前奏期间原生背景照常转动（§16.4 的唯一空转场景）。
  */
-const backgroundScene = computed(() =>
-  buildFumeBackgroundScene({
+const backgroundScene = computed(() => {
+  if (settings.folia.backgroundMode !== 'native') return null
+  return buildFumeBackgroundScene({
     viewport: stageSize.value,
     world: article.value
       ? { width: article.value.width, height: article.value.height }
@@ -223,7 +229,7 @@ const backgroundScene = computed(() =>
     paperBounds: article.value?.paperBounds,
     seed: resolveFumeBackgroundSeed(undefined, theme.value.name)
   })
-)
+})
 
 /** 总览镜头（§9.4）：把整页区块装进视口；没有文章时为 null */
 const overviewCamera = computed(() =>
@@ -353,7 +359,8 @@ function toFumeAudioLevels(bands: SkinAudioBands): FumeAudioLevels {
  * 与"字幕/空态要什么变量"不是同一件事。
  */
 const stageStyle = computed<Record<string, string>>(() => ({
-  backgroundColor: palette.value.background,
+  backgroundColor:
+    settings.folia.backgroundMode === 'native' ? palette.value.background : 'transparent',
   fontFamily: `"${FOLIA_SERIF_FAMILY}", serif`,
   ...overlayStyleVars.value
 }))
@@ -370,6 +377,16 @@ defineExpose({
 </script>
 
 <template>
+  <FoliaSkinBackground
+    :cover-url="ctx.coverUrl()"
+    :palette="palette"
+    :is-daylight="isDaylight"
+    :paused="!ctx.isPlaying()"
+    :clock="clock"
+  >
+    <!-- 原生档：画布自己画手绘纸面背景，这一层不需要额外背景 -->
+  </FoliaSkinBackground>
+
   <div class="fume-root" :style="stageStyle">
     <FumeStage
       @ready="
