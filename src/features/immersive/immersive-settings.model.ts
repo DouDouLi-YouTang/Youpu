@@ -47,14 +47,20 @@ export type FoliaColorScheme = 'song' | 'daylight' | 'midnight' | 'mono'
 export type FoliaBackgroundChoice =
   | 'native'
   | import('./backgrounds/folia/types').FoliaBackgroundMode
-/** Folia 背景模式（含「原主题背景」）的合法值，供持久化清洗使用。 */
+/**
+ * Folia 背景模式（含「原主题背景」）的合法值，供持久化清洗使用。
+ *
+ * 不包含 `url`：本项目没有提供 Embed 候选内容入口，而 `FoliaBackground` 在
+ * `config.url.items` 为空时会整块不渲染。把 `url` 留在合法值里，等于允许一份
+ * 旧存档或手改 JSON 把背景设成「什么都没有」；清洗时改用
+ * 这份表，让这类值安全回退到 `native`。
+ */
 export const FOLIA_BACKGROUND_CHOICES: readonly FoliaBackgroundChoice[] = [
   'native',
   'common',
   'monet',
   'nomand',
   'latent',
-  'url',
   'sora'
 ]
 /** Folia 文字配色方案的合法值，供持久化清洗使用。 */

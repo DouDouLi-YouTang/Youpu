@@ -282,6 +282,15 @@ describe('normalizeFoliaSettings 补齐 / 纠正嵌套设置', () => {
     expect(clamped.folia).toMatchObject({ backgroundOpacity: 0, backgroundBlur: 40 })
   })
 
+  it('旧的 url 背景（本项目没有候选内容）回退到 native，避免渲染空背景', () => {
+    const target: { folia?: Record<string, unknown> } = {
+      folia: { ...createDefaultSettings().folia, backgroundMode: 'url' }
+    }
+
+    expect(normalizeFoliaSettings(target)).toBe(true)
+    expect(target.folia).toMatchObject({ backgroundMode: 'native' })
+  })
+
   it('folia 不是对象（null / 数组 / 字符串）→ 整体回退默认对象', () => {
     for (const bad of [null, [], 'oops', 42]) {
       const target: { folia?: unknown } = { folia: bad }
