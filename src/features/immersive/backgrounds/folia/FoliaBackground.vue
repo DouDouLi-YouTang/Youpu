@@ -69,7 +69,7 @@ const props = defineProps<{
   /** 音频回调的量纲。默认 `'0-1'`（对齐本项目 `use-audio-bands.ts`） */
   audioScale?: FoliaAudioScale
   /**
-   * 模式配置。本仓库不带设置面板（决定 A），但以下字段是**渲染必需的输入**：
+   * 模式配置。设置面板由 Folia 共享设置页统一提供；以下字段是**渲染必需的输入**：
    * `transparent`、`customImage`（monet / nomand 的用户上传图）、
    * `url.items` / `url.selectedId`、以及各模式的 `tuning`（不传即取 `DEFAULT_*`）。
    */

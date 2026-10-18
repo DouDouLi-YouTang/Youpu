@@ -92,8 +92,7 @@ export interface FoliaUrlBackgroundItem {
 }
 
 /**
- * 背景配置。本项目**不实现设置面板**（用户决定 A），但结构与取值域照抄，
- * 以后接面板时改渲染层以外的部分即可。
+ * 背景配置。结构与取值域对齐上游，供宿主按需传入。
  */
 export interface FoliaBackgroundConfig {
   /** true = 整棵背景树返回 null（连几何层与暗角一起消失，§1.6） */
@@ -135,8 +134,8 @@ export interface FoliaBackgroundRenderProps {
 }
 
 /**
- * 注册表条目。`renderSettingsPanel` / `renderQuickControls` **有意不实现**（用户决定 A），
- * 但 `resetSettings` 之类的形状留给将来：追加通道见 `registry.ts`。
+ * 注册表条目。设置面板与快捷控制由本项目的 `settings/folia/FoliaBackgroundTab.vue`
+ * 统一承担，不在每个背景条目里重复实现。
  */
 export interface FoliaBackgroundRegistryEntry {
   mode: FoliaBackgroundMode

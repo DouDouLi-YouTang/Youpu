@@ -2,7 +2,7 @@
  * monet 模式的 tuning —— 逐字对齐规格 §4.5（Folia `src/types.ts:1007-1021`
  * + `stores/visualizerSettingsPersistence.ts:597-649`）。
  *
- * 与 latent 同样：本仓库不带设置面板，但类型 / 取值域 / 钳制函数照搬，
+ * 与 latent 同样：设置页只暴露一部分 tuning，但类型 / 取值域 / 钳制函数照搬，
  * 以后接面板不用改渲染层。localStorage key 在 Folia 是 `monet_background_tuning`，
  * 本项目不读写（没有面板就没有写入方），记录在此供将来迁移参考。
  */

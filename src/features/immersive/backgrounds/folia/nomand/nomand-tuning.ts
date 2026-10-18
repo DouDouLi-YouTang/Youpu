@@ -2,7 +2,7 @@
  * nomand 模式的 tuning —— 逐字对齐规格 §5.5（Folia `src/types.ts:1023-1047`
  * + `stores/visualizerSettingsPersistence.ts:755-838`）。
  *
- * 一个模式顶五种 Paper 图像 shader，靠 `effect` 切换。本仓库不带设置面板，
+ * 一个模式顶五种 Paper 图像 shader，靠 `effect` 切换。设置页只暴露一部分 tuning，
  * 运行时取默认 `effect = 'dithering'`，但**五种 effect 的渲染实现必须齐全**
  * （默认值一旦被改成别的 effect 就立刻走到）。
  */
