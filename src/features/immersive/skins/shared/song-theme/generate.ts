@@ -50,6 +50,7 @@ import {
   type Range,
   type ThemeMode
 } from './design-space'
+import type { FoliaColorScheme } from '../../../immersive-settings.model'
 
 /** 一套主题的四个颜色 */
 export interface SongThemeColors {
@@ -196,6 +197,53 @@ export function generateSongThemeColors({
   return {
     light: buildModeTheme('light', palette, random),
     dark: buildModeTheme('dark', palette, random)
+  }
+}
+
+/**
+ * 固定配色方案 → 明暗两档四色。
+ *
+ * `daylight` / `midnight` / `mono` 是用户在 Folia 主题设置里明确选定的方案：
+ * 它们不再跟随封面改变**整页**的色相，但仍保留同一套对比度地板，避免出现
+ * “选了配色反而看不清歌词”的情况。默认的 `'song'` 不经过本函数。
+ *
+ * 三个方案的色相取冷灰蓝 / 暖棕 / 中性灰，刻意不复用 `DARK_THEME_COLORS`：
+ * 那四个值是“封面还没解码完”的兜底，若拿它当用户方案，切换方案时会有
+ * “和首帧一模一样”的错觉，也失去这个入口的意义。
+ */
+export function generateFixedFoliaTheme(colorMode: Exclude<FoliaColorScheme, 'song'>): {
+  light: SongThemeColors
+  dark: SongThemeColors
+} {
+  const build = (
+    background: string,
+    primary: string,
+    accent: string,
+    secondary: string
+  ): SongThemeColors => ({
+    backgroundColor: background,
+    primaryColor: adjustLightnessForContrast(primary, background, PRIMARY_MIN_CONTRAST),
+    accentColor: adjustLightnessForContrast(accent, background, ACCENT_MIN_CONTRAST),
+    secondaryColor: adjustLightnessForContrast(secondary, background, SECONDARY_MIN_CONTRAST)
+  })
+
+  if (colorMode === 'mono') {
+    return {
+      light: build('#f4f4f5', '#18181b', '#52525b', '#3f3f46'),
+      dark: build('#0c0c0f', '#f4f4f5', '#a1a1aa', '#d4d4d8')
+    }
+  }
+
+  if (colorMode === 'daylight') {
+    return {
+      light: build('#f7f3eb', '#1c1917', '#c2410c', '#57534e'),
+      dark: build('#17130e', '#fafaf9', '#fb923c', '#d6d3d1')
+    }
+  }
+
+  return {
+    light: build('#eef3f9', '#0f172a', '#0369a1', '#475569'),
+    dark: build('#070b12', '#e2e8f0', '#38bdf8', '#94a3b8')
   }
 }
 

@@ -101,7 +101,8 @@ export function useFoliaPalette(sources: FoliaPaletteSources): {
 
   function refresh(): void {
     isDaylight.value =
-      settings.colorScheme === 'light' || (settings.colorScheme === 'auto' && !systemDark)
+      settings.folia.colorScheme === 'light' ||
+      (settings.folia.colorScheme === 'auto' && !systemDark)
   }
 
   /**
@@ -111,7 +112,9 @@ export function useFoliaPalette(sources: FoliaPaletteSources): {
    * 见 `use-color-extraction`）。两套东西服务的对象不同，混在一起会让
    * 「每首歌的颜色」被用户的全局偏好覆盖掉。
    */
-  watch(() => [settings.colorScheme, settings.accentColorVariant], refresh, { immediate: true })
+  watch(() => [settings.folia.colorScheme, settings.accentColorVariant], refresh, {
+    immediate: true
+  })
 
   const palette = computed<FoliaPalette>(() => ({
     background: colors.value.backgroundColor,

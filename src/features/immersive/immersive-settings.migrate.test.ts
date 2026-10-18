@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   isBucketed,
+  normalizeFoliaSettings,
   normalizeFontFamily,
   sanitizeSkinId,
   settingsFromBucketed
@@ -212,6 +213,84 @@ describe('normalizeFontFamily 收编旧格式字体串', () => {
   })
 })
 
+describe('normalizeFoliaSettings 补齐 / 纠正嵌套设置', () => {
+  it('旧存档完全没有 folia → 补默认对象，返回 true', () => {
+    const target: { folia?: Record<string, unknown> } = {}
+    expect(normalizeFoliaSettings(target)).toBe(true)
+    expect(target.folia).toEqual(createDefaultSettings().folia)
+  })
+
+  it('合法 folia 原样保留且返回 false（bootstrap 不会无谓写盘）', () => {
+    const folia: Record<string, unknown> = {
+      ...createDefaultSettings().folia,
+      colorScheme: 'light',
+      subtitleContentMode: 'translation',
+      colorMode: 'mono',
+      backgroundMode: 'sora',
+      backgroundOpacity: 42,
+      backgroundBlur: 8,
+      wordColoring: false
+    }
+    const target = { folia: { ...folia } }
+    expect(normalizeFoliaSettings(target)).toBe(false)
+    expect(target.folia).toEqual(folia)
+  })
+
+  it('部分字段缺失 → 只补缺失项，已有合法值不变', () => {
+    const target: { folia?: Record<string, unknown> } = {
+      folia: { colorScheme: 'light', colorMode: 'daylight' }
+    }
+    expect(normalizeFoliaSettings(target)).toBe(true)
+    expect(target.folia).toMatchObject({
+      colorScheme: 'light',
+      colorMode: 'daylight',
+      subtitleContentMode: 'both',
+      backgroundMode: 'native',
+      backgroundOpacity: 100,
+      backgroundBlur: 0,
+      wordColoring: true
+    })
+  })
+
+  it('非法枚举 / 非布尔 / 非数字 → 回退默认；数值越界 → 钳制', () => {
+    const target: { folia?: Record<string, unknown> } = {
+      folia: {
+        colorScheme: 'sepia',
+        subtitleContentMode: 'lyrics',
+        colorMode: 'rainbow',
+        backgroundMode: 'unknown',
+        backgroundOpacity: 900,
+        backgroundBlur: -10,
+        wordColoring: 'yes'
+      }
+    }
+    expect(normalizeFoliaSettings(target)).toBe(true)
+    expect(target.folia).toEqual({
+      colorScheme: 'dark',
+      subtitleContentMode: 'both',
+      colorMode: 'song',
+      backgroundMode: 'native',
+      backgroundOpacity: 100,
+      backgroundBlur: 0,
+      wordColoring: true
+    })
+
+    const clamped: { folia?: Record<string, unknown> } = {
+      folia: { backgroundOpacity: -5, backgroundBlur: 999 }
+    }
+    normalizeFoliaSettings(clamped)
+    expect(clamped.folia).toMatchObject({ backgroundOpacity: 0, backgroundBlur: 40 })
+  })
+
+  it('folia 不是对象（null / 数组 / 字符串）→ 整体回退默认对象', () => {
+    for (const bad of [null, [], 'oops', 42]) {
+      const target: { folia?: unknown } = { folia: bad }
+      expect(normalizeFoliaSettings(target as { folia?: Record<string, unknown> })).toBe(true)
+      expect(target.folia).toEqual(createDefaultSettings().folia)
+    }
+  })
+})
+
 describe('sanitizeSkinId 非法皮肤 id 纠偏', () => {
   const ALLOWED = ['classic', 'tilt'] as const
 
@@ -338,6 +417,41 @@ describe('store.migrateBucketedSettings 旧分桶数据 → 扁平设置', () =>
 })
 
 describe('store.bootstrapSettings 启动引导', () => {
+  it('旧扁平存档没有 folia → bootstrap 补默认对象并写回', () => {
+    const legacy = defaultsRecord()
+    delete legacy.folia
+    seedStorage({ ...legacy, skin: 'glow' })
+    const store = useSettings()
+
+    store.bootstrapSettings()
+
+    expect(store.folia).toEqual(createDefaultSettings().folia)
+    store.$persist()
+    const persisted = JSON.parse(storage.getItem(PERSIST_KEY) as string) as Record<string, unknown>
+    expect(persisted.folia).toEqual(createDefaultSettings().folia)
+  })
+
+  it('非法 Folia 字段在 bootstrap 时被纠正，经典设置不受影响', () => {
+    const raw = defaultsRecord()
+    raw.folia = {
+      colorScheme: 'nope',
+      subtitleContentMode: 'nope',
+      colorMode: 'nope',
+      backgroundMode: 'nope',
+      backgroundOpacity: 900,
+      backgroundBlur: -1,
+      wordColoring: 1
+    }
+    seedStorage({ ...raw, skin: 'fume', lyricFontSize: 40 })
+    const store = useSettings()
+
+    store.bootstrapSettings()
+
+    expect(store.lyricFontSize).toBe(40)
+    expect(store.folia).toEqual(createDefaultSettings().folia)
+    expect(store.skin).toBe('fume')
+  })
+
   it('迁移后把旧字体串收成数组（迁移 → normalize 的顺序不能反），并写回新结构', () => {
     seedStorage(bucketed({ customFontFamily: 'SimSun' }))
     const store = useSettings()

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { getContrastRatio, getHueDistance, hexToHsl } from './color-math'
 import { ACCENT_MIN_CONTRAST, PRIMARY_MIN_CONTRAST, SECONDARY_MIN_CONTRAST } from './design-space'
-import { generateSongThemeColors } from './generate'
+import { generateFixedFoliaTheme, generateSongThemeColors } from './generate'
 import { createSeededRandom } from './seed'
 
 /** 一组「像真封面」的色盘：主色 + 一个远离它的第二色相 + 一个近中性色 */
@@ -163,5 +163,40 @@ describe('generateSongThemeColors', () => {
     })
 
     expect(theme.dark.backgroundColor).toMatch(/^#[0-9a-f]{6}$/)
+  })
+})
+
+describe('generateFixedFoliaTheme', () => {
+  it('三种固定方案都给出明暗两档合法十六进制色', () => {
+    for (const mode of ['daylight', 'midnight', 'mono'] as const) {
+      const theme = generateFixedFoliaTheme(mode)
+      for (const variant of [theme.light, theme.dark]) {
+        for (const color of [
+          variant.backgroundColor,
+          variant.primaryColor,
+          variant.accentColor,
+          variant.secondaryColor
+        ]) {
+          expect(color).toMatch(/^#[0-9a-f]{6}$/)
+        }
+      }
+    }
+  })
+
+  it('每个固定方案都达到正文 / 次级 / 强调的对比度地板', () => {
+    for (const mode of ['daylight', 'midnight', 'mono'] as const) {
+      const theme = generateFixedFoliaTheme(mode)
+      for (const variant of [theme.light, theme.dark]) {
+        expect(
+          getContrastRatio(variant.primaryColor, variant.backgroundColor)
+        ).toBeGreaterThanOrEqual(PRIMARY_MIN_CONTRAST - 0.05)
+        expect(
+          getContrastRatio(variant.secondaryColor, variant.backgroundColor)
+        ).toBeGreaterThanOrEqual(SECONDARY_MIN_CONTRAST - 0.05)
+        expect(
+          getContrastRatio(variant.accentColor, variant.backgroundColor)
+        ).toBeGreaterThanOrEqual(ACCENT_MIN_CONTRAST - 0.05)
+      }
+    }
   })
 })

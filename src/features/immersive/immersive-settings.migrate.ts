@@ -1,4 +1,10 @@
-import { createDefaultSettings, type ImmersiveSettings } from './immersive-settings.model'
+import {
+  createDefaultSettings,
+  FOLIA_BACKGROUND_CHOICES,
+  FOLIA_COLOR_SCHEMES,
+  type FoliaSettings,
+  type ImmersiveSettings
+} from './immersive-settings.model'
 import { DEFAULT_SKIN_ID } from './skins/types'
 
 /**
@@ -76,4 +82,50 @@ export function normalizeFontFamily(target: { customFontFamily: string[] }): boo
 /** 把非法的皮肤 id 纠正成默认值。返回是否发生了修改。 */
 export function sanitizeSkinId(id: string, allowed: readonly string[], fallback: string): string {
   return allowed.includes(id) ? id : fallback
+}
+
+const COLOR_SCHEMES = ['dark', 'light', 'auto'] as const
+const SUBTITLE_CONTENT_MODES = ['both', 'translation', 'romanization', 'none'] as const
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function pickEnum<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return typeof value === 'string' && (allowed as readonly string[]).includes(value)
+    ? (value as T)
+    : fallback
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
+  return Math.max(min, Math.min(max, value))
+}
+
+/**
+ * 清洗 Folia 三套主题共用的持久化设置。
+ *
+ * 旧存档没有 `folia` 时从默认对象补齐；只覆盖缺失或非法的字段，合法值保持不变。
+ * 返回是否发生了修改，供 bootstrap 决定是否写回。
+ */
+export function normalizeFoliaSettings(target: { folia?: Partial<FoliaSettings> | null }): boolean {
+  const defaults = createDefaultSettings().folia
+  const raw = isRecord(target.folia) ? target.folia : {}
+  const next: FoliaSettings = {
+    colorScheme: pickEnum(raw.colorScheme, COLOR_SCHEMES, defaults.colorScheme),
+    subtitleContentMode: pickEnum(
+      raw.subtitleContentMode,
+      SUBTITLE_CONTENT_MODES,
+      defaults.subtitleContentMode
+    ),
+    colorMode: pickEnum(raw.colorMode, FOLIA_COLOR_SCHEMES, defaults.colorMode),
+    backgroundMode: pickEnum(raw.backgroundMode, FOLIA_BACKGROUND_CHOICES, defaults.backgroundMode),
+    backgroundOpacity: clampNumber(raw.backgroundOpacity, 0, 100, defaults.backgroundOpacity),
+    backgroundBlur: clampNumber(raw.backgroundBlur, 0, 40, defaults.backgroundBlur),
+    wordColoring: typeof raw.wordColoring === 'boolean' ? raw.wordColoring : defaults.wordColoring
+  }
+
+  if (JSON.stringify(next) === JSON.stringify(raw)) return false
+  target.folia = next
+  return true
 }

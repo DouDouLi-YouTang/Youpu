@@ -54,6 +54,7 @@ const EXPECTED_KEYS = [
   'enableProgressbarPreview',
   'fluidBlur',
   'fluidMaxFramerate',
+  'folia',
   'gradientBgDynamic',
   'karaokeAnimation',
   'lyricAnimationTiming',
@@ -132,6 +133,32 @@ describe('createDefaultSettings 与其他模块耦合的默认值（改动属于
     // 上游默认是 'translation'（只译文），本项目刻意取 'both' —— 这条断言的作用是
     // 拦住「顺手对齐上游默认值」的改动：那会让底栏悄悄少一行，且没有任何报错。
     expect(createDefaultSettings().subtitleContentMode).toBe('both')
+  })
+
+  it('Folia 专属设置默认跟随歌曲、原生背景、逐词着色，且与经典设置互相独立', () => {
+    const s = createDefaultSettings()
+    expect(s.folia).toEqual({
+      colorScheme: 'dark',
+      subtitleContentMode: 'both',
+      colorMode: 'song',
+      backgroundMode: 'native',
+      backgroundOpacity: 100,
+      backgroundBlur: 0,
+      wordColoring: true
+    })
+    // 改动 Folia 的明暗或副字幕不会污染经典字段
+    s.folia.colorScheme = 'light'
+    s.folia.subtitleContentMode = 'none'
+    expect(s.colorScheme).toBe('dark')
+    expect(s.subtitleContentMode).toBe('both')
+  })
+
+  it('Folia 默认对象每次都是新对象（共享嵌套对象会让多个实例串改）', () => {
+    const a = createDefaultSettings()
+    const b = createDefaultSettings()
+    expect(a.folia).not.toBe(b.folia)
+    a.folia.colorMode = 'mono'
+    expect(b.folia.colorMode).toBe('song')
   })
 })
 

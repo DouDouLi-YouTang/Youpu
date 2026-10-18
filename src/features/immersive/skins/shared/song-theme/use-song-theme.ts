@@ -35,9 +35,10 @@
 import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
 
 import { useImmersiveSettingsStore } from '@/features/immersive/immersive-settings.store'
+import type { FoliaColorScheme } from '@/features/immersive/immersive-settings.model'
 import type { WordColorEntry } from '../word-coloring'
 import { extractVibrantCoverColors } from './cover-colors'
-import { generateSongThemeColors, type SongThemeColors } from './generate'
+import { generateFixedFoliaTheme, generateSongThemeColors, type SongThemeColors } from './generate'
 import { buildKeywordColors, pickKeywords, type KeywordSourceLine } from './keyword-colors'
 import { DARK_THEME_COLORS, LIGHT_THEME_COLORS } from './neutral-theme'
 import { createSeededRandom } from './seed'
@@ -112,6 +113,26 @@ export interface UseSongThemeResult {
   wordColors: ComputedRef<WordColorEntry[]>
   /** 取色是否已经出过结果（首帧为 false，此时用的是中性兜底） */
   ready: Ref<boolean>
+}
+
+/**
+ * 按用户选择的配色方案取“当前两档”。
+ *
+ * `'song'` 仍然走完整的封面取色；固定方案不必等异步封面解码，能同步给出
+ * 一套稳定颜色。关键词（个别词）的颜色仍从当前生效的强调色派生，
+ * 所以即使用户固定了整页配色，“个别词跟歌走”的能力也不会完全消失。
+ */
+function resolveModeColors(
+  colorMode: FoliaColorScheme,
+  generated: { light: SongThemeColors; dark: SongThemeColors } | null,
+  fallbackIsLight: boolean
+): SongThemeColors {
+  if (colorMode !== 'song') {
+    const fixed = generateFixedFoliaTheme(colorMode)
+    return fallbackIsLight ? fixed.light : fixed.dark
+  }
+  if (generated) return fallbackIsLight ? generated.light : generated.dark
+  return fallbackIsLight ? LIGHT_THEME_COLORS : DARK_THEME_COLORS
 }
 
 /**
@@ -221,14 +242,18 @@ export function useSongTheme({
 
   const colors = computed<SongThemeColors>(() => {
     const isLight =
-      settings.colorScheme === 'light' || (settings.colorScheme === 'auto' && !resolveSystemDark())
-    const fallback = isLight ? LIGHT_THEME_COLORS : DARK_THEME_COLORS
-    const current = applied.value
-    if (!current) return fallback
-    return isLight ? current.light : current.dark
+      settings.folia.colorScheme === 'light' ||
+      (settings.folia.colorScheme === 'auto' && !resolveSystemDark())
+    return resolveModeColors(settings.folia.colorMode, applied.value, isLight)
   })
 
-  const wordColors = computed<WordColorEntry[]>(() => applied.value?.wordColors ?? [])
+  /**
+   * 逐词配色只在 `wordColoring` 开启时生效；关闭时返回空数组，
+   * 让两个皮肤自然回退到 accentColor，不需要在渲染层再判一次。
+   */
+  const wordColors = computed<WordColorEntry[]>(() =>
+    settings.folia.wordColoring ? (applied.value?.wordColors ?? []) : []
+  )
 
   return { colors, wordColors, ready }
 }

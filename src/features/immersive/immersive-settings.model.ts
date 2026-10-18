@@ -1,11 +1,13 @@
 /**
  * 沉浸设置的**纯数据层**：类型 / 常量 / 默认值 / 字段名派生。
  *
- * 这些设置**属于「经典」面板** —— 沉浸页唯一有设置的外观那一套。
- * 「倾诉」**没有自己的设置**（2026-10-11 用户定）：它的外观全部固定（背景恒为「几何」、
- * 永不显示封面、歌词排版与字体用内置值），只沿用少数沉浸页通用项（明暗主题、专辑主色、
- * 底栏四项、演示模式、歌词偏移）—— 那些读的是同一份设置，不是另开一份。
- * 所以这里只有一个扁平字段集，`skin`（当前在放哪个面板）也不在这里：它是全局项，只活在 store。
+ * 字段分两组：
+ *  - 顶层字段是「经典」面板的外观设置，同时承载所有面板共享的播放器行为项；
+ *  - `folia` 是「倾诉 / 流光 / 浮名」三套 Folia 皮肤共用的专属设置。
+ *
+ * 两组独立保存：经典不会读取 Folia 的背景 / 字体配色 / 副歌词档位，Folia 三套主题
+ * 也不会误用经典的字号、封面、背景等外观字段。`skin`（当前在放哪个面板）仍不在这里，
+ * 它是全局项，只活在 store。
  *
  * 为什么单独一个文件：
  *  1. `immersive-settings.migrate.ts` 需要 `ImmersiveSettings` 与 `createDefaultSettings()`，
@@ -30,6 +32,39 @@ export type LyricAlignmentPct = 30 | 50
 export type LyricTiming = 'smooth' | 'sharp' | 'lazy' | 'easeout'
 export type ContributorDisplay = 'show' | 'hover' | 'hide'
 /**
+ * Folia 系皮肤（倾诉 / 流光 / 浮名）的文字配色方案。
+ *
+ * `song` —— 默认：四个颜色全部由当前封面 + 歌曲 id 推导（每首歌不同）。
+ * `daylight` / `midnight` —— 固定高对比方案，封面仍参与关键词（个别词）着色。
+ * `mono` —— 固定单色方案，正文与强调之间只靠明度区分。
+ *
+ * 这里存的是**语义档位**而不是色值：具体颜色由 shared/song-theme 生成，
+ * 因此明暗切换、对比度修正、逐词配色仍然只有一套实现。
+ */
+export type FoliaColorScheme = 'song' | 'daylight' | 'midnight' | 'mono'
+
+/** Folia 系主题可选的背景模式；`native` = 该皮肤原本的背景。 */
+export type FoliaBackgroundChoice =
+  | 'native'
+  | import('./backgrounds/folia/types').FoliaBackgroundMode
+/** Folia 背景模式（含「原主题背景」）的合法值，供持久化清洗使用。 */
+export const FOLIA_BACKGROUND_CHOICES: readonly FoliaBackgroundChoice[] = [
+  'native',
+  'common',
+  'monet',
+  'nomand',
+  'latent',
+  'url',
+  'sora'
+]
+/** Folia 文字配色方案的合法值，供持久化清洗使用。 */
+export const FOLIA_COLOR_SCHEMES: readonly FoliaColorScheme[] = [
+  'song',
+  'daylight',
+  'midnight',
+  'mono'
+]
+/**
  * 底部副字幕的内容档位：两个都给 / 只译文 / 只罗马音 / 隐藏。
  *
  * ⚠️ 类型定义在**这里**而不是 `skins/shared/subtitle-tracks.ts`：它同时是
@@ -40,6 +75,27 @@ export type ContributorDisplay = 'show' | 'hover' | 'hide'
 export type SubtitleContentMode = 'both' | 'translation' | 'romanization' | 'none'
 /** remain = 显示剩余; total = 显示已播(点击切换) */
 export type TimeIndicator = 'remain' | 'total'
+
+/** 三套 Folia 主题共用的专属设置（经典主题不读取）。 */
+export interface FoliaSettings {
+  /** 白天 / 夜间 / 跟随系统 —— 与经典主题的颜色模式独立保存 */
+  colorScheme: ColorScheme
+  /** 底部副歌词显示哪几档；`'none'` = 隐藏 */
+  subtitleContentMode: SubtitleContentMode
+  /** 文字配色方案；默认 `'song'`，保留逐歌主题 */
+  colorMode: FoliaColorScheme
+  /** 背景模式；`native` = 各皮肤原本的背景（倾诉几何 / 流光 common / 浮名手绘纸面） */
+  backgroundMode: FoliaBackgroundChoice
+  /** 背景透明度 0–100；100 = 原样 */
+  backgroundOpacity: number
+  /** 背景模糊 px，0–40；0 = 不模糊 */
+  backgroundBlur: number
+  /**
+   * 逐词配色 / 关键词着色开关。关闭后正文只使用方案里的 primary / accent。
+   * 默认 true：这是上游与现有实现的默认观感。
+   */
+  wordColoring: boolean
+}
 
 /** 流体帧率上限档位 → 实际 fps。0=∞ */
 export const FLUID_FPS_MAP: Record<number, number> = { 0: 5, 1: 10, 2: 30, 3: 60, 4: Infinity }
@@ -65,8 +121,8 @@ export const PERSIST_KEY = 'immersive-settings'
  * 命名约定：保持参考项目原始 kebab-case 设置键，便于与参考实现逐项对照；
  * 仅在外层包裹 TypeScript 字面量联合类型约束取值范围。
  *
- * 「倾诉」不读其中与面板外观有关的部分（显示模式 / 封面 / 背景 / 歌词排版 / 字体），
- * 那些字段仍然完整保留在这里 —— 它们是经典的设置，不因为倾诉不读而少一行。
+ * Folia 三套主题不读其中与面板外观有关的部分（显示模式 / 封面 / 背景 /
+ * 歌词排版 / 字体）；它们的专属项在 `folia` 下。
  */
 export interface ImmersiveSettings {
   // ── 外观 ──
@@ -108,14 +164,7 @@ export interface ImmersiveSettings {
   lyricFontSize: number // 16–64 px, default 32
   lyricRomajiSizeEm: number // 0.3–1.5 em, default 0.6
   lyricTranslationSizeEm: number // 0.3–1.5 em, default 1
-  /**
-   * 底部副字幕显示哪几档。**沉浸页通用项**（不是「经典」面板的外观项）：
-   * 它是「这一页的副字幕要不要显示罗马音 / 译文」，与正在放哪个面板无关，
-   * 所以「倾诉」「流光」「浮名」都读它（与明暗主题、底栏四项同一类）。
-   *
-   * 默认 `'both'`（罗马音在前、译文在后）—— 与上游 `classic` / `fume` 的既有表现一致；
-   * 上游的默认档是 `'translation'`，本项目刻意取 `'both'`（2026-10-15 用户定）。
-   */
+  /** 经典面板的底部副字幕档位；Folia 三套主题使用 `folia.subtitleContentMode`。 */
   subtitleContentMode: SubtitleContentMode
   lyricFade: boolean
   lyricZoom: boolean
@@ -139,6 +188,9 @@ export interface ImmersiveSettings {
   fluidMaxFramerate: 0 | 1 | 2 | 3 | 4 // → FLUID_FPS_MAP
   fluidBlur: 5 | 6 | 7 // → FLUID_BLUR_MAP
   presentationMode: boolean
+
+  // ── Folia 系主题专属设置（倾诉 / 流光 / 浮名 共用，经典不读取） ──
+  folia: FoliaSettings
 }
 
 /** 新建一份默认设置（默认值对齐参考项目 main.js bind 函数的第二参数）。 */
@@ -182,7 +234,7 @@ export function createDefaultSettings(): ImmersiveSettings {
     lyricFontSize: 32,
     lyricRomajiSizeEm: 0.6,
     lyricTranslationSizeEm: 1,
-    // 罗马音 + 译文两行（用户 2026-10-15 定：保留两行，但要能通过设置关掉）
+    // 经典面板默认罗马音 + 译文两行；Folia 三套主题有独立档位
     subtitleContentMode: 'both',
     lyricFade: true,
     lyricZoom: true,
@@ -205,6 +257,17 @@ export function createDefaultSettings(): ImmersiveSettings {
     // 实验
     fluidMaxFramerate: 4,
     fluidBlur: 7,
-    presentationMode: false
+    presentationMode: false,
+
+    // Folia 系主题
+    folia: {
+      colorScheme: 'dark',
+      subtitleContentMode: 'both',
+      colorMode: 'song',
+      backgroundMode: 'native',
+      backgroundOpacity: 100,
+      backgroundBlur: 0,
+      wordColoring: true
+    }
   }
 }
