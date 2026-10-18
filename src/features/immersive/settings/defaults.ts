@@ -26,6 +26,14 @@ export const DEFAULTS = {
 /** DEFAULTS 的字段名（即所有带 reset 圆点的 slider 字段） */
 export type DefaultField = keyof typeof DEFAULTS
 
+/** Folia 三主题共用设置里带 reset 圆点的 slider 默认值。 */
+export const FOLIA_DEFAULTS = {
+  backgroundOpacity: 100,
+  backgroundBlur: 0
+} as const
+
+export type FoliaField = keyof typeof FOLIA_DEFAULTS
+
 /** a-slider 的 @change 收 number | number[]，统一收成 number */
 export function num(v: number | number[]): number {
   return Array.isArray(v) ? v[0] : v

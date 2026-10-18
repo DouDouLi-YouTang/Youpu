@@ -31,6 +31,23 @@
   -webkit-app-region: no-drag;
 }
 
+/* Folia 的明暗设置挂在沉浸根节点上；设置面板是根节点的子级，需要在浅色档单独
+   翻转外壳底色与文字，不能只依赖全局 --color-bg-elevated（那套跟随应用主题）。 */
+.rnp-light .immersive-settings {
+  background: rgba(250, 250, 250, 0.96);
+  border-color: rgba(0, 0, 0, 0.14);
+  color: #141414;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+}
+
+.rnp-light .settings-tabs {
+  border-right-color: rgba(0, 0, 0, 0.12);
+}
+
+.rnp-light .settings-tab.active {
+  color: var(--rnp-accent-color, #111);
+}
+
 .settings-close {
   position: absolute;
   top: 8px;

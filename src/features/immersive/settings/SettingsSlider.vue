@@ -3,17 +3,20 @@ import { computed } from 'vue'
 
 import {
   type ImmersiveSettings,
+  type FoliaSettings,
   useImmersiveSettingsStore
 } from '@/features/immersive/immersive-settings.store'
-import { DEFAULTS, num, type DefaultField } from './defaults'
+import { DEFAULTS, FOLIA_DEFAULTS, num, type DefaultField, type FoliaField } from './defaults'
 
 /**
  * 带 reset 圆点的 slider 行（各 tab 共用）。label / 范围 / 刻度 / 说明由各 tab 传入，
  * 读写直接落到 immersive-settings store —— 字段是组件自己的参数，不经过父组件中转。
  */
 const props = defineProps<{
-  /** store 字段名（须在 DEFAULTS 里有默认值，reset 圆点据此判断「已改动」） */
-  field: DefaultField
+  /** store 字段名；经典字段用 DefaultField，Folia 字段用 FoliaField */
+  field: DefaultField | FoliaField
+  /** 读写目标；Folia 页签显式传 folia，经典页签不传 */
+  target?: 'root' | 'folia'
   label: string
   min: number
   max: number
@@ -24,13 +27,28 @@ const props = defineProps<{
 }>()
 
 const settings = useImmersiveSettingsStore()
+const target = computed(() => props.target ?? 'root')
+
+const currentValue = computed<number>(() => {
+  if (target.value === 'folia') return settings.folia[props.field as FoliaField] as number
+  return settings[props.field as DefaultField] as number
+})
+
+const defaultValue = computed<number>(() => {
+  if (target.value === 'folia') return FOLIA_DEFAULTS[props.field as FoliaField]
+  return DEFAULTS[props.field as DefaultField]
+})
 
 /** 字段是否偏离默认值(对齐参考 .rnp-slider-wrapper.changed:仅改动后才显示 reset 圆点) */
-const changed = computed(() => (settings[props.field] as number) !== DEFAULTS[props.field])
+const changed = computed(() => currentValue.value !== defaultValue.value)
 
 /** reset 按钮：把本行字段还原到 DEFAULTS */
 function resetField(): void {
-  settings.$patch({ [props.field]: DEFAULTS[props.field] } as Partial<ImmersiveSettings>)
+  if (target.value === 'folia') {
+    settings.folia = { ...settings.folia, [props.field]: defaultValue.value } as FoliaSettings
+    return
+  }
+  settings.$patch({ [props.field]: defaultValue.value } as Partial<ImmersiveSettings>)
 }
 
 /**
@@ -44,6 +62,10 @@ function resetField(): void {
  * 导致全部 slider 拖动后不写回 store。
  */
 function onSliderChange(v: number | number[]): void {
+  if (target.value === 'folia') {
+    settings.folia = { ...settings.folia, [props.field]: num(v) } as FoliaSettings
+    return
+  }
   settings.$patch({ [props.field]: num(v) } as Partial<ImmersiveSettings>)
 }
 </script>
@@ -55,7 +77,7 @@ function onSliderChange(v: number | number[]): void {
       <button type="button" class="reset-btn" :class="{ changed }" @click="resetField"></button>
     </label>
     <a-slider
-      :value="settings[field]"
+      :value="currentValue"
       :min="min"
       :max="max"
       :step="step"
