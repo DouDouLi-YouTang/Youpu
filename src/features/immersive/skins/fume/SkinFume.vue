@@ -1,37 +1,19 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 
-import { useLyricStore } from '@/stores/lyric.store'
-import { usePlayerStore } from '@/stores/player.store'
-import { useImmersiveSettingsStore } from '../../immersive-settings.store'
-import FoliaSkinBackground from '../shared/FoliaSkinBackground.vue'
-import { useFoliaPalette } from '../shared/use-folia-palette'
-import { attachInterludeLines } from '../shared/interlude-lines'
-import { useSmoothClock, type SkinAudioBands } from '../shared/use-smooth-clock'
-import { FOLIA_SERIF_FAMILY, useFoliaSerifReady } from '../shared/folia-font'
-import { getLineRenderEndTimeMs } from '../shared/render-hints'
 import { colorWithAlpha } from '../shared/color-mix'
+import FoliaSkinBackground from '../shared/FoliaSkinBackground.vue'
 import SkinEmptyState from '../shared/SkinEmptyState.vue'
 import SkinSubtitle from '../shared/SkinSubtitle.vue'
-import { toFoliaScale } from '../../backgrounds/folia/shared/audio-bands'
 import type { SkinContext } from '../types'
-import { resolveArticleOverviewCamera } from './core/camera'
-import type { FumeAudioLevels, FumeTheme } from './core/fume-types'
-import type { FumeLayoutThemeKey } from './core/layout-key'
 import {
   FUME_BACKGROUND_OPACITY_MULTIPLIER,
-  FUME_HERO_SCALE,
-  FUME_LYRICS_FONT_SCALE,
   FUME_SHOW_PRINT_STAMP,
-  FUME_TUNING,
-  resolveFumeBackgroundSeed,
-  toFumeLines
+  FUME_TUNING
 } from './fume-adapter'
-import { buildFumeBackgroundScene } from './render/background'
-import { clearSegmentMeasureCache } from './measure/text-measure'
-import { useFumeLayout } from './use-fume-layout'
 import { FUME_SUBTITLE_OVERLAY_OPACITY, useFumeOverlay } from './use-fume-overlay'
-import { useFumeStage, type FumeStageSize } from './use-fume-stage'
+import { useFumeStage } from './use-fume-stage'
+import { useFumeTheme } from './use-fume-theme'
 import FumeStage from './components/FumeStage.vue'
 import FumeLayoutPending from './components/FumeLayoutPending.vue'
 
@@ -74,119 +56,25 @@ import FumeLayoutPending from './components/FumeLayoutPending.vue'
  */
 const props = defineProps<{ ctx: SkinContext }>()
 
-const player = usePlayerStore()
-const lyric = useLyricStore()
-const settings = useImmersiveSettingsStore()
-/**
- * 面板配色 —— 逐歌主题（从封面推出来，每首歌不同；口径见 `shared/use-folia-palette`）。
- * `lyricLines` 只用于挑**关键词**（逐词配色），封面色盘与歌词无关。
- */
-const { palette, isDaylight, wordColors } = useFoliaPalette({
-  coverUrl: computed(() => props.ctx.coverUrl()),
-  songId: computed(() => player.currentItem?.song.id ?? null),
-  // 只给整行文本：候选词的切分口径收在 keyword-colors 里
-  // （⚠️ 别把 `line.words` 传进去 —— 那是按字符切的，见那边的说明）
-  lyricLines: computed(() => lyric.lines.map((line) => ({ text: line.text })))
-})
-/**
- * 行源：store 的原始行 + 长空窗里补出的插曲行（`......`）。
- *
- * ⚠️ 上游浮名**同样**会把这些插曲行排进文章（`attachInterludes` 在解析层就补好了，
- * 浮名只是照常排版），所以这里不能跳过 —— 少了它们，长间奏期间纸上会空一块，
- * 而官网演示里会有一串放大的点被"打印"出来。
- *
- * 三方（时钟 / 排版 / 副字幕）必须用同一个数组，见 `use-smooth-clock` 的说明。
- */
-const lines = computed(() => attachInterludeLines(lyric.lines, player.durationMs))
-/** 逐帧时钟：相机跟随打印光标要求「每帧都有时间」，4Hz 的 store 值不够 */
-const clock = useSmoothClock({ lines })
-
-/**
- * 内置衬线字体（`FOLIA_SERIF_FAMILY`）的就绪信号 —— 它一变就**清片段测量缓存**。
- *
- * 为什么必须清：`measureSegmentGlyphOffsets` 按 `(字体串, 文本)` 缓存，而字体文件
- * 加载完成**不改变字体串**（同一个栈从兜底字形换成真字形）。不清的话这次重测只会
- * 把同一个键再问一遍，拿回兜底字量出的旧宽度，排版永久按错误宽度摆着 ——
- * 不报错、不白屏，只是字号一直偏小（与「倾诉」`use-tilt-layout.ts` 同源）。
- *
- * ⚠️ `flush: 'sync'`：清缓存必须发生在排版重算**之前**，否则这一轮又是空转。
- * 重排本身不需要在这里触发 —— 就绪状态并进了 `layoutTheme`（见下）。
- */
-const { fontState } = useFoliaSerifReady()
-watch(fontState, clearSegmentMeasureCache, { immediate: true, flush: 'sync' })
-
-/**
- * 本面板的主题视图（`FumeTheme`）。字段来源与「流光」同一套口径
- * （见 `shared/use-folia-palette.ts` 的映射表），只有 `name` 是浮名特有的：
- * 它参与背景种子与排版缓存键。
- *
- * `animationIntensity` 固定 `'normal'`：Folia 共享设置不暴露强度档，而强度档只影响
- * 辉光基量（§8.1）。
- *
- * `wordColors` 来自逐歌主题（`useFoliaPalette` 的第三个返回值）——
- * 关键词由本地规则从整首歌的歌词里挑出，颜色跟着封面走（见
- * `shared/song-theme/keyword-colors.ts`）。上游这一项来自 AI 主题生成，
- * 本项目用确定性规则替代，外观契约不变：命中关键词的词用它的颜色，
- * 未命中回退到 `accentColor`。
- */
-const theme = computed<FumeTheme>(() => ({
-  name: isDaylight.value ? 'daylight' : 'midnight',
-  primaryColor: palette.value.primary,
-  accentColor: palette.value.accent,
-  secondaryColor: palette.value.secondary,
-  fontStyle: 'serif',
-  animationIntensity: 'normal',
-  wordColors: wordColors.value
-}))
-
-/**
- * 参与排版缓存键的主题切片（§7.1）。**刻意不是整个 `theme`**：
- * 数组里只有字体这一项，颜色与强度变化不会让整首诗重排
- * （否则主题色过渡期间会每帧都命中不了缓存）。
- */
-const layoutTheme = computed<FumeLayoutThemeKey>(() => ({
-  name: theme.value.name,
-  fontStyle: theme.value.fontStyle,
-  fontFamily: theme.value.fontFamily,
-  fontFamilyStack: theme.value.fontFamilyStack,
-  fontWeight: theme.value.fontWeight
-}))
-
-/** 舞台逻辑尺寸（由 `FumeStage` 的 resize 事件驱动） */
-const stageSize = ref<FumeStageSize>({ width: 0, height: 0 })
-/** canvas 上下文（挂载后由 `FumeStage` 交出，卸载时置回 null） */
-const context = shallowRef<CanvasRenderingContext2D | null>(null)
-/** canvas 元素（位图尺寸 / DPR 变换的唯一权威在绘制层，见 `FumeStage.vue`） */
-const canvas = shallowRef<HTMLCanvasElement | null>(null)
-
-/**
- * 播放态 —— **必须是 ref**：暂停时绘制层会停止排帧（§16.4），
- * 靠它的变化把循环重新唤醒（见 `use-fume-stage` 的 `schedule`）。
- */
-const isPlaying = computed(() => player.state === 'playing')
-
-/**
- * 归一化后的整首歌（`FumeLine[]`）。**下游全部读这一份**：
- * 排版（§7.7 要看整篇）、缓存键（§7.1 的行指纹）、快照（§8.4 的 `renderHints`）。
- *
- * ⚠️ 依赖 `player.durationMs`：末行的结束时间用它推算（§15.2）。时长从 0 变成真实值
- * 时会重算一次 —— 那次重排是必要的，否则末行的拖尾窗口按 5 秒兜底算，唱到曲末会提前变暗。
- */
-const fumeLines = computed(() => toFumeLines(lines.value, player.durationMs))
-
-/**
- * 文章排版（§7.9）。入参 `lines` 是 `fumeLines`，视口是舞台逻辑尺寸 ——
- * 也就是排版与绘制用**同一个**尺寸来源（`FumeStage` 的 resize 事件），
- * 不会出现「画布已按新尺寸画、排版还用旧尺寸」的帧。
- */
-const { article, isLayoutPending, isViewportRefreshPending } = useFumeLayout({
-  lines: fumeLines,
-  viewport: stageSize,
-  layoutTheme,
-  lyricsFontScale: computed(() => FUME_LYRICS_FONT_SCALE),
-  heroScale: computed(() => FUME_HERO_SCALE),
-  fontKey: fontState
-})
+const {
+  palette,
+  isDaylight,
+  lines,
+  clock,
+  theme,
+  stageSize,
+  context,
+  canvas,
+  isPlaying,
+  article,
+  isLayoutPending,
+  isViewportRefreshPending,
+  backgroundScene,
+  overviewCamera,
+  overviewStartTimeMs,
+  stageStyle,
+  toAudioLevels
+} = useFumeTheme({ ctx: props.ctx })
 
 /**
  * 画布之外那一层（副字幕 / 空态 / 加载卡配色）全部在 `use-fume-overlay.ts` ——
@@ -212,46 +100,6 @@ const {
 })
 
 /**
- * 背景场景（§7.10）。原生档才由 canvas 绘制手绘纸面；覆盖背景时返回 `null`，
- * 避免两套背景叠在一起。`world` 就是文章尺寸；没有文章时用视口 ×1.8 兜底，
- * 于是前奏期间原生背景照常转动（§16.4 的唯一空转场景）。
- */
-const backgroundScene = computed(() => {
-  if (settings.folia.backgroundMode !== 'native') return null
-  return buildFumeBackgroundScene({
-    viewport: stageSize.value,
-    world: article.value
-      ? { width: article.value.width, height: article.value.height }
-      : {
-          width: Math.max(stageSize.value.width * 1.8, stageSize.value.width),
-          height: Math.max(stageSize.value.height * 1.8, stageSize.value.height)
-        },
-    paperBounds: article.value?.paperBounds,
-    seed: resolveFumeBackgroundSeed(undefined, theme.value.name)
-  })
-})
-
-/** 总览镜头（§9.4）：把整页区块装进视口；没有文章时为 null */
-const overviewCamera = computed(() =>
-  article.value ? resolveArticleOverviewCamera(article.value, stageSize.value) : null
-)
-
-/**
- * 总览开始时刻（§7.10）：**最后一条可渲染行的起止中点**，不是唱完。
- * 提前起飞让最后的字在镜头拉远的过程中继续打印 —— 这是浮名收尾的招牌动作。
- */
-const overviewStartTimeMs = computed(() => {
-  const current = article.value
-  if (!current) return Number.POSITIVE_INFINITY
-  for (let index = current.chronologicalBlocks.length - 1; index >= 0; index -= 1) {
-    const line = current.chronologicalBlocks[index].line
-    if (line.fullText.trim().length === 0) continue
-    return line.startTimeMs + Math.max(getLineRenderEndTimeMs(line) - line.startTimeMs, 0) * 0.5
-  }
-  return Number.POSITIVE_INFINITY
-})
-
-/**
  * 每帧绘制循环（§11.3）。它内部自己起 rAF，`playing` 的变化会唤醒它（§16.4）。
  */
 useFumeStage({
@@ -270,7 +118,7 @@ useFumeStage({
   textHoldRatio: FUME_TUNING.textHoldRatio,
   backgroundOpacityMultiplier: FUME_BACKGROUND_OPACITY_MULTIPLIER,
   currentTimeMs: () => clock.time(),
-  audioLevels: () => toFumeAudioLevels(clock.bands()),
+  audioLevels: () => toAudioLevels(clock.bands()),
   /**
    * 相机焦点用的行下标 —— **必须与 `article` 同源**。
    *
@@ -326,42 +174,9 @@ onBeforeUnmount(() => {
   printedFrameId = null
 })
 
-/**
- * 频带换算：逐帧时钟的六频带（0–1）→ Folia 的 0–255（§13.2）。
- *
- * ⚠️ **不要**在这里再做加权映射：`shared/use-smooth-clock.ts` 的 `bands()` 已经把
- * 本项目的四频带（low/mid/high/power）**近似映射**成 Folia 的六频带
- * （`toSkinBands`：bass/lowMid/mid/vocal/treble/power），与背景宿主的
- * `backgrounds/folia/shared/audio-bands.ts` 是同一套口径。这里只做量纲放大。
- *
- * 也不做噪声门：门限 `(v - 10) / 190` 在绘制层（`render/background.ts`）——
- * 它是「怎么用」而不是「量纲是什么」。与「流光」接 latent 背景时同一分工。
- *
- * `bass` 与 `power` 会被传进去但浮名**从不读取**（§13.1 表格已确认），
- * 保留字段是为了让「传了但没用」这件事看得见，而不是让人以为漏了。
- */
-function toFumeAudioLevels(bands: SkinAudioBands): FumeAudioLevels {
-  return {
-    bass: toFoliaScale(bands.bass),
-    lowMid: toFoliaScale(bands.lowMid),
-    mid: toFoliaScale(bands.mid),
-    vocal: toFoliaScale(bands.vocal),
-    treble: toFoliaScale(bands.treble),
-    power: toFoliaScale(bands.power)
-  }
-}
-
-/** 主题纯色底（`theme.backgroundColor` 的等价物） */
-/**
- * 皮肤根的内联变量：底色 / 字体 + 共享组件要读的那几个（见 `use-fume-overlay`）。
- *
- * 底色与字体在**这一层**给（而不是也塞进 overlay hook）：它们是皮肤根自己的外观，
- * 与"字幕/空态要什么变量"不是同一件事。
- */
-const stageStyle = computed<Record<string, string>>(() => ({
-  backgroundColor:
-    settings.folia.backgroundMode === 'native' ? palette.value.background : 'transparent',
-  fontFamily: `"${FOLIA_SERIF_FAMILY}", serif`,
+/** 皮肤根的内联变量：主题层 + 共享组件要读的 overlay 变量 */
+const rootStyle = computed<Record<string, string>>(() => ({
+  ...stageStyle.value,
   ...overlayStyleVars.value
 }))
 
@@ -387,7 +202,7 @@ defineExpose({
     <!-- 原生档：画布自己画手绘纸面背景，这一层不需要额外背景 -->
   </FoliaSkinBackground>
 
-  <div class="fume-root" :style="stageStyle">
+  <div class="fume-root" :style="rootStyle">
     <FumeStage
       @ready="
         (ctx, canvasEl) => {

@@ -19,12 +19,6 @@
   overflow: hidden;
 }
 
-// canvas 必须透明。原生档由绘制层在 canvas 内画纸面背景；覆盖档背景由
-// FoliaSkinBackground 提供，canvas 仍只负责歌词。两种模式都不能把画布涂成白底。
-.fume-canvas {
-  background: transparent;
-}
-
 // 空态层：宿主里的一个居中 flex 容器。
 // ⚠️ 这一层是**必需的**：共享的 `SkinEmptyState` 只有 `position: absolute`，
 // 没有 inset —— 它的落点靠宿主 flex 的静态位置（见 shared/skin-empty.scss 的说明）。
