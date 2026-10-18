@@ -6,6 +6,8 @@ import { useImmersiveSettingsStore } from '@/features/immersive/immersive-settin
 import { useLyricStore } from '@/stores/lyric.store'
 import { usePlayerStore } from '@/stores/player.store'
 import { resolveSubtitleSlots, resolveSubtitleTracks } from '../shared/subtitle-tracks'
+import FoliaSkinBackground from '../shared/FoliaSkinBackground.vue'
+import { useFoliaPalette } from '../shared/use-folia-palette'
 import type { SkinContext } from '../types'
 import TiltLine from './TiltLine.vue'
 import {
@@ -21,20 +23,11 @@ import { useTiltTiming } from './use-tilt-timing'
 /**
  * 「倾诉」(tilt) 皮肤 —— Folia 式**全屏歌词**面板（与「经典」皮肤并列的款式）。
  *
- * ⚠️ **本面板没有设置**（2026-10-11 用户定：「原来的设置是给经典面板用的，然后倾诉这个
- * 主题是没有设置的」）。外观全部固定，不读 store 里那套面板外观字段：
- *  - **背景恒为「几何」且不可改** —— 直接挂 `backgrounds/GeometricBackground.vue`，
- *    不经过 `ImmersiveBackground.vue`（那个组件是「按 backgroundType 六选一」的实现）；
- *  - **永不显示封面** —— 有歌词就是整屏歌词舞台；没有歌词时舞台中央显示歌名 + 歌手卡
- *    （纯音乐 / 加载失败 / 未选歌各自的中文提示不变），不再回退到整屏封面；
- *  - **歌词排版与字体用内置值** —— 字号倍率是 `TILT_FONT_SCALE`（1 倍）、副字幕的
- *    em 档与字重 / 字间距 / 行高都在 tilt.scss 与 tilt-adapter.ts 里写死。
- *    所以沉浸页右上角也没有设置按钮（见 shared/SkinShell.vue），根节点不套用
- *    经典那套外观 class / CSS 变量（见 shared/use-backdrop.ts 的两档说明）。
- *  - 顶部迷你歌曲信息条不显示（它原是「仅歌词」模式专属，而倾诉不再读显示模式）。
+ * 设置使用 Folia 共享页签（外观 / 歌词 / 背景 / 关于）；经典那套面板外观
+ * （显示模式 / 封面 / 自定义字体 / 字号滑杆）仍不套用。
  *
- * **仍然跟随的沉浸页通用项**：明暗主题、专辑主色、底栏四项、演示模式、歌词偏移
- * （最后一项在下面读 `settings.lyricOffset`：它是节拍对齐，不是排版）。用户拍板。
+ * 原生背景仍是「几何」：`FoliaSkinBackground` 在 `native` 档直接渲染它，
+ * 只有用户主动选择其他背景时才替换。
  *
  * 布局本身就是本皮肤的主体：Folia 的预览图里歌词是**一条占满窗口的居中舞台**
  * （`VisualizerTilt` 的 `w-full h-[70vh] flex items-center justify-center`），
@@ -52,6 +45,12 @@ const props = defineProps<{ ctx: SkinContext }>()
 const settings = useImmersiveSettingsStore()
 const lyric = useLyricStore()
 const player = usePlayerStore()
+
+const { palette, isDaylight } = useFoliaPalette({
+  coverUrl: computed(() => props.ctx.coverUrl()),
+  songId: computed(() => player.currentItem?.song.id ?? null),
+  lyricLines: computed(() => lyric.lines.map((line) => ({ text: line.text })))
+})
 
 /** 当前行下标（-1 = 尚未到首行）；文本/逐字时间戳从 lyric store 取（契约只给下标） */
 const currentIndex = computed(() => props.ctx.currentLineIndex())
@@ -81,11 +80,9 @@ const lineKey = computed(() => `${lyric.songId ?? 'none'}:${currentIndex.value}`
  * 解析走**共享层** `skins/shared/subtitle-tracks.ts`（与「流光」「浮名」同一份口径）：
  * `'both'` 档罗马音在前、译文在后；缺哪档就少一行、绝不出现空占位；两档填同一串时
  * 只显示一次。共享层还带一道**可读性门槛**（至少含一个字母或数字），于是 `//`、`●●●`
- * 这类占位行不会漏到底栏 —— 这条门槛倾诉原先没有，是切过来时一并修掉的。
+ * 这类占位行不会漏到底栏。
  *
- * 档位取自沉浸页通用项 `settings.subtitleContentMode`（默认 `'both'`）—— 它是
- * 「这一页的副字幕显示哪几档」，不是「经典面板的外观项」，所以倾诉虽然没有设置，
- * 仍然跟随它（与明暗主题、底栏四项同一类）。
+ * 档位取自 Folia 共享设置 `settings.folia.subtitleContentMode`。
  *
  * ⚠️ 行对象的角色名 `role` 是 `'romanization' | 'translation'`，而倾诉的 SCSS 用的是
  * 短名 `is-romaji` / `is-translation`（历史命名，样式文件里已存在）。这里在模板上做映射，
@@ -94,7 +91,7 @@ const lineKey = computed(() => `${lyric.songId ?? 'none'}:${currentIndex.value}`
  * 两行各自的字号档写在 tilt.scss 里（内置固定值，不受设置面板影响）。
  */
 const subtitleRows = computed(() =>
-  resolveSubtitleTracks(currentLine.value, settings.subtitleContentMode)
+  resolveSubtitleTracks(currentLine.value, settings.folia.subtitleContentMode)
 )
 
 /**
@@ -111,7 +108,7 @@ const subtitleRows = computed(() =>
  * 等于把上面那个抖动又请回来。
  */
 const subtitleSlots = computed(() =>
-  resolveSubtitleSlots(subtitleRows.value, settings.subtitleContentMode)
+  resolveSubtitleSlots(subtitleRows.value, settings.folia.subtitleContentMode)
 )
 
 /**
@@ -157,6 +154,18 @@ const { model, epoch, resync } = useTiltTiming({
 
 /** 暂停时定格：交给 CSS 的 animation-play-state: paused（见 tilt-line.scss） */
 const paused = computed(() => !props.ctx.isPlaying())
+
+/**
+ * 歌词区 CSS 变量：主题色必须挂在 `.tilt-lyric` 上。
+ *
+ * TiltLine 虽然位于 stage-inner 内，但空态和 `.tilt-subtitles` 是它的兄弟层；
+ * 把色值放在 inner 会让它们读不到，因此色值上移到整个歌词区。
+ */
+const lyricStyle = computed<Record<string, string>>(() => ({
+  '--tilt-primary-color': palette.value.primary,
+  '--tilt-accent-color': palette.value.accent,
+  '--tilt-secondary-color': palette.value.secondary
+}))
 
 /** 舞台 CSS 变量：字号由布局算好（clamp × 溢出缩放），淡入时长取自适配层常量 */
 const stageStyle = computed<Record<string, string>>(() => {
@@ -215,12 +224,25 @@ function handleSeek(): void {
 </script>
 
 <template>
-  <!-- 背景层：恒为「几何」，不可改（倾诉没有背景设置） -->
-  <GeometricBackground />
+  <!-- 背景层：原生几何 / 用户选择的 Folia 背景 -->
+  <FoliaSkinBackground
+    :cover-url="ctx.coverUrl()"
+    :palette="palette"
+    :is-daylight="isDaylight"
+    :paused="!ctx.isPlaying()"
+  >
+    <GeometricBackground
+      :theme="{
+        backgroundColor: palette.background,
+        accentColor: palette.accent,
+        secondaryColor: palette.secondary
+      }"
+    />
+  </FoliaSkinBackground>
 
   <!-- 内容层：整屏歌词舞台 -->
   <div class="immersive-content">
-    <div class="tilt-lyric">
+    <div class="tilt-lyric" :style="lyricStyle">
       <div ref="stageRef" class="tilt-stage">
         <div ref="panelRef" class="tilt-stage-inner" :style="stageStyle">
           <!-- 有歌、歌词还没出来：给歌名 + 歌手，而不是「等待」文案 -->
@@ -247,7 +269,15 @@ function handleSeek(): void {
         `:key` 让换行时整块换节点，从而重播 tilt.scss 里那段淡入（数字来自
         SUBTITLE_SWAP_MOTION）。
       -->
-      <div v-if="subtitleSlots.length > 0" :key="subtitleKey" class="tilt-subtitles">
+      <div
+        v-if="subtitleSlots.length > 0"
+        :key="subtitleKey"
+        class="tilt-subtitles"
+        :style="{
+          '--tilt-subtitle-color': palette.secondary,
+          '--tilt-subtitle-strong-color': palette.primary
+        }"
+      >
         <p
           v-for="slot in subtitleSlots"
           :key="slot.role"

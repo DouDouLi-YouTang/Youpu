@@ -29,11 +29,9 @@
   padding: 0;
   border: 0;
   background: none;
-  // 「普通段 / 倾斜段」分色 —— 对齐 Folia VisualizerTilt.getColors() 的默认档：
-  //   normal: theme.primaryColor（本项目 = 外壳注入的正文色 shade-2，深色下近白）
-  //   tilt:   theme.accentColor（本项目 = 专辑主色 tone 50，即那抹蓝）
-  // 注意是**继承**而不是写死：父级 .tilt-lyric 已经把 normal 色设在 color 上，
-  // 倾斜段再覆盖成主色。
+  // 「普通段 / 倾斜段」分色 —— 对齐 Folia VisualizerTilt.getColors()：
+  //   normal: theme.primaryColor
+  //   tilt:   theme.accentColor
   color: inherit;
   font-family: inherit;
   // 末段过短补偿（笔记 §2.4）：只有末段会带上 --tilt-row-scale，其余为 1。
@@ -57,7 +55,7 @@
     font-weight: 300;
     letter-spacing: 0.15em;
     line-height: 1.25;
-    color: var(--rnp-accent-color, inherit);
+    color: var(--tilt-accent-color, var(--rnp-accent-color, inherit));
   }
 }
 
@@ -66,7 +64,7 @@
   // 保留字素里的空格宽度（文本按字素切过，空格也是独立的一个 span）
   white-space: pre;
   // 缓动写死 `ease`（= CSS 默认值），**不读** `--lyric-timing-function`：
-  // 那是经典面板的「动画曲线」设置，倾诉没有设置、外壳也不给它的根元素注入该变量。
+  // 那是经典面板的「动画曲线」设置，Folia 三主题不套用。
   // 以前这里写成 `var(--lyric-timing-function, ease)` —— 变量恒不存在、永远走 fallback，
   // 读起来却像「倾诉会跟随该设置」，是给后来者挖的坑。
   animation:

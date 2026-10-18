@@ -187,7 +187,7 @@ describe('resolveBaseFontPx clamp(3.125rem, 6.875vw, 5.625rem)（笔记 §4）',
 })
 
 describe('TILT_FONT_SCALE 固定字号倍率', () => {
-  it('恒为 1 —— 倾诉不读设置里的「字体大小」（2026-10-11 用户定：倾诉没有设置）', () => {
+  it('恒为 1 —— 倾诉不读经典设置里的「字体大小」', () => {
     expect(TILT_FONT_SCALE).toBe(1)
   })
 })
