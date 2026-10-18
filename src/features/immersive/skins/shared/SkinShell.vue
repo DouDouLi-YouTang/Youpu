@@ -39,10 +39,8 @@ const ctx = useSkinContext()
 const activeSkin = useActiveSkin()
 
 /**
- * 设置面板的归属：设置**只属于自带设置的面板**（当前是「经典」）。
- * 「倾诉」没有设置可调（外观全部固定），所以它下面右上角不出现设置按钮 ——
- * 摆一个点开全是无效项的入口，与「摆一个调了没反应的控件」是同一类问题。
- * 判据是皮肤定义上的 `hasSettings`（见 skins/types.ts），不要在这里硬判 id。
+ * 四套皮肤都有设置入口；具体显示哪个版本的面板由 `settingsKind` 决定
+ * （经典六页签 / Folia 三主题共用页签，见 skins/types.ts），不要在这里硬判 id。
  */
 const hasPanelSettings = computed(() => activeSkin.value.hasSettings)
 
@@ -59,8 +57,8 @@ const {
 
 // 设置面板显隐（由右上角设置按钮触发，ImmersiveSettings 双向绑定）
 const settingsOpen = ref(false)
-// 切到「没有设置」的面板（倾诉）时把面板收起来：它的设置按钮会随之消失，
-// 面板若留在屏幕上，用户既没有按钮可关、看到的又是「经典」那套设置 —— 像是串了面板。
+// 切到没有设置入口的皮肤（未来新增皮肤可能如此）时把面板收起来，
+// 避免用户既没有按钮可关、看到的又是上一套设置。
 watch(hasPanelSettings, (has) => {
   if (!has) settingsOpen.value = false
 })
@@ -169,8 +167,8 @@ onBeforeUnmount(() => {
 
     <!-- 设置按钮(对齐参考 .rnp-settings:控制条外,沉浸页右上角独立 fixed;
          非全屏 right:140、全屏 right:52,跟随 idle 显隐)。
-         ⚠️ 只在当前面板**自带设置**时渲染 —— 「倾诉」没有设置（外观全部固定），
-         它下面不提供设置入口，切换按钮自动占住这一格（见 SkinSwitcher 的 right 覆写）。 -->
+         ⚠️ 只在当前皮肤有设置入口时渲染；没有入口时切换按钮自动占住这一格
+         （见 SkinSwitcher 的 right 覆写）。 -->
     <AppTooltip v-if="hasPanelSettings" :title="settingsOpen ? '关闭设置' : '打开设置'">
       <button
         type="button"
@@ -196,9 +194,8 @@ onBeforeUnmount(() => {
     <!-- 控制条（ImmersiveControls：播放/进度/音量/模式/队列/设置 + 自动隐藏）。共享层,不属于皮肤 -->
     <ImmersiveControls />
 
-    <!-- 设置面板（6 个 tab，从右滑入）。共享层,不属于皮肤；
-         它配置的是**经典面板**的那份设置，故只在 hasPanelSettings 时才有入口 -->
-    <ImmersiveSettings v-model:visible="settingsOpen" />
+    <!-- 设置面板（从右滑入）。共享层，不属于皮肤；内部按 settingsKind 切换页签 -->
+    <ImmersiveSettings v-model:visible="settingsOpen" :kind="activeSkin.settingsKind" />
   </section>
 </template>
 

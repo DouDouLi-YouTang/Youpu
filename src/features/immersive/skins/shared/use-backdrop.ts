@@ -10,19 +10,16 @@ import { useActiveSkin } from '../registry'
  * （挂在皮肤外壳的根 section 上，驱动背景、歌词、封面的全部视觉分支），并一并持有
  * 自定义字体与全屏状态。
  *
- * ⚠️ **分两档注入**（2026-10-11 用户定：「原来的设置是给经典面板用的，然后倾诉这个主题
- * 是没有设置的」）：
+ * ⚠️ **分两档注入**：
  *
- *  - **面板外观档** —— 只在当前面板**自带设置**时注入（`SkinDefinition.hasSettings`，
- *    当前只有「经典」）。这一档回答的是「这个面板长什么样」：显示模式、背景类型、
- *    歌词排版动画、封面造型、自定义字体、歌词字号 / 译文倍率……倾诉是固定长相，
- *    读这些字段等于把「经典的设计」硬套在它身上（最刺眼的例子：显示模式一旦设成
- *    「仅封面」，倾诉的整屏歌词就整个没了），所以整档跳过。
+ *  - **面板外观档** —— 只在当前面板是经典时注入（`SkinDefinition.settingsKind`）。
+ *    这一档回答的是「经典长什么样」：显示模式、背景类型、歌词排版动画、封面造型、
+ *    自定义字体、歌词字号 / 译文倍率……Folia 三套主题有自己的外观设置，整档跳过。
  *  - **沉浸页通用档** —— **无条件**注入。这些不是面板外观，而是「这一页 / 这个播放器」
  *    的行为：明暗主题、专辑主色、底栏四项、演示模式、空闲态。换了面板它们照样该生效
- *    （用户拍板：倾诉也跟随这些）。
+ *    （用户拍板：所有面板都跟随这些）。
  *
- * 判据放在**皮肤定义**上而不是这里的 if 里：新增面板时由 `SkinDefinition.hasSettings`
+ * 判据放在**皮肤定义**上而不是这里的 if 里：新增面板时由 `SkinDefinition.settingsKind`
  * 强制表态（编译期就要求写上），不会出现「新面板默默继承了经典的全套外观」。
  *
  * 为什么全屏状态在这里：`rnp-full-screen` 是 rootClasses 的一员，而全屏按钮在
@@ -42,8 +39,19 @@ export function useBackdrop() {
   // 全屏状态 + 切换（对齐参考项目 addFullScreenButton）
   const isFullscreen = ref(false)
 
-  /** 当前面板是否自带设置（= 是否套用经典那套面板外观参数）。见文件头两档说明。 */
-  const usesPanelSettings = computed(() => activeSkin.value.hasSettings)
+  /** 当前面板是否套用经典那套面板外观参数。见文件头两档说明。 */
+  const usesPanelSettings = computed(() => activeSkin.value.settingsKind === 'classic')
+
+  /**
+   * Folia 三套主题的明暗是独立设置；经典继续读顶层 `colorScheme`。
+   * 外壳文字色、控制条、设置面板背景都挂在同一个明暗 class 上，所以这里必须
+   * 按设置种类取，而不是让 Folia 的白天/夜间只影响歌词调色板。
+   */
+  const activeColorScheme = computed(() =>
+    activeSkin.value.settingsKind === 'folia'
+      ? settings.folia.colorScheme
+      : settings.colorScheme
+  )
 
   /**
    * **沉浸页通用档**的 class —— 任何面板都注入。这些不是「面板长什么样」，
@@ -53,11 +61,11 @@ export function useBackdrop() {
     'rnp-presentation-mode': settings.presentationMode,
     'rnp-full-screen': isFullscreen.value,
     'rnp-idle': idle.value,
-    // 底栏四项：控制条自己的行为，倾诉也跟随
+    // 底栏四项：控制条自己的行为，所有面板都跟随
     'always-show-bottombar': settings.alwaysShowBottomBar,
     'rnp-bottom-progressbar': settings.bottomProgressbar,
     // 明暗主题与专辑主色：沉浸页整体配色，与「哪个面板」无关
-    [`rnp-${settings.colorScheme}`]: true,
+    [`rnp-${activeColorScheme.value}`]: true,
     [`accent-color-${settings.accentColorVariant}`]: true
   }))
 
@@ -67,8 +75,8 @@ export function useBackdrop() {
    * document style 的做法等价，只是作用域收到沉浸层内部。
    *
    * 全是**面板外观**参数（背景模糊 / 暗化 / 歌词字号 / 译文倍率 / 字重 / 动画曲线），
-   * 所以倾诉（`hasSettings === false`）拿到空对象：它的歌词字号与译文倍率是内置固定值，
-   * 直接写在 tilt.scss 里，不从根元素继承。
+   * 所以 Folia 三套主题（`settingsKind === 'folia'`）拿到空对象：它们的歌词字号与
+   * 译文倍率由各自适配层固定，不从根元素继承。
    */
   const rootStyleVars = computed(() => {
     if (!usesPanelSettings.value) return {}
@@ -90,7 +98,7 @@ export function useBackdrop() {
   // 自定义字体（参考项目 font-settings.js：注入到 body，我们注入到根元素）
   // customFontFamily 是回退链数组，转 CSS font-family 列表('font1', 'font2')
   //
-  // 倾诉拿到空对象：**自定义字体是「经典」的设置**（倾诉没有设置面板，外观固定），
+  // Folia 三套主题拿到空对象：**自定义字体是「经典」的设置**（Folia 外观固定），
   // 这里不注入就是「不覆盖」。倾诉自己的字体是 tilt.scss 里的内置栈
   // （'ZCOOL KuaiLe', 'M PLUS Rounded 1c', sans-serif，2026-10-11 定）；
   // 它的排版测量（use-tilt-layout 的 readFontFamily）从 DOM 读 computed style，

@@ -8,5 +8,6 @@ export default defineSkin({
   order: 0,
   // 沉浸页设置（外观 / 封面 / 背景 / 歌词 / 字体）说的就是本面板 —— 见 types.ts 的说明
   hasSettings: true,
+  settingsKind: 'classic',
   component: () => import('./SkinClassic.vue')
 })
