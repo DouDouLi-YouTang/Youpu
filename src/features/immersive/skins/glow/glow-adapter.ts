@@ -19,7 +19,7 @@ import type { AnimationIntensity } from './core/word-layout'
 /**
  * 本项目的「流光」**固定档位**。
  *
- * 三个 Folia 系皮肤都不带设置面板（2026-08-14 用户拍板），所以这里不是"默认值"
+ * 三个 Folia 系皮肤共享设置，但不套用经典排版滑杆，所以这里不是"用户可调默认值"
  * 而是"写死的值"：
  *  - `animationIntensity = 'normal'`：`calm` 会把散落布局整个收掉（所有行都居中、
  *    位移与旋转归零），丢掉这个面板最核心的特征；`chaotic` 的 baseSpread 60 /

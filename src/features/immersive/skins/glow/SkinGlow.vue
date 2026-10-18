@@ -33,6 +33,7 @@ import {
   resolveGlowFontSize,
   resolveDisplayWords
 } from './glow-adapter'
+import FoliaSkinBackground from '../shared/FoliaSkinBackground.vue'
 import GlowBackground from './GlowBackground.vue'
 import GlowLine from './GlowLine.vue'
 import { resolveGlowRenderProfile } from './glow-profile'
@@ -48,16 +49,15 @@ import { useGlowViewport } from './use-glow-viewport'
  *
  * 一个占 70vh 的居中舞台：舞台上有**一行**歌词（`GlowLine`），每个词自己散落、
  * 自己亮、唱完慢慢转；底栏是罗马音 / 译文副字幕（共享的 `SkinSubtitle`）。背景是 Folia
- * 自带的 `latent` 模式（`GlowBackground`，见那边的说明）。
+ * 自带的 `common` 模式（`GlowBackground`，见那边的说明）。
  *
- * ## ⚠️ 本面板没有设置（用户 2026-08-14 拍板）
+ * ## 设置
  *
- * 与「倾诉」同款取舍：外观全部固定，**不读** store 里那套面板外观字段（字号倍率 /
- * 动画强度 / 词间距 / 逐词旋转 / 自定义字体 / 背景类型 / 显示模式）。所有档位来自
- * `glow-adapter.ts` 的 `GLOW_*` 常量 —— 那里是「本项目把 Folia 的默认值写死」的唯一出处。
+ * 使用 Folia 三主题共享的 `settings.folia`：明暗、配色方案、副歌词档位、
+ * 背景模式、逐词着色。字号 / 动画强度 / 词间距等排版参数仍然来自
+ * `glow-adapter.ts` 的 `GLOW_*` 常量，不套用经典面板的排版滑杆。
  *
- * **仍然跟随的沉浸页通用项**：明暗主题、专辑主色、底栏四项、演示模式、歌词偏移。
- * 前两项由 `useFoliaPalette` 解析，第三四项由外壳的 rootClasses 承担。
+ * **跟随的沉浸页通用项**：专辑主色、底栏四项、演示模式、歌词偏移。
  *
  * ## 时间源：为什么不用 `ctx.currentTime()`
  *
@@ -176,12 +176,8 @@ const emptyState = computed(() =>
 /**
  * 底部副字幕轨道（罗马音在前、译文在后；可读性门槛与去重在共享层）。
  *
- * 档位取自沉浸页通用项 `settings.subtitleContentMode`（默认 `'both'` = 罗马音在前、
- * 译文在后）。它是「这一页的副字幕显示哪几档」，不是「经典面板的外观项」——
- * 所以本面板虽然没有设置，仍然跟随它（与明暗主题、底栏四项同一类）。
- *
- * ⚠️ 本面板**没有**设置入口（`hasSettings: false`），用户要到「经典」面板下改这一项；
- * 这是既有的取舍（设置面板只有经典提供，见 skins/types.ts 的说明），不是遗漏。
+ * 档位取自 Folia 共享设置 `settings.folia.subtitleContentMode`（默认 `'both'` =
+ * 罗马音在前、译文在后），由「歌词」页签控制。
  *
  * ⚠️ **当前行没有可读副字幕时回退到"最近一句唱完的行"**（上游
  * `resolveVisualizerSubtitleOverlayContent` 的 `[activeLine, recentCompletedLine]`
@@ -191,9 +187,12 @@ const emptyState = computed(() =>
  * 不是"每行结束后都拿上一句顶上"。
  */
 const subtitleRows = computed(() => {
-  const rows = resolveSubtitleTracks(activeLine.line.value, settings.subtitleContentMode)
+  const rows = resolveSubtitleTracks(activeLine.line.value, settings.folia.subtitleContentMode)
   if (rows.length > 0) return rows
-  return resolveSubtitleTracks(activeLine.recentCompletedLine.value, settings.subtitleContentMode)
+  return resolveSubtitleTracks(
+    activeLine.recentCompletedLine.value,
+    settings.folia.subtitleContentMode
+  )
 })
 
 /**
@@ -258,14 +257,22 @@ function handleSeek(): void {
 </script>
 
 <template>
-  <!-- 背景层：Folia 的 latent 模式（双 shader 叠层 + 封面取色 + 音频驱动） -->
-  <GlowBackground
+  <!-- 背景层：原生 common / 用户选择的 Folia 背景 -->
+  <FoliaSkinBackground
     :cover-url="ctx.coverUrl()"
     :palette="palette"
     :is-daylight="isDaylight"
     :paused="!ctx.isPlaying()"
     :clock="clock"
-  />
+  >
+    <GlowBackground
+      :cover-url="ctx.coverUrl()"
+      :palette="palette"
+      :is-daylight="isDaylight"
+      :paused="!ctx.isPlaying()"
+      :clock="clock"
+    />
+  </FoliaSkinBackground>
 
   <!-- 内容层：整屏歌词舞台。底距由 JS 逐帧插值后注入（见 use-subtitle-bottom） -->
   <div

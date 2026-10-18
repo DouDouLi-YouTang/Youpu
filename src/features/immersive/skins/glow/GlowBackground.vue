@@ -5,7 +5,7 @@ import type { SmoothClock } from '../shared/use-smooth-clock'
 import type { FoliaPalette } from '../shared/use-folia-palette'
 
 /**
- * 「流光」的背景层 —— Folia 的 **`common` 模式**（本面板的固定背景，不带设置）。
+ * 「流光」的背景层 —— Folia 的 **`common` 模式**（本面板的默认背景）。
  *
  * ## 为什么是 common
  *
@@ -18,8 +18,8 @@ import type { FoliaPalette } from '../shared/use-folia-palette'
  * 直到 `c80a2927`（2026-09-02）才出现。所以「流光 = latent」是后来才成为默认的，
  * 与官网演示图不是一回事（这正是用户说的「跟官网演示完全不一样」）。
  *
- * 本项目用户要的是**演示图那个观感**，所以这里**写死 common**，不读
- * `settings.backgroundType`（本面板不带设置）。
+ * 本项目用户要的是**演示图那个观感**，所以原生档固定 `common`。用户改背景时由外层
+ * `FoliaSkinBackground` 换掉本组件，不在这里接管整套背景设置。
  *
  * ## 流体底与几何层都开着
  *
@@ -42,7 +42,7 @@ import type { FoliaPalette } from '../shared/use-folia-palette'
  *
  * ## 为什么 `staticMode` 不传
  *
- * 它会让 latent 完全停帧且不建 rAF。本项目的沉浸页在窗口失焦时仍然出帧
+ * 它会让背景完全停帧且不建 rAF。本项目的沉浸页在窗口失焦时仍然出帧
  * （`backgroundThrottling: false`），没有「首页且关了动态背景」这条业务分支，
  * 所以恒定 `false`（= 用默认值）。将来若要接「省电模式」，从设置里读一个布尔传下来即可。
  */
