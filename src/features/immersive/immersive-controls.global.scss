@@ -3,6 +3,13 @@
 // @keyframes rnp-cover-rotate-197e7601 带 hash 后缀，避免与其他全局样式文件中的同名
 // @keyframes 冲突。
 
+// 浮名的原生背景会在皮肤层内绘制不透明底，而进度条是独立 fixed 元素（默认 z-index 1）。
+// 仅在该组合下把进度条抬到皮肤层（z-index 2）之上；控制条仍在 z-index 5，
+// 音量/音质等弹层不会被进度条盖住。
+.immersive-root.skin-fume-native-background .immersive-progressbar {
+  z-index: 3;
+}
+
 .rnp-cover {
   --rnp-cover-size: min(400px, 20vw, 42vh);
   position: relative;

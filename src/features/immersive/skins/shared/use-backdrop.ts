@@ -62,6 +62,10 @@ export function useBackdrop() {
     // 底栏四项：控制条自己的行为，所有面板都跟随
     'always-show-bottombar': settings.alwaysShowBottomBar,
     'rnp-bottom-progressbar': settings.bottomProgressbar,
+    // 浮名原生背景由不透明画布铺满，需让独立进度条浮到皮肤层之上；
+    // 其他背景与主题继续沿用全局层序，避免扩大例外范围。
+    'skin-fume-native-background':
+      activeSkin.value.id === 'fume' && settings.folia.backgroundMode === 'native',
     // 明暗主题与专辑主色：沉浸页整体配色，与「哪个面板」无关
     [`rnp-${activeColorScheme.value}`]: true,
     [`accent-color-${settings.accentColorVariant}`]: true
