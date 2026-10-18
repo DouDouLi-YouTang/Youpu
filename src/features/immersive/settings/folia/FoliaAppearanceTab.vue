@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
 import {
   type ColorScheme,
   type FoliaColorScheme,
@@ -12,6 +14,12 @@ import {
  * 后者控制歌词与背景的四色来源。默认「跟随歌曲」保留逐歌主题。
  */
 const settings = useImmersiveSettingsStore()
+
+/**
+ * 逐词关键词着色只有流光与浮名真正消费。倾诉的逐字脉冲由自己的适配层
+ * 决定颜色，不读 `wordColors`；在它的设置里展示这个开关会形成一个无效选项。
+ */
+const supportsWordColoring = computed(() => settings.skin === 'glow' || settings.skin === 'fume')
 
 const colorSchemeOptions = [
   { label: '夜间', value: 'dark' as ColorScheme },
@@ -39,7 +47,7 @@ const colorModeOptions = [
       <a-segmented v-model:value="settings.folia.colorMode" :options="colorModeOptions" block />
       <span class="setting-note">「跟随歌曲」会从当前封面生成每首歌独立配色</span>
     </div>
-    <div class="setting-row">
+    <div v-if="supportsWordColoring" class="setting-row">
       <a-checkbox v-model:checked="settings.folia.wordColoring">逐词关键词着色</a-checkbox>
       <span class="setting-note">关闭后，所有歌词使用同一套正文 / 高亮配色</span>
     </div>
