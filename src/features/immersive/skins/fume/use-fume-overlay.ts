@@ -49,7 +49,7 @@ import type { SmoothClock } from '../shared/use-smooth-clock'
 import {
   SUBTITLE_OVERLAY_OPACITY,
   resolveSubtitleTracks,
-  resolveUpcomingPreview,
+  resolveSubtitlePreview,
   type SubtitleTrack
 } from '../shared/subtitle-tracks'
 import {
@@ -161,7 +161,10 @@ export function useFumeOverlay(options: UseFumeOverlayOptions): UseFumeOverlayRe
     if (subtitleRows.value.length > 0) return []
     const index = activeLine.index.value
     if (index < 0) return []
-    return resolveUpcomingPreview(options.lines.value.slice(index + 1, index + 3))
+    return resolveSubtitlePreview(
+      options.lines.value.slice(index + 1, index + 3),
+      settings.folia.subtitleContentMode
+    )
   })
 
   /** 副字幕字号（浮名自己的档位，倍率固定 1）—— 次级轨道的降档在共享组件里 */

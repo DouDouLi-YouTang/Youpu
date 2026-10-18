@@ -16,6 +16,7 @@ import {
   resolveSubtitleRoles,
   resolveSubtitleSlots,
   resolveSubtitleTracks,
+  resolveSubtitlePreview,
   resolveUpcomingPreview,
   scaleSubtitleFontSize
 } from './subtitle-tracks'
@@ -152,6 +153,12 @@ describe('下一句预览', () => {
   it('候选不足时给多少算多少（不补空档）', () => {
     expect(resolveUpcomingPreview([{ text: '只有一句' }])).toEqual(['只有一句'])
     expect(resolveUpcomingPreview([])).toEqual([])
+  })
+
+  it('副字幕档位为隐藏时不显示下一句预览（隐藏是整层语义，不是“这一行没轨道”）', () => {
+    const lines = [{ text: '第一句' }, { text: '第二句' }]
+    expect(resolveSubtitlePreview(lines, 'none')).toEqual([])
+    expect(resolveSubtitlePreview(lines, 'both')).toEqual(['第一句', '第二句'])
   })
 })
 

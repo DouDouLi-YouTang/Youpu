@@ -208,6 +208,20 @@ export function resolveUpcomingPreview(
   return result
 }
 
+/**
+ * 「下一句预览」的设置闸门。
+ *
+ * 预览也是副字幕的一种形态：档位为 `'none'` 时，当前行没有轨道所触发的
+ * 预览必须一起消失，不能把「用户选择隐藏」误当成「这一行恰好没有副字幕」。
+ */
+export function resolveSubtitlePreview(
+  lines: readonly (Pick<LyricLine, 'text'> | null | undefined)[],
+  mode: SubtitleContentMode
+): string[] {
+  if (mode === 'none') return []
+  return resolveUpcomingPreview(lines)
+}
+
 /** 首行（罗马音 / 单条译文）的字重兜底 —— 上游是 500 */
 export const PRIMARY_TRACK_FONT_WEIGHT_FALLBACK = 500
 

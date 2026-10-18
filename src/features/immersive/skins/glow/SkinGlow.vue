@@ -17,7 +17,7 @@ import { useSmoothClock } from '../shared/use-smooth-clock'
 import {
   resolveSubtitleFontSizes,
   resolveSubtitleTracks,
-  resolveUpcomingPreview,
+  resolveSubtitlePreview,
   SUBTITLE_OVERLAY_OPACITY
 } from '../shared/subtitle-tracks'
 import type { SkinContext } from '../types'
@@ -208,7 +208,10 @@ const upcomingPreview = computed(() => {
   if (subtitleRows.value.length > 0) return []
   const index = activeLine.index.value
   if (index < 0) return []
-  return resolveUpcomingPreview(activeLine.lines.value.slice(index + 1, index + 3))
+  return resolveSubtitlePreview(
+    activeLine.lines.value.slice(index + 1, index + 3),
+    settings.folia.subtitleContentMode
+  )
 })
 
 /** 副字幕字号（倍率固定 1）：副字幕基准档 + 预览档（次级降档在组件内做） */
