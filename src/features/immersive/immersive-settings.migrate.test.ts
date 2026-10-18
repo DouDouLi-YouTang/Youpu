@@ -20,9 +20,9 @@ import { DEFAULT_SKIN_ID } from './skins/types'
  * 迁移函数本身是纯的，但「迁移真正被用对」要靠 store 里那套读 localStorage → 搬进扁平设置
  * → 写回的流程，所以 store 的用例也放在这里 —— 它们共用下面同一个 localStorage stub。
  *
- * 结构背景（2026-10-11 用户定）：设置**只有一份**，属于「经典」面板，扁平挂在 store 顶层；
- * 「倾诉」没有设置。所以这里不存在「写入某个面板的桶」这种事，迁移也只把 v2 分桶数据里的
- * **classic 那一桶**取出来当全局设置（tilt 桶按设计丢弃）。
+ * 结构背景：经典设置**只有一份**，扁平挂在 store 顶层；Folia 三主题另用 `folia`
+ * 共享字段。迁移只把 v2 分桶数据里的 **classic 那一桶**取出来当全局经典设置，
+ * 历史 tilt 桶按设计丢弃。
  *
  * vitest 是 **node 环境**（没有 jsdom）：storage 得自己造一个最小实现，
  * 同时挂给 `vi.stubGlobal('localStorage', ...)`（store 的 `readPersistedRaw` 裸读它）
@@ -148,7 +148,7 @@ describe('settingsFromBucketed 取 classic 桶，只搬运已知键', () => {
     expect('lyricContributorsDisplay' in result).toBe(false)
   })
 
-  it('tilt 桶里的值不会漏进来（倾诉没有设置，那一桶按设计丢弃）', () => {
+  it('tilt 桶里的值不会漏进来（历史分桶按设计丢弃）', () => {
     const result = settingsFromBucketed(bucketed({ bgDim: 20 }, { lyricFontSize: 64, bgBlur: 1 }))
     expect(result).toEqual({ bgDim: 20 })
     expect('lyricFontSize' in result).toBe(false)

@@ -251,7 +251,7 @@ export function buildSubtitleTextShadow(
  * ⚠️ 三项**都**要乘 `scale`：只乘中间项是常见的移植错误 —— 那样缩放到触到
  * 上下界时就会失效（大屏上字号不跟着变大，小窗口里压不下去）。
  *
- * 本项目 Folia 系皮肤固定 `scale = 1`（没有设置面板），保留参数是为了与上游公式
+ * 本项目 Folia 系皮肤固定 `scale = 1`（不套用经典排版滑杆），保留参数是为了与上游公式
  * 保持同样的形状，将来接设置时不用改公式。
  */
 export function resolveSubtitleClampSize(

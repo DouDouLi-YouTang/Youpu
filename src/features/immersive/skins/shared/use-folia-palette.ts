@@ -60,8 +60,8 @@ export interface FoliaPaletteSources {
 /**
  * 取当前生效的面板配色。
  *
- * ⚠️ 明暗档由**沉浸页通用项** `settings.colorScheme` 决定（不是面板外观设置）——
- * 两个 Folia 系皮肤都没有设置面板，但明暗是这一页的行为，两边都跟随。
+ * ⚠️ 明暗档由 Folia 共享设置 `settings.folia.colorScheme` 决定（不是经典面板外观设置），
+ * 三套 Folia 主题共用，由「外观」页签控制。
  * `'auto'` 按系统偏好解析，与外壳的 class 一致。
  *
  * ## 为什么把 `isDaylight` 也返回出去

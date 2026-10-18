@@ -145,10 +145,10 @@ function resolveModeColors(
  * 等结果回来再替换 —— 而不是首帧给一个透明/白底再突然变深，
  * 后者在深色档下是一次明显的白闪。
  *
- * ## 明暗档读的是沉浸页通用项
+ * ## 明暗档读的是 Folia 共享设置
  *
- * 与 `use-folia-palette` 同一口径：`settings.colorScheme`（`'auto'` 按系统偏好解析）。
- * 两个 Folia 系皮肤都没有自己的设置面板，但明暗是这一页的行为，两边都跟随。
+ * 与 `use-folia-palette` 同一口径：`settings.folia.colorScheme`
+ * （`'auto'` 按系统偏好解析），三套 Folia 主题共享。
  */
 export function useSongTheme({
   coverUrl,

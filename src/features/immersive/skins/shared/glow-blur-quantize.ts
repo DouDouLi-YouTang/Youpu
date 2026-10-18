@@ -20,7 +20,7 @@
  * ## 本项目的取舍
  *
  * 照 Folia 的做法**只在 Linux 上默认开启**：其它平台的泄漏每天几 MB，不值得为它牺牲观感。
- * 与 Folia 的差别是这里**不读 localStorage**：Folia 系皮肤都没有设置面板，
+ * 与 Folia 的差别是这里**不读 localStorage**：Folia 系皮肤不暴露该平台开关，
  * 多一个持久化开关却不给它入口，等于埋一个永远改不动的状态。将来要暴露成设置项，
  * 在这里接 store 即可，调用方一行不用改。
  */
@@ -53,7 +53,7 @@ export function isGlowBlurQuantized(): boolean {
   return glowBlurQuantized
 }
 
-/** 改开关（本项目没有设置入口，保留它同时也是单测覆盖两条分支的唯一途径） */
+/** 改开关（本项目不暴露入口，保留它同时也是单测覆盖两条分支的唯一途径） */
 export function setGlowBlurQuantized(enabled: boolean): void {
   glowBlurQuantized = enabled
 }
