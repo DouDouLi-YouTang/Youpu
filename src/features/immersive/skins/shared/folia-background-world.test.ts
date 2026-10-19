@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import {
   resolveCenteredFoliaBackgroundMatrix,
+  resolveFoliaBackgroundBlurGeometry,
   resolveFoliaBackgroundMatrix,
   resolveFoliaBackgroundSurfaceStyle,
+  resolveFoliaBackgroundWorldStyle,
   resolveFoliaBackgroundWorld
 } from './folia-background-world'
 
@@ -137,5 +139,60 @@ describe('resolveFoliaBackgroundSurfaceStyle', () => {
       width: '100%',
       height: '100%'
     })
+  })
+})
+
+describe('resolveFoliaBackgroundBlurGeometry', () => {
+  it('关闭模糊时完全不生成外扩层', () => {
+    expect(resolveFoliaBackgroundBlurGeometry(0)).toEqual({ blurPx: 0, insetPx: 0 })
+  })
+
+  it('外扩距离按模糊半径三倍向上取整，覆盖 Chromium 的模糊核支持范围', () => {
+    expect(resolveFoliaBackgroundBlurGeometry(1)).toEqual({ blurPx: 1, insetPx: 3 })
+    expect(resolveFoliaBackgroundBlurGeometry(7.5)).toEqual({ blurPx: 7.5, insetPx: 23 })
+    // 设置面板上限 40px → 120px 外扩，实测可完全消除四边半透明残留
+    expect(resolveFoliaBackgroundBlurGeometry(40)).toEqual({ blurPx: 40, insetPx: 120 })
+  })
+
+  it('非法或负数模糊值按关闭处理，不产生负外扩', () => {
+    expect(resolveFoliaBackgroundBlurGeometry(-4)).toEqual({ blurPx: 0, insetPx: 0 })
+    expect(resolveFoliaBackgroundBlurGeometry(Number.NaN)).toEqual({
+      blurPx: 0,
+      insetPx: 0
+    })
+    expect(resolveFoliaBackgroundBlurGeometry(Number.POSITIVE_INFINITY)).toEqual({
+      blurPx: 0,
+      insetPx: 0
+    })
+  })
+})
+
+describe('resolveFoliaBackgroundWorldStyle', () => {
+  it('模糊外扩时把 world 原点补偿回视口左上角', () => {
+    const world = {
+      width: 1800,
+      height: 1440,
+      viewportWidth: 1000,
+      viewportHeight: 800
+    }
+    expect(resolveFoliaBackgroundWorldStyle(world, 20)).toEqual({
+      left: '20px',
+      top: '20px',
+      width: '1800px',
+      height: '1440px',
+      transform: 'matrix(1, 0, 0, 1, -400, -320)'
+    })
+  })
+
+  it('非法或负数外扩值按 0 补偿，不产生负位移', () => {
+    const world = {
+      width: 1800,
+      height: 1440,
+      viewportWidth: 1000,
+      viewportHeight: 800
+    }
+    expect(resolveFoliaBackgroundWorldStyle(world, -5).left).toBe('0px')
+    expect(resolveFoliaBackgroundWorldStyle(world, Number.NaN).top).toBe('0px')
+    expect(resolveFoliaBackgroundWorldStyle(world, Number.POSITIVE_INFINITY).left).toBe('0px')
   })
 })

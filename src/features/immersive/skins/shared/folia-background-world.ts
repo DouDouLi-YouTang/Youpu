@@ -28,6 +28,40 @@ export interface FoliaSkinBackgroundHandle {
   syncView(view: FoliaBackgroundView): void
 }
 
+/**
+ * 覆盖背景模糊的几何参数。
+ *
+ * CSS `filter: blur()` 会把自身边缘一起模糊成半透明。若直接作用在铺满视口的层上，
+ * 四周就会露出宿主的浅色底，看起来像一圈白边。这里把模糊层向外扩，再由外层
+ * `overflow: hidden` 裁掉多余部分。
+ */
+export interface FoliaBackgroundBlurGeometry {
+  /** 实际作用在背景内容上的模糊半径（px） */
+  blurPx: number
+  /** 模糊层向四边外扩的距离（px） */
+  insetPx: number
+}
+
+/**
+ * 把设置里的模糊值换算成可安全裁切的几何参数。
+ *
+ * `0` 必须保持完全无模糊、无外扩；否则关闭模糊时仍会生成一个无意义的合成层。
+ * 外扩距离取 `ceil(blur * 3)`：Chromium 用三次盒式模糊近似高斯，`blur(r)` 的
+ * 采样支持范围约等于 `3r`，只有外扩到 `3r` 才能让视口边缘落在核之外。
+ *
+ * 实测（2048×962、`blur(40px)`、纯黑背景）：
+ *  - 外扩 `2r`（80px）：四边残留约 4% 透明，宿主浅色底透出，肉眼可见白边；
+ *  - 外扩 `3r`（120px）：边缘与原图一致，无残留。
+ */
+export function resolveFoliaBackgroundBlurGeometry(blurPx: number): FoliaBackgroundBlurGeometry {
+  const blur = Number.isFinite(blurPx) ? Math.max(0, blurPx) : 0
+  if (blur === 0) return { blurPx: 0, insetPx: 0 }
+  return {
+    blurPx: blur,
+    insetPx: Math.ceil(blur * 3)
+  }
+}
+
 export interface FoliaBackgroundWorldSource {
   width: number
   height: number
@@ -128,6 +162,27 @@ export function resolveFoliaBackgroundSurfaceStyle(
     top: `${top}px`,
     width: `${Math.max(right - left, 1)}px`,
     height: `${Math.max(bottom - top, 1)}px`
+  }
+}
+
+/**
+ * 世界容器的定位样式。
+ *
+ * 模糊层为了隐藏模糊透明边会向外扩，world 的坐标原点随之外移。这里显式把
+ * world 放回视口左上角，保证 `resolveFoliaBackgroundMatrix` 的相机矩阵仍以
+ * 视口为基准；否则模糊值一改，背景与文字就会整体错位。
+ */
+export function resolveFoliaBackgroundWorldStyle(
+  world: FoliaBackgroundWorld,
+  blurInsetPx: number
+): Record<string, string> {
+  const inset = Number.isFinite(blurInsetPx) ? Math.max(0, blurInsetPx) : 0
+  return {
+    left: `${inset}px`,
+    top: `${inset}px`,
+    width: `${world.width}px`,
+    height: `${world.height}px`,
+    transform: resolveCenteredFoliaBackgroundMatrix(world)
   }
 }
 

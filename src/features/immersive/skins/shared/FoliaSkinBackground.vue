@@ -11,9 +11,11 @@ import { audioBands } from '@/features/immersive/use-audio-bands'
 import type { AudioBands } from '@/features/immersive/use-audio-bands'
 import type { SmoothClock } from './use-smooth-clock'
 import {
+  resolveFoliaBackgroundBlurGeometry,
   resolveCenteredFoliaBackgroundMatrix,
   resolveFoliaBackgroundMatrix,
   resolveFoliaBackgroundSurfaceStyle,
+  resolveFoliaBackgroundWorldStyle,
   type FoliaBackgroundView,
   type FoliaBackgroundWorld,
   type FoliaSkinBackgroundHandle
@@ -56,13 +58,12 @@ const isTransparent = computed(() => backgroundMode.value === 'transparent')
 const overlayMode = computed(() => backgroundMode.value as FoliaBackgroundMode)
 const worldRef = ref<HTMLElement | null>(null)
 const surfaceRef = ref<HTMLElement | null>(null)
+const blurGeometry = computed(() =>
+  resolveFoliaBackgroundBlurGeometry(settings.folia.backgroundBlur)
+)
 const worldStyle = computed<Record<string, string> | undefined>(() =>
   props.world
-    ? {
-        width: `${props.world.width}px`,
-        height: `${props.world.height}px`,
-        transform: resolveCenteredFoliaBackgroundMatrix(props.world)
-      }
+    ? resolveFoliaBackgroundWorldStyle(props.world, blurGeometry.value.insetPx)
     : undefined
 )
 const surfaceStyle = computed<Record<string, string> | undefined>(() =>
@@ -152,10 +153,26 @@ function readAudioBands(): AudioBands {
   }
 }
 
+/**
+ * 只把不透明度放在裁切层上。模糊不能直接加在这里：这一层刚好铺满视口，
+ * CSS 模糊会把四边一起化掉，露出 `.immersive-root` 的底色（白边）。
+ */
 const overlayStyle = computed<Record<string, string>>(() => ({
-  opacity: String(settings.folia.backgroundOpacity / 100),
-  filter: settings.folia.backgroundBlur > 0 ? `blur(${settings.folia.backgroundBlur}px)` : 'none'
+  opacity: String(settings.folia.backgroundOpacity / 100)
 }))
+
+/**
+ * 模糊层必须比视口大一圈。外扩值只跟模糊半径有关；浮名有 world 时，
+ * `resolveFoliaBackgroundWorldStyle` 会同时把 world 原点补偿回视口左上角，
+ * 相机同步仍然只改 `.folia-background-world` 的 transform。
+ */
+const blurLayerStyle = computed<Record<string, string>>(() => {
+  const geometry = blurGeometry.value
+  return {
+    inset: `-${geometry.insetPx}px`,
+    filter: geometry.blurPx > 0 ? `blur(${geometry.blurPx}px)` : 'none'
+  }
+})
 </script>
 
 <template>
@@ -163,29 +180,31 @@ const overlayStyle = computed<Record<string, string>>(() => ({
     <slot />
   </template>
   <div v-else-if="!isTransparent" class="folia-skin-background" :style="overlayStyle">
-    <div
-      ref="worldRef"
-      class="folia-background-world"
-      :class="{ 'has-world': Boolean(props.world) }"
-      :style="worldStyle"
-    >
+    <div class="folia-background-blur" :style="blurLayerStyle">
       <div
-        ref="surfaceRef"
-        class="folia-background-surface"
+        ref="worldRef"
+        class="folia-background-world"
         :class="{ 'has-world': Boolean(props.world) }"
-        :style="surfaceStyle"
+        :style="worldStyle"
       >
-        <FoliaBackground
-          :mode="overlayMode"
-          :cover-url="props.coverUrl"
-          :palette="props.palette"
-          :is-daylight="props.isDaylight"
-          :paused="props.paused"
-          :seed="props.coverUrl ?? 'default'"
-          :audio-power="readAudioPower"
-          :audio-bands="readAudioBands"
-          :config="props.config"
-        />
+        <div
+          ref="surfaceRef"
+          class="folia-background-surface"
+          :class="{ 'has-world': Boolean(props.world) }"
+          :style="surfaceStyle"
+        >
+          <FoliaBackground
+            :mode="overlayMode"
+            :cover-url="props.coverUrl"
+            :palette="props.palette"
+            :is-daylight="props.isDaylight"
+            :paused="props.paused"
+            :seed="props.coverUrl ?? 'default'"
+            :audio-power="readAudioPower"
+            :audio-bands="readAudioBands"
+            :config="props.config"
+          />
+        </div>
       </div>
     </div>
   </div>
@@ -198,6 +217,14 @@ const overlayStyle = computed<Record<string, string>>(() => ({
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
+  transform: translateZ(0);
+}
+
+.folia-background-blur {
+  position: absolute;
+  /* 模糊层本身不能裁切：它已经向外扩了一圈，若这里再裁会把外扩部分
+     连同模糊核一起切掉，白边会重新出现。裁切由最外层负责。 */
+  overflow: visible;
   transform: translateZ(0);
 }
 
