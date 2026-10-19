@@ -23,10 +23,9 @@
 
 整体气质是「安静」，没有背景装饰，靠排版本身制造节奏。
 
-> 本项目里「倾诉」**没有设置**（2026-10-11 定）：它不读经典那套沉浸设置的外观字段
-> （背景恒为「几何」、永不显示封面、排版与字体全部用内置常量），只跟随少数沉浸页通用项
-> （明暗主题 / 专辑主色 / 底栏四项 / 演示模式 / 歌词偏移）。下文所有「用户可调」字样
-> 都是 Folia 的行为，本项目一律取内置默认值。
+> 2026-10-19 起「倾诉」有 Folia 设置页：背景可由「原生（几何）」切到共享覆盖背景，
+> 字体链与字重可由 `settings.folia.fonts.tilt` 调整；字号、行距、分段与封面仍用内置值，
+> 不读取经典面板的外观字段。下文所有「用户可调」字样若指排版参数，本项目仍取内置默认值。
 
 ---
 
@@ -226,12 +225,10 @@ Folia 用 `MotionValue<number>` + `currentTime.on('change')` 订阅；
 ### 8.3 字体
 
 Folia 有 `Theme` 对象（`fontFamilyStack` / `fontWeight` 等）；
-本项目对应的是沉浸设置里的 `customFont` + `customFontFamily` 数组 + `lyricFontWeight`，
-它们通过 CSS 变量 `--lyric-font-size` / `--rnp-lyric-original-weight` 注入到沉浸层根元素
-（由 `skins/shared/use-backdrop.ts` 注入，经典面板可取用）。
-
-⚠️ **倾诉整个没有设置面板**（2026-10-11 用户定）：它的外观全部固定，不读上面那几个字段。
-字号倍率固定 `TILT_FONT_SCALE = 1` —— 倾诉下右上角根本没有设置按钮，设置面板也就打不开。
+倾听取 `settings.folia.fonts.tilt` 的 `custom` / `families` / `weight`；字体栈由
+`folia-font-settings.ts` 统一转义并追加主题内置族，字重默认仍为正文 400、倾斜段 300。
+它不读经典的 `customFont` / `customFontFamily` / `lyricFontWeight`，字号倍率仍固定
+`TILT_FONT_SCALE = 1`。
 
 **字重已扁平化**（2026-10-11 换内置字体后发现，用户确认接受）：
 `FONT_WEIGHT_PLAIN = 400` / `FONT_WEIGHT_TILT = 300`，但两个内置字体**各自只有 400 一个字面**，
@@ -245,7 +242,7 @@ Folia 有 `Theme` 对象（`fontFamilyStack` / `fontWeight` 等）；
 将来若给内置字体补了细字面，这里不用动就能自动生效；测量与渲染共用同一个常量，
 回落到 400 也是两边一起回落。）
 
-**字体也是内置常量**（2026-10-11 用户定：「换成俏皮一点的字体」）：
+**默认字体是内置常量**（2026-10-11 用户定：「换成俏皮一点的字体」，2026-10-19 起可被当前主题覆盖）：
 
 ```
 'ZCOOL KuaiLe', 'M PLUS Rounded 1c', sans-serif

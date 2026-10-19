@@ -479,11 +479,12 @@ npm 已把它作为传递依赖装好（实测 `npm ls @vueuse/core` -> `motion-
 
 流光是**并列的新皮肤**（不是替换经典），所以：
 
-- 新建 `skins/<id>/` 目录，`index.ts` 里 `defineSkin({ hasSettings: false, order: 2 })`；
-- `hasSettings: false` -> 沉浸页右上角不出现设置按钮、根节点不套用经典那套外观 class /
+- 新建 `skins/<id>/` 目录，`index.ts` 里 `defineSkin({ hasSettings: true, settingsKind: 'folia', order: 2 })`；
+- `settingsKind: 'folia'` -> 沉浸页显示 Folia 五个页签；根节点不套用经典那套外观 class /
   CSS 变量（见 `shared/use-backdrop.ts` 的两档说明）；
 - **不读** `settings.lyricFontSize` / `lyricFontWeight` / `customFontFamily` ——
-  字号倍率固定为 1（对应 Folia 的 `lyricsFontScale = 1` 默认），字体用内置衬线字体
+  字号倍率固定为 1（对应 Folia 的 `lyricsFontScale = 1` 默认），字体栈由
+  `settings.folia.fonts.glow` 决定；关闭自定义字体时使用内置衬线字体
   `'Folia Noto Serif SC'`（已在 `src/assets/fonts/fonts.scss` 注册）。
 
 唯一的例外是**沉浸页通用项**（明暗 / 主色 / 底栏 / 演示模式 / **歌词偏移**）—— 两边都读。
@@ -501,7 +502,7 @@ Folia 的 `Theme` 与本项目的差异（本项目没有独立的 Theme 对象�
 | `secondaryColor` | 深色 `#71717a` / 浅色 `#44403c` |
 | `animationIntensity` | 本项目无对应设置 -> 固定 `'normal'`（见 §10.5） |
 | `wordColors` | 本项目无对应设置 -> 空（取色回退到 `accentColor`） |
-| `fontStyle` / `fontFamily` | 固定衬线内置字体（§10.3） |
+| `fontStyle` / `fontFamily` | 内置衬线为兜底；可由 `settings.folia.fonts.glow` 自定义（§10.3） |
 
 配色取值来源：`…/services/baseThemes.ts` 的 `DEFAULT_THEME`（暗）与 `DAYLIGHT_THEME`（亮）。
 
