@@ -3,8 +3,8 @@ import { computed } from 'vue'
 
 import GeometricBackground from '../../GeometricBackground.vue'
 import { DEFAULT_COMMON_BACKGROUND_OPACITY } from '../shared/host-props'
-import type { FoliaTheme } from '../types'
-import { resolveCommonLayerPlan } from './common-layer-plan'
+import type { FoliaPaperBounds, FoliaTheme } from '../types'
+import { resolveCommonGeometryStyle, resolveCommonLayerPlan } from './common-layer-plan'
 import FluidCoverLayer from './FluidCoverLayer.vue'
 
 /**
@@ -72,6 +72,8 @@ const props = defineProps<{
   coverColorOpacity: number
   disableGeometricBackground: boolean
   disableVignette: boolean
+  /** 浮名覆盖背景的几何构图边界；其它调用方不传即铺满世界。 */
+  paperBounds?: FoliaPaperBounds
 }>()
 
 /** 三层的落位判断全在 common-layer-plan.ts（每条都对应一个「写错了也不报错」的坑） */
@@ -89,6 +91,8 @@ const backgroundLayerStyle = computed(() => ({
   backgroundColor: props.theme.backgroundColor,
   opacity: String(plan.value.backgroundOpacity)
 }))
+
+const geometryStyle = computed(() => resolveCommonGeometryStyle(props.paperBounds))
 
 defineExpose({ plan, defaultOpacity: DEFAULT_COMMON_BACKGROUND_OPACITY })
 </script>
@@ -110,6 +114,7 @@ defineExpose({ plan, defaultOpacity: DEFAULT_COMMON_BACKGROUND_OPACITY })
       v-if="plan.showGeometric"
       class="folia-common-geometric"
       :class="{ 'is-vignette-off': !plan.showVignette }"
+      :style="geometryStyle"
     >
       <!--
         `paint-background=false`：底色归上面第 2 层（逐歌主题），几何层必须透明，

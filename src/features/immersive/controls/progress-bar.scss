@@ -99,6 +99,9 @@
   z-index: 1;
   height: 28px;
   padding: 2px 0;
+  /* 命中区归进度条自己：内容层，以及开启模糊后向外扩的 `.folia-background-blur`，
+     都可能覆盖这条 28px 区域。不能靠“它们碰巧不吃事件”来保证滑块可拖。 */
+  pointer-events: auto;
   transition:
     bottom 0.2s ease,
     transform 0.3s ease,

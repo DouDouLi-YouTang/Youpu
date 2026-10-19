@@ -104,7 +104,7 @@ describe('resolveFoliaBackgroundMatrix', () => {
 })
 
 describe('resolveFoliaBackgroundSurfaceStyle', () => {
-  it('Common 对齐纸张包围盒，其余模式铺满文章世界', () => {
+  it('所有覆盖背景都铺满文章世界（纸张边界不能拿来裁主题底色）', () => {
     const world = {
       width: 2000,
       height: 3000,
@@ -113,10 +113,10 @@ describe('resolveFoliaBackgroundSurfaceStyle', () => {
       paperBounds: { left: 100, top: 200, right: 1700, bottom: 2600 }
     }
     expect(resolveFoliaBackgroundSurfaceStyle('common', world)).toEqual({
-      left: '100px',
-      top: '200px',
-      width: '1600px',
-      height: '2400px'
+      left: '0',
+      top: '0',
+      width: '100%',
+      height: '100%'
     })
     expect(resolveFoliaBackgroundSurfaceStyle('sora', world)).toEqual({
       left: '0',
@@ -126,7 +126,7 @@ describe('resolveFoliaBackgroundSurfaceStyle', () => {
     })
   })
 
-  it('Common 没有纸张边界时回退铺满世界', () => {
+  it('Common 没有纸张边界时同样铺满世界', () => {
     const world = {
       width: 2000,
       height: 3000,

@@ -200,6 +200,7 @@ const blurLayerStyle = computed<Record<string, string>>(() => {
             :is-daylight="props.isDaylight"
             :paused="props.paused"
             :seed="props.coverUrl ?? 'default'"
+            :paper-bounds="props.world?.paperBounds"
             :audio-power="readAudioPower"
             :audio-bands="readAudioBands"
             :config="props.config"

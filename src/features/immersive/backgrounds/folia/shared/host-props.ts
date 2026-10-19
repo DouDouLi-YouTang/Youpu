@@ -2,6 +2,7 @@ import type {
   FoliaAudioBands,
   FoliaBackgroundConfig,
   FoliaBackgroundMode,
+  FoliaPaperBounds,
   FoliaTheme
 } from '../types'
 
@@ -33,6 +34,8 @@ export interface FoliaChildPropOptions {
   coverColorOpacity: number
   disableGeometricBackground: boolean
   disableVignette: boolean
+  /** 浮名 Common 的几何构图边界；其它模式不会收到。 */
+  paperBounds?: FoliaPaperBounds
   /** 已换算到 Folia 0–255 量纲的读取函数 */
   audioPower: () => number
   audioBands: () => FoliaAudioBands
@@ -99,7 +102,8 @@ export function resolveFoliaChildProps(options: FoliaChildPropOptions): Record<s
         useCoverColorBg: options.useCoverColorBg,
         coverColorOpacity: options.coverColorOpacity,
         disableGeometricBackground: options.disableGeometricBackground,
-        disableVignette: options.disableVignette
+        disableVignette: options.disableVignette,
+        paperBounds: options.paperBounds
       }
   }
 }

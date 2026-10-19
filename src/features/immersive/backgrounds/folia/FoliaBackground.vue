@@ -6,6 +6,7 @@ import {
   type FoliaAudioBands,
   type FoliaBackgroundConfig,
   type FoliaBackgroundMode,
+  type FoliaPaperBounds,
   type FoliaPalette
 } from './types'
 import {
@@ -76,6 +77,8 @@ const props = defineProps<{
   config?: FoliaBackgroundConfig
   /** 几何层重掷种子（common 模式用；不传则按 'default'） */
   seed?: string | number
+  /** 浮名 Common 的纸张边界；其它模式会忽略。 */
+  paperBounds?: FoliaPaperBounds
 }>()
 
 const theme = shallowRef(themeFromPalette(props.palette))
@@ -125,6 +128,7 @@ const childProps = computed<Record<string, unknown>>(() =>
     paused: props.paused,
     staticMode: staticMode.value,
     seed: props.seed ?? 'default',
+    paperBounds: props.paperBounds,
     ...common.value,
     audioPower: readAudioPower,
     audioBands: readAudioBands,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { resolveCommonLayerPlan } from './common-layer-plan'
+import { resolveCommonGeometryStyle, resolveCommonLayerPlan } from './common-layer-plan'
 
 const base = {
   useCoverColorBg: false,
@@ -81,5 +81,41 @@ describe('resolveCommonLayerPlan', () => {
       showGeometric: false,
       showVignette: false
     })
+  })
+})
+
+describe('resolveCommonGeometryStyle', () => {
+  it('把纸张边界换算成独立几何层', () => {
+    expect(resolveCommonGeometryStyle({ left: 120, top: 80, right: 920, bottom: 1680 })).toEqual({
+      left: '120px',
+      top: '80px',
+      width: '800px',
+      height: '1600px',
+      right: 'auto',
+      bottom: 'auto'
+    })
+  })
+
+  it('反向边界先归正', () => {
+    expect(resolveCommonGeometryStyle({ left: 920, top: 1680, right: 120, bottom: 80 })).toEqual({
+      left: '120px',
+      top: '80px',
+      width: '800px',
+      height: '1600px',
+      right: 'auto',
+      bottom: 'auto'
+    })
+  })
+
+  it('退化的边界仍保留至少 1px 的可渲染尺寸', () => {
+    expect(resolveCommonGeometryStyle({ left: 40, top: 50, right: 40, bottom: 50 })).toMatchObject({
+      width: '1px',
+      height: '1px'
+    })
+  })
+
+  it('没有边界时回退到外壳的 inset 铺满', () => {
+    expect(resolveCommonGeometryStyle(undefined)).toEqual({ inset: '0' })
+    expect(resolveCommonGeometryStyle(null)).toEqual({ inset: '0' })
   })
 })

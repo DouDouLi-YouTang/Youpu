@@ -103,7 +103,8 @@ describe('resolveFoliaChildProps 名字表', () => {
         useCoverColorBg: true,
         coverColorOpacity: 0.5,
         disableGeometricBackground: true,
-        disableVignette: true
+        disableVignette: true,
+        paperBounds: { left: 10, top: 20, right: 300, bottom: 400 }
       })
     )
     expect(props.useCoverColorBg).toBe(true)
@@ -111,6 +112,16 @@ describe('resolveFoliaChildProps 名字表', () => {
     expect(props.disableGeometricBackground).toBe(true)
     expect(props.disableVignette).toBe(true)
     expect(props.seed).toBe('song-1')
+    expect(props.paperBounds).toEqual({ left: 10, top: 20, right: 300, bottom: 400 })
+  })
+
+  it('paperBounds 只透传给 common，其它模式不产生该键', () => {
+    const paperBounds = { left: 10, top: 20, right: 300, bottom: 400 }
+    for (const mode of ['latent', 'nomand', 'monet', 'sora', 'url'] as const) {
+      expect(resolveFoliaChildProps(options({ mode, paperBounds }))).not.toHaveProperty(
+        'paperBounds'
+      )
+    }
   })
 
   it('customImage 只在有配置时给出 URL，否则 null（monet / nomand 共用同一张图）', () => {

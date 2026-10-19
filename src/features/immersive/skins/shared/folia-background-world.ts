@@ -1,4 +1,4 @@
-import type { FumePaperBounds } from '../fume/core/fume-types'
+import type { FoliaPaperBounds } from '@/features/immersive/backgrounds/folia/types'
 
 /**
  * 覆盖背景使用的文章世界。
@@ -11,7 +11,7 @@ export interface FoliaBackgroundWorld {
   height: number
   viewportWidth: number
   viewportHeight: number
-  paperBounds?: FumePaperBounds
+  paperBounds?: FoliaPaperBounds
 }
 
 /** 一帧背景视图；字段名与 `resolveFumeBackgroundView` 的产物一一对应。 */
@@ -65,7 +65,7 @@ export function resolveFoliaBackgroundBlurGeometry(blurPx: number): FoliaBackgro
 export interface FoliaBackgroundWorldSource {
   width: number
   height: number
-  paperBounds?: FumePaperBounds
+  paperBounds?: FoliaPaperBounds
 }
 
 export interface ResolveFoliaBackgroundWorldInput {
@@ -141,28 +141,22 @@ function round(value: number): number {
 }
 
 /**
- * Common 的几何构图以纸张为舞台；其余覆盖背景仍铺满整个文章世界。
+ * 覆盖背景内容层的落位。
+ *
+ * **所有模式都铺满整个文章世界**，不能只给 Common 的纸张包围盒：
+ * Common 的主题底色层画在内容层里；一旦内容层缩成纸张大小，纸张外就没有任何
+ * 不透明像素，会直接透出 `.immersive-root` 的浅色底（浅色主题下就是整片白屏）。
+ * 纸张边界只用于 Common 的几何构图，不是整层的裁切框。
+ *
  * 返回 CSS 尺寸而不是类名，避免模式切换时出现一帧沿用旧布局。
  */
 export function resolveFoliaBackgroundSurfaceStyle(
-  mode: string,
-  world: FoliaBackgroundWorld
+  _mode: string,
+  _world: FoliaBackgroundWorld
 ): Record<string, string> {
-  if (mode !== 'common' || !world.paperBounds) {
-    return { left: '0', top: '0', width: '100%', height: '100%' }
-  }
-
-  const left = Math.min(world.paperBounds.left, world.paperBounds.right)
-  const top = Math.min(world.paperBounds.top, world.paperBounds.bottom)
-  const right = Math.max(world.paperBounds.left, world.paperBounds.right)
-  const bottom = Math.max(world.paperBounds.top, world.paperBounds.bottom)
-
-  return {
-    left: `${left}px`,
-    top: `${top}px`,
-    width: `${Math.max(right - left, 1)}px`,
-    height: `${Math.max(bottom - top, 1)}px`
-  }
+  void _mode
+  void _world
+  return { left: '0', top: '0', width: '100%', height: '100%' }
 }
 
 /**

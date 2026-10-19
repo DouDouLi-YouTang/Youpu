@@ -49,6 +49,19 @@ export const FOLIA_BACKGROUND_ORDER: Record<FoliaBackgroundMode, number> = {
 }
 
 /**
+ * Common 几何层使用的纸张边界。
+ *
+ * 用独立接口而不是直接引用浮名模块的 `FumePaperBounds`：背景组件不应该依赖某个
+ * 皮肤的内部类型；浮名传进来的同名结构可以直接按结构类型赋值。
+ */
+export interface FoliaPaperBounds {
+  left: number
+  top: number
+  right: number
+  bottom: number
+}
+
+/**
  * 主题色。对应 Folia `Theme` 里被背景层读到的四个字段
  * （`fontStyle` / `animationIntensity` 等与背景无关，本项目不透传）。
  */

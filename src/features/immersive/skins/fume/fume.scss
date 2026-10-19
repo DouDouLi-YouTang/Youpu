@@ -17,6 +17,10 @@
   // 覆盖背景在 z-index:0，本层放文字/字幕/加载卡，必须压在背景之上
   z-index: 2;
   overflow: hidden;
+  // 内容层整屏铺满，但只有可交互元素（如果有）能接收事件。若这里保持 auto，
+  // 它会盖在 fixed 进度条（z-index 1）上，拖动手柄的 mousedown 会落空 —— 表现为
+  // 进度条看得见却完全拖不动。
+  pointer-events: none;
 }
 
 // 空态层：宿主里的一个居中 flex 容器。
