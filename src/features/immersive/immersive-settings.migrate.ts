@@ -9,6 +9,7 @@ import {
   type FoliaSkinId,
   type ImmersiveSettings
 } from './immersive-settings.model'
+import { normalizeFoliaFontSettings } from './folia-font-settings'
 import { DEFAULT_SKIN_ID } from './skins/types'
 
 /**
@@ -139,10 +140,14 @@ export function normalizeFoliaSettings(
   const raw = (isRecord(target.folia) ? target.folia : {}) as Record<string, unknown>
   const hasBackgroundModes = Object.prototype.hasOwnProperty.call(raw, 'backgroundModes')
   const rawModes = isRecord(raw.backgroundModes) ? raw.backgroundModes : null
+  const rawFonts = isRecord(raw.fonts) ? raw.fonts : null
   const backgroundModes = Object.fromEntries(FOLIA_SKIN_IDS.map((id) => [id, 'native'])) as Record<
     FoliaSkinId,
     FoliaBackgroundChoice
   >
+  const fonts = Object.fromEntries(
+    FOLIA_SKIN_IDS.map((id) => [id, normalizeFoliaFontSettings(rawFonts?.[id])])
+  ) as FoliaSettings['fonts']
 
   if (hasBackgroundModes && rawModes) {
     for (const id of FOLIA_SKIN_IDS) {
@@ -166,6 +171,7 @@ export function normalizeFoliaSettings(
     subtitleBlur: typeof raw.subtitleBlur === 'boolean' ? raw.subtitleBlur : defaults.subtitleBlur,
     colorMode: pickEnum(raw.colorMode, FOLIA_COLOR_SCHEMES, defaults.colorMode),
     backgroundModes,
+    fonts,
     backgroundOpacity: clampNumber(raw.backgroundOpacity, 0, 100, defaults.backgroundOpacity),
     backgroundBlur: clampNumber(raw.backgroundBlur, 0, 40, defaults.backgroundBlur),
     wordColoring: typeof raw.wordColoring === 'boolean' ? raw.wordColoring : defaults.wordColoring

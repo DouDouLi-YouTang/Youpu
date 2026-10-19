@@ -38,7 +38,8 @@
   // 缩放放在 font-size 上而不是 transform: scale()，因为它是**排版尺度**：
   // 大字号占更多宽度与行高，换行与居中要按放大后的尺寸算（transform 不参与布局）。
   font-size: calc(var(--tilt-font-size, 5.625rem) * var(--tilt-row-scale, 1));
-  font-weight: 400;
+  // 字重由 TiltLine 根据 Folia 字体设置写入 CSS 变量；变量缺省时保持原来的 400。
+  font-weight: var(--tilt-plain-font-weight, 400);
   letter-spacing: 0.08em;
   line-height: 1.35;
   white-space: nowrap;
@@ -52,7 +53,8 @@
   // 见 tilt-adapter.ts 的 FONT_WEIGHT_TILT 注释（含实测数据）。
   &.is-tilt {
     font-style: italic;
-    font-weight: 300;
+    // 自定义字重时普通段与倾斜段统一；未自定义时仍是 400 / 300 的内置档。
+    font-weight: var(--tilt-tilt-font-weight, 300);
     letter-spacing: 0.15em;
     line-height: 1.25;
     color: var(--tilt-accent-color, var(--rnp-accent-color, inherit));

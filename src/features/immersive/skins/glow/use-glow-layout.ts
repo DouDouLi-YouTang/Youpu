@@ -27,6 +27,9 @@
  * 字体栈从**渲染元素**（`stage`）的 computed style 读，不由本模块写死：这样
  * `fonts.scss` 里改字体栈、或将来接入自定义字体，测量自动跟上。字重同理 ——
  * `GLOW_FONT_WEIGHT` 与 `glow-word.scss` 的 `font-weight` 是一对契约，同时改。
+ *
+ * 接入 Folia 字体设置后，字体栈 / 有效字重可由调用方显式传入（更准确）；
+ * 未传时才回退到从舞台元素读 computed style / `GLOW_FONT_WEIGHT`。
  */
 
 import { computed, toValue, type MaybeRefOrGetter, type Ref } from 'vue'
@@ -51,6 +54,10 @@ export interface UseGlowLayoutOptions {
   lineStartMs: MaybeRefOrGetter<number>
   /** 字体就绪标识：变化即重测（见文件头第 3 条） */
   fontKey: MaybeRefOrGetter<unknown>
+  /** 显式字体栈（自定义字体链）；不传时从 stage 的 computed style 读 */
+  fontFamily?: MaybeRefOrGetter<string | null | undefined>
+  /** 显式字重（有效值）；不传时使用 GLOW_FONT_WEIGHT */
+  fontWeight?: MaybeRefOrGetter<number | null | undefined>
   /** 渲染元素：从它读字体栈（族名继承自这里，逐词不覆盖） */
   stage: Ref<HTMLElement | null>
   /** 视口宽度（px）—— `0` / 非有限值时不产出布局（还没测到） */
@@ -77,12 +84,21 @@ export function useGlowLayout(options: UseGlowLayoutOptions): UseGlowLayoutResul
     const pxFontSize = resolvePixelFontSize(width, readRootFontSizePx(), GLOW_FONT_SCALE)
     if (!(pxFontSize > 0)) return null
 
-    const fontStack = readFontStack(options.stage.value)
+    const explicitFontStack = toValue(options.fontFamily)
+    const fontStack =
+      typeof explicitFontStack === 'string' && explicitFontStack.trim().length > 0
+        ? explicitFontStack.trim()
+        : readFontStack(options.stage.value)
+    const explicitWeight = toValue(options.fontWeight)
+    const fontWeight =
+      typeof explicitWeight === 'number' && Number.isFinite(explicitWeight)
+        ? explicitWeight
+        : GLOW_FONT_WEIGHT
     const wordWidths = measureWordWidths(
       words.map((word) => word.text),
       pxFontSize,
       fontStack,
-      GLOW_FONT_WEIGHT
+      fontWeight
     )
 
     return buildWordLayout({

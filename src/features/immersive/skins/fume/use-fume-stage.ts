@@ -87,6 +87,7 @@ import {
 import { createFumeRetiredSnapshotQueue } from './render/retired-snapshot-queue'
 import { FUME_BLOCK_MEASURE } from './measure/fume-block-measure'
 import { FUME_IDLE_TIME_DRIFT } from './fume-adapter'
+import { resolveFumeThemeFingerprint } from './core/theme-fingerprint'
 
 /** 舞台逻辑尺寸（CSS px）—— 排版与绘制共用同一个来源（`FumeStage` 的 resize 事件） */
 export interface FumeStageSize {
@@ -339,22 +340,6 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
     return getSnapshot(spec, block, pendingGetSnapshotNow)
   }
 
-  /**
-   * 主题指纹（§11.1 的失效清单）。用 `\u0000` 分隔而不是 `:` —— 字体栈里的
-   * 族名可能含冒号，用冒号拼串会让「两个不同的主题」算出同一个指纹。
-   */
-  function resolveThemeFingerprint(theme: FumeTheme): string {
-    return [
-      theme.name,
-      theme.primaryColor,
-      theme.secondaryColor,
-      theme.accentColor,
-      theme.fontStyle,
-      theme.fontFamily ?? '',
-      (theme.fontFamilyStack ?? []).join(',')
-    ].join('\u0000')
-  }
-
   /** 每帧入口 */
   function draw(now: number): void {
     if (disposed) return
@@ -400,7 +385,7 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
      * 比对的是字符串指纹而不是对象引用 —— `theme` 是 `computed` 出来的新对象，
      * 按引用比会**每帧都判不等**，等于每帧重建全部快照。
      */
-    const themeFingerprint = resolveThemeFingerprint(theme)
+    const themeFingerprint = resolveFumeThemeFingerprint(theme)
     if (themeFingerprint !== lastThemeFingerprint) {
       lastThemeFingerprint = themeFingerprint
       retireSnapshotCache()

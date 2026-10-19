@@ -16,7 +16,9 @@
   white-space: nowrap;
   // 行高是**排版尺度**：1.22 让词在放大 1.4 倍时不至于把上下行挤开（上游原值）
   line-height: 1.22;
-  font-weight: 700;
+  // 有效字重由 GlowLine 按当前 Folia 字体设置写入；缺省时保持上游 700。
+  // canvas 测宽使用同一个值（见 use-glow-layout 与 glow-measure）。
+  font-weight: var(--glow-font-weight, 700);
 }
 
 .glow-word-glow {

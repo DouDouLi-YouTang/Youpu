@@ -26,8 +26,8 @@ import {
 /**
  * 与 `ImmersiveSettings` 接口一一对应的字段清单（保持字典序）。
  * `satisfies` 在**编译期**挡下清单里写错的键；下面的运行期断言再挡下模型里漏写的键。
- * 「倾诉」不读其中一部分字段（背景 / 封面 / 歌词排版 / 字体），但它们仍属这份设置，
- * 不因为倾诉不读而少一行 —— 所以清单是整份接口，不是某个面板的消费清单。
+ * Folia 三套主题不读经典外观字段（背景 / 封面 / 歌词排版 / 字体），但它们仍属这份设置，
+ * 不因为 Folia 不读而少一行 —— 所以清单是整份接口，不是某个面板的消费清单。
  */
 const EXPECTED_KEYS = [
   'accentColorVariant',
@@ -147,6 +147,11 @@ describe('createDefaultSettings 与其他模块耦合的默认值（改动属于
         glow: 'native',
         fume: 'native'
       },
+      fonts: {
+        tilt: { custom: false, families: [], weight: null },
+        glow: { custom: false, families: [], weight: null },
+        fume: { custom: false, families: [], weight: null }
+      },
       backgroundOpacity: 100,
       backgroundBlur: 0,
       wordColoring: true
@@ -163,10 +168,24 @@ describe('createDefaultSettings 与其他模块耦合的默认值（改动属于
     const b = createDefaultSettings()
     expect(a.folia).not.toBe(b.folia)
     expect(a.folia.backgroundModes).not.toBe(b.folia.backgroundModes)
+    expect(a.folia.fonts).not.toBe(b.folia.fonts)
+    expect(a.folia.fonts.tilt).not.toBe(a.folia.fonts.glow)
+    expect(a.folia.fonts.tilt).not.toBe(a.folia.fonts.fume)
+    expect(a.folia.fonts.glow).not.toBe(a.folia.fonts.fume)
+    expect(a.folia.fonts.tilt.families).not.toBe(a.folia.fonts.glow.families)
+    expect(a.folia.fonts.tilt.families).not.toBe(a.folia.fonts.fume.families)
+    expect(a.folia.fonts.glow.families).not.toBe(a.folia.fonts.fume.families)
+    for (const skin of ['tilt', 'glow', 'fume'] as const) {
+      expect(a.folia.fonts[skin]).not.toBe(b.folia.fonts[skin])
+      expect(a.folia.fonts[skin].families).not.toBe(b.folia.fonts[skin].families)
+    }
     a.folia.colorMode = 'mono'
     a.folia.backgroundModes.tilt = 'sora'
+    a.folia.fonts.tilt.custom = true
+    a.folia.fonts.tilt.families.push('OnlyA')
     expect(b.folia.colorMode).toBe('song')
     expect(b.folia.backgroundModes.tilt).toBe('native')
+    expect(b.folia.fonts.tilt).toEqual({ custom: false, families: [], weight: null })
   })
 })
 

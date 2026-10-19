@@ -533,11 +533,11 @@ export interface FumeTheme {
   secondaryColor: string
   /** 字体风格档，决定字体栈与默认字重 */
   fontStyle: 'sans' | 'serif' | 'mono'
-  /** 自定义字体族（本项目不用；保留以对齐 §7.1 的缓存键口径） */
+  /** 自定义字体族（当前由 Folia 字体设置写入；缺省时使用内置衬线族） */
   fontFamily?: string
-  /** 自定义字体栈 */
+  /** 自定义字体族链，按优先级排序；内置衬线族由测量层追加 */
   fontFamilyStack?: string[]
-  /** 全局字重覆盖。给定后 hero / body 的默认 780 / 640 失效（§4.8） */
+  /** 自定义字重覆盖。给定后 hero / body 的默认 780 / 640 失效（§4.8） */
   fontWeight?: number
   /** 动画强度档，决定辉光基量（§8.1） */
   animationIntensity: 'calm' | 'normal' | 'chaotic'

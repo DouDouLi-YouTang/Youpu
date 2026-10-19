@@ -102,8 +102,8 @@ export function useBackdrop() {
   // 自定义字体（参考项目 font-settings.js：注入到 body，我们注入到根元素）
   // customFontFamily 是回退链数组，转 CSS font-family 列表('font1', 'font2')
   //
-  // Folia 三套主题拿到空对象：**自定义字体是「经典」的设置**（Folia 外观固定），
-  // 这里不注入就是「不覆盖」。倾诉自己的字体是 tilt.scss 里的内置栈
+  // Folia 三套主题的字体由 `folia.fonts` 按主题单独管理；这里不注入经典字段，
+  // 避免经典自定义字体串到 Folia。倾诉内置字体声明在 tilt.scss
   // （'ZCOOL KuaiLe', 'M PLUS Rounded 1c', sans-serif，2026-10-11 定）；
   // 它的排版测量（use-tilt-layout 的 readFontFamily）从 DOM 读 computed style，
   // 读到的正是那个内置栈 —— 而不是「应用默认字体」（那是加内置字体之前的说法）。

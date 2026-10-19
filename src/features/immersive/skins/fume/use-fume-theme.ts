@@ -25,6 +25,11 @@ import { resolveArticleOverviewCamera } from './core/camera'
 import type { FumeAudioLevels, FumeTheme } from './core/fume-types'
 import type { FumeLayoutThemeKey } from './core/layout-key'
 import {
+  buildFumeFontKey,
+  resolveFumeFontSelection,
+  type FumeFontSelection
+} from './fume-font-settings'
+import {
   FUME_HERO_SCALE,
   FUME_LYRICS_FONT_SCALE,
   resolveFumeBackgroundSeed,
@@ -83,7 +88,26 @@ export function useFumeTheme({ ctx }: UseFumeThemeOptions): UseFumeThemeResult {
   const clock = useSmoothClock({ lines })
 
   const { fontState } = useFoliaSerifReady()
-  watch(fontState, clearSegmentMeasureCache, { immediate: true, flush: 'sync' })
+
+  /**
+   * 浮名自己的字体设置。
+   *
+   * 不按 `settings.skin` 动态取槽位：异步皮肤切换时旧组件可能短暂存活，
+   * 若跟着当前 skin 读，会把新主题的字体配置串到旧画布上。缺档位时回退主题默认，
+   * 兼容迁移前状态。
+   */
+  const fontSettings = computed(() => settings.folia.fonts?.fume ?? null)
+  const fontSelection = computed<FumeFontSelection>(() =>
+    resolveFumeFontSelection(fontSettings.value)
+  )
+  /**
+   * 字体文件状态、自定义字体链和字重共用同一个响应式键。
+   *
+   * 这个 watch 必须先清测量缓存，再让下面的 `useFumeLayout` watch 触发重排；
+   * `flush: 'sync'` 保证两者在同一次响应式更新里按注册顺序执行。
+   */
+  const fontKey = computed(() => buildFumeFontKey(fontState.value, fontSelection.value))
+  watch(fontKey, clearSegmentMeasureCache, { immediate: true, flush: 'sync' })
 
   const theme = computed<FumeTheme>(() => ({
     name: isDaylight.value ? 'daylight' : 'midnight',
@@ -91,6 +115,8 @@ export function useFumeTheme({ ctx }: UseFumeThemeOptions): UseFumeThemeResult {
     accentColor: palette.value.accent,
     secondaryColor: palette.value.secondary,
     fontStyle: 'serif',
+    fontFamilyStack: fontSelection.value.fontFamilyStack,
+    fontWeight: fontSelection.value.fontWeight,
     animationIntensity: 'normal',
     wordColors: wordColors.value
   }))
@@ -115,7 +141,7 @@ export function useFumeTheme({ ctx }: UseFumeThemeOptions): UseFumeThemeResult {
     layoutTheme,
     lyricsFontScale: computed(() => FUME_LYRICS_FONT_SCALE),
     heroScale: computed(() => FUME_HERO_SCALE),
-    fontKey: fontState
+    fontKey
   })
 
   const backgroundWorld = useFoliaBackgroundWorld({

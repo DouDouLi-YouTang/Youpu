@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
 import { SHORT_LAST_SEGMENT_SCALE } from './tilt-adapter'
 import type { TiltCharModel, TiltSegmentModel, TiltLineModel } from './use-tilt-timing'
 
@@ -12,8 +14,24 @@ import type { TiltCharModel, TiltSegmentModel, TiltLineModel } from './use-tilt-
  *
  * 组件不含任何时间逻辑：所有延迟/时长都由 use-tilt-timing 算好，这里只把它们写成 CSS 变量。
  */
-defineProps<{ model: TiltLineModel; paused: boolean }>()
+const props = defineProps<{
+  model: TiltLineModel
+  paused: boolean
+  /** 当前主题实际要用的字体栈（与排版测量同源） */
+  fontFamily: string
+  /** 普通段字重（与排版测量同源） */
+  plainWeight: number
+  /** 倾斜段字重（与排版测量同源） */
+  tiltWeight: number
+}>()
 const emit = defineEmits<{ seek: [] }>()
+
+/** 主歌词自己的字体与字重；设置在根节点，逐段通过继承 / CSS 变量读取。 */
+const lineStyle = computed<Record<string, string>>(() => ({
+  fontFamily: props.fontFamily,
+  '--tilt-plain-font-weight': String(props.plainWeight),
+  '--tilt-tilt-font-weight': String(props.tiltWeight)
+}))
 
 /** 逐字动画参数 → CSS 变量（关键帧在 tilt-line.scss，名字与这里的变量一一对应） */
 function charStyle(char: TiltCharModel): Record<string, string> {
@@ -33,7 +51,7 @@ function rowStyle(segment: TiltSegmentModel): Record<string, string> | undefined
 </script>
 
 <template>
-  <div class="tilt-line" :class="{ 'is-paused': paused }">
+  <div class="tilt-line" :class="{ 'is-paused': paused }" :style="lineStyle">
     <button
       v-for="segment in model.segments"
       :key="segment.key"

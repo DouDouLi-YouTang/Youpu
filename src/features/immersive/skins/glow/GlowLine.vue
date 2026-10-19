@@ -50,6 +50,10 @@ const props = defineProps<{
   enableWordRotation: boolean
   /** 主行字号（clamp 字符串，已含倍率） */
   fontSize: string
+  /** 当前主题实际字体栈（与 `useGlowLayout` 的 canvas 测量同源） */
+  fontFamily: string
+  /** 当前主题有效字重（与 canvas 测量同源） */
+  fontWeight: number
   /** 未唱 / 唱过的字色 */
   baseColor: string
   /** 正在唱的字色（**未命中关键词**时的回退色） */
@@ -107,7 +111,11 @@ const wordActiveColors = computed(() =>
   <motion.div
     class="glow-line"
     :class="[lineConfig.justifyContent, lineConfig.alignItems]"
-    :style="{ perspective: `${lineConfig.perspective}px` }"
+    :style="{
+      perspective: `${lineConfig.perspective}px`,
+      fontFamily,
+      '--glow-font-weight': String(fontWeight)
+    }"
     :initial="containerMotion.initial"
     :animate="containerMotion.animate"
     :exit="containerMotion.exit"

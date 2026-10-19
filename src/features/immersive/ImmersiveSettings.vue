@@ -10,6 +10,7 @@ import FontTab from '@/features/immersive/settings/FontTab.vue'
 import FoliaAppearanceTab from '@/features/immersive/settings/folia/FoliaAppearanceTab.vue'
 import FoliaAboutTab from '@/features/immersive/settings/folia/FoliaAboutTab.vue'
 import FoliaBackgroundTab from '@/features/immersive/settings/folia/FoliaBackgroundTab.vue'
+import FoliaFontTab from '@/features/immersive/settings/folia/FoliaFontTab.vue'
 import FoliaLyricsTab from '@/features/immersive/settings/folia/FoliaLyricsTab.vue'
 import LyricTab from '@/features/immersive/settings/LyricTab.vue'
 import type { SkinDefinition } from '@/features/immersive/skins/types'
@@ -17,7 +18,7 @@ import type { SkinDefinition } from '@/features/immersive/skins/types'
 /**
  * 沉浸层设置面板外壳。页签按当前皮肤的 `settingsKind` 切换：
  *  - 经典：6 个 tab（外观 / 封面 / 背景 / 歌词 / 字体 / 关于）；
- *  - Folia 三主题：外观 / 歌词 / 背景 / 关于，只编辑共享的 `folia` 设置。
+ *  - Folia 三主题：外观 / 歌词 / 背景 / 字体 / 关于，只编辑共享的 `folia` 设置。
  *
  * ⚠️ **面板主题切换不在本面板内**（2026-10-11 用户要求）：「歌词面板样式是在外部设置，
  * 直接在顶部控制栏里选歌词面板的主题」。所以这里既没有「样式」tab、也没有页内面板
@@ -51,6 +52,7 @@ const FOLIA_TABS = [
   { key: 'appearance', label: '外观' },
   { key: 'lyric', label: '歌词' },
   { key: 'background', label: '背景' },
+  { key: 'font', label: '字体' },
   { key: 'about', label: '关于' }
 ] as const
 type TabKey = (typeof CLASSIC_TABS)[number]['key']
@@ -102,6 +104,7 @@ watch(
           <FoliaAppearanceTab v-show="activeTab === 'appearance'" />
           <FoliaLyricsTab v-show="activeTab === 'lyric'" />
           <FoliaBackgroundTab v-show="activeTab === 'background'" />
+          <FoliaFontTab v-show="activeTab === 'font'" />
         </template>
         <AboutTab v-if="kind === 'classic'" v-show="activeTab === 'about'" />
         <FoliaAboutTab v-else v-show="activeTab === 'about'" />

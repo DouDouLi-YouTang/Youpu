@@ -42,7 +42,7 @@ export const GLOW_BREATHING_FLOAT_MULTIPLIER = 1
  * 靠 `glow-adapter.test.ts` 锁住两边同值。
  *
  * Folia 的 700 是「主题字重」的兜底（`resolveThemeFontWeight(theme, 700)`）：
- * 本项目的 Folia 系皮肤不读设置面板，所以直接取兜底值。
+ * 项目默认取这个值，用户可在 `folia.fonts.glow.weight` 覆盖。
  */
 export const GLOW_FONT_WEIGHT = 700
 

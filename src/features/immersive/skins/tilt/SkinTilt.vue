@@ -2,6 +2,10 @@
 import { computed, ref } from 'vue'
 
 import GeometricBackground from '@/features/immersive/backgrounds/GeometricBackground.vue'
+import {
+  buildFoliaFontStack,
+  createFoliaFontSettingsDefaults
+} from '@/features/immersive/folia-font-settings'
 import { useImmersiveSettingsStore } from '@/features/immersive/immersive-settings.store'
 import { useLyricStore } from '@/stores/lyric.store'
 import { usePlayerStore } from '@/stores/player.store'
@@ -12,11 +16,13 @@ import type { SkinContext } from '../types'
 import TiltLine from './TiltLine.vue'
 import {
   CHAR_FADE_DURATION_MS,
+  FONT_WEIGHT_PLAIN,
+  FONT_WEIGHT_TILT,
   TILT_FONT_SCALE,
   resolveLineEndMs,
   type TiltLineSource
 } from './tilt-adapter'
-import { useTiltFontReady } from './use-tilt-font'
+import { TILT_LYRIC_FONT_FAMILIES, useTiltFontReady } from './use-tilt-font'
 import { useTiltLayout } from './use-tilt-layout'
 import { useTiltTiming } from './use-tilt-timing'
 
@@ -128,15 +134,38 @@ const stageRef = ref<HTMLElement | null>(null)
 // 字体文件是异步到位的，就绪前 canvas 只能拿兜底字量宽；把它接进下面的 fontKey，
 // 字体一到位就重测一次，避免「按兜底字宽缩放、真字体来了却不重算」。
 const { fontState } = useTiltFontReady()
+/**
+ * 当前主题（倾诉）的字体配置。
+ *
+ * `fonts` 由持久化迁移保证存在；缺档位时回退默认值，避免旧存档 / 热重载期间
+ * 模板拿到 undefined。自定义字体链只作用于 `TiltLine`，不挂到 `.tilt-lyric` ——
+ * 空态歌名、副字幕仍是主题内置字体与内置字重。
+ */
+const fontSettings = computed(() => settings.folia.fonts?.tilt ?? createFoliaFontSettingsDefaults())
+const tiltFontFamily = computed(() =>
+  buildFoliaFontStack(
+    fontSettings.value.custom ? fontSettings.value.families : [],
+    TILT_LYRIC_FONT_FAMILIES
+  )
+)
+const tiltPlainWeight = computed(() => fontSettings.value.weight ?? FONT_WEIGHT_PLAIN)
+const tiltTiltWeight = computed(() => fontSettings.value.weight ?? FONT_WEIGHT_TILT)
+/**
+ * 字体相关输入的统一失效键：字体就绪、字体链、两个实际字重任一变化都要重测。
+ * 与 `use-tilt-layout` 的 `clearCache + computed` 配合，保证[真字体/自定义字体]量宽一致。
+ */
+const tiltFontKey = computed(
+  () =>
+    `${fontState.value}|${tiltFontFamily.value}|${tiltPlainWeight.value}|${tiltTiltWeight.value}`
+)
 const { layout } = useTiltLayout({
   source,
   // 字号倍率固定 1：倾诉的字号不是用户的「歌词字体大小」，是它自己的 clamp 档位（见文件头）
   fontScale: TILT_FONT_SCALE,
-  // 字体标识：倾诉不读「自定义字体」设置（没有设置面板），它的字体是内置常量 ——
-  // 这个 key 唯一会变的就是「内置字体加载完成」（pending → ready）。
-  // 布局 hook 只需知道「变过」，不必知道变成了什么：字体族名它自己从
-  // getComputedStyle 读（见该 hook 的 readFontFamily）。
-  fontKey: fontState,
+  fontKey: tiltFontKey,
+  fontFamily: tiltFontFamily,
+  plainWeight: tiltPlainWeight,
+  tiltWeight: tiltTiltWeight,
   panel: panelRef,
   stage: stageRef
 })
@@ -256,6 +285,9 @@ function handleSeek(): void {
             :key="epoch"
             :model="model"
             :paused="paused"
+            :font-family="tiltFontFamily"
+            :plain-weight="tiltPlainWeight"
+            :tilt-weight="tiltTiltWeight"
             @seek="handleSeek"
           />
         </div>

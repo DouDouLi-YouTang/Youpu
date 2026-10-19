@@ -20,6 +20,10 @@
  * store 会把这些**原样再导出**，所以消费方继续从 store 导入即可。
  */
 
+import { createFoliaFontSettingsDefaults, type FoliaFontSettings } from './folia-font-settings'
+
+export type { FoliaFontSettings }
+
 export type DisplayMode = 'all' | 'lyric-only' | 'cover-only'
 export type ColorScheme = 'dark' | 'light' | 'auto'
 export type AccentColorVariant = 'off' | 'primary' | 'secondary' | 'tertiary'
@@ -123,6 +127,8 @@ export interface FoliaSettings {
    * `transparent` = 只保留主题纯色底，不挂载任何背景组件。
    */
   backgroundModes: Record<FoliaSkinId, FoliaBackgroundChoice>
+  /** 三套主题各自保存的字体族与字重；`weight = null` 表示使用主题内置字重。 */
+  fonts: Record<FoliaSkinId, FoliaFontSettings>
   /** 背景透明度 0–100；100 = 原样 */
   backgroundOpacity: number
   /** 背景模糊 px，0–40；0 = 不模糊 */
@@ -159,7 +165,7 @@ export const PERSIST_KEY = 'immersive-settings'
  * 仅在外层包裹 TypeScript 字面量联合类型约束取值范围。
  *
  * Folia 三套主题不读其中与面板外观有关的部分（显示模式 / 封面 / 背景 /
- * 歌词排版 / 字体）；它们的专属项在 `folia` 下。
+ * 歌词排版 / 字体）；背景模式、字体链与字重按主题保存在 `folia` 下。
  */
 export interface ImmersiveSettings {
   // ── 外观 ──
@@ -306,6 +312,11 @@ export function createDefaultSettings(): ImmersiveSettings {
         tilt: 'native',
         glow: 'native',
         fume: 'native'
+      },
+      fonts: {
+        tilt: createFoliaFontSettingsDefaults(),
+        glow: createFoliaFontSettingsDefaults(),
+        fume: createFoliaFontSettingsDefaults()
       },
       backgroundOpacity: 100,
       backgroundBlur: 0,

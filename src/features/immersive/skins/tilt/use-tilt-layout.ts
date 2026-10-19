@@ -109,8 +109,8 @@ function readRemPx(): number {
  * 测量各段在对应字号下的自然宽度，返回最宽值；测量不可用返回 null。
  *
  * 字重 / 字体 / 字间距必须与渲染时一致（笔记 §4），否则量出来的宽度没有意义：
- * 字体族从 DOM 的 computed style 取（自定义字体是通过根元素 inline style 注入的），
- * 字间距 em → px 用当前字号换算。
+ * 字体族与字重优先取调用方传入的显式值（设置页自定义字体 / 字重），缺省时才从
+ * DOM 的 computed style 读内置栈；字间距 em → px 用当前字号换算。
  *
  * `shortLast` 为真时末段字号要乘 SHORT_LAST_SEGMENT_SCALE —— 渲染侧
  * （tilt-line.scss 的 --tilt-row-scale）乘的是 font-size，字号变了宽度就跟着变，
@@ -121,6 +121,8 @@ function measureWidestSegment(
   isTiltFlags: readonly boolean[],
   fontPx: number,
   fontFamily: string,
+  plainWeight: number,
+  tiltWeight: number,
   shortLast: boolean
 ): number | null {
   try {
@@ -129,7 +131,7 @@ function measureWidestSegment(
       const isTilt = isTiltFlags[index] === true
       const isShortLast = shortLast && index === segmentTexts.length - 1
       const px = isShortLast ? fontPx * SHORT_LAST_SEGMENT_SCALE : fontPx
-      const weight = isTilt ? FONT_WEIGHT_TILT : FONT_WEIGHT_PLAIN
+      const weight = isTilt ? tiltWeight : plainWeight
       const font = `${isTilt ? 'italic ' : ''}${weight} ${px}px ${fontFamily}`
       const letterSpacingEm = isTilt ? LETTER_SPACING_EM_TILT : LETTER_SPACING_EM_PLAIN
       const prepared = prepareWithSegments(segmentTexts[index], font, {
@@ -148,6 +150,11 @@ function measureWidestSegment(
   }
 }
 
+/** 规范字重：只接受有限数值；非法值退回内置档位，避免把 `NaN` 拼进 font string。 */
+function resolveMeasuredWeight(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
 /**
  * 布局 hook。
  *
@@ -155,8 +162,11 @@ function measureWidestSegment(
  * @param options.fontScale 字号倍率。倾诉不读设置，恒传 tilt-adapter 的 TILT_FONT_SCALE（=1）
  * @param options.fontKey  字体的可响应标识：变化会触发重新测量。字族本身是从 DOM 的
  *                         computed style 读的（见 readFontFamily），Vue 看不到它变化，
- *                         所以调用方要给一个「字体可能变了」的信号。倾诉传的是内置字体的
- *                         就绪状态（use-tilt-font.ts：异步加载完成 → 重测一次）
+ *                         所以调用方要给一个「字体可能变了」的信号。倾诉把内置字体就绪、
+ *                         自定义字体链和用户字重一起编进这个 key
+ * @param options.fontFamily 显式字体栈；不传时退回元素的 computed style（内置栈）
+ * @param options.plainWeight / options.tiltWeight 普通段与倾斜段的实际字重；
+ *                        不传时保持 tilt-adapter 的内置 400 / 300
  * @param options.panel    排版带元素（测它的 clientWidth 当可用宽度，并用 ResizeObserver 跟随）
  * @param options.stage    舞台元素（测它的 clientHeight 当可用高度，供纵向缩放）
  */
@@ -169,6 +179,9 @@ export function useTiltLayout(options: {
    * 不是字体名（字族从 DOM 读）。
    */
   fontKey: MaybeRefOrGetter<unknown>
+  fontFamily?: MaybeRefOrGetter<string | null | undefined>
+  plainWeight?: MaybeRefOrGetter<number | null | undefined>
+  tiltWeight?: MaybeRefOrGetter<number | null | undefined>
   panel: Ref<HTMLElement | null>
   stage: Ref<HTMLElement | null>
 }): { layout: ComputedRef<TiltLayout | null> } {
@@ -278,7 +291,13 @@ export function useTiltLayout(options: {
     const availableWidth = resolveAvailableWidth(viewportWidth, panelWidth.value)
     if (!(availableWidth > 0)) return null
 
-    const family = readFontFamily(options.panel.value)
+    const explicitFamily = toValue(options.fontFamily)
+    const family =
+      typeof explicitFamily === 'string' && explicitFamily.trim().length > 0
+        ? explicitFamily.trim()
+        : readFontFamily(options.panel.value)
+    const plainWeight = resolveMeasuredWeight(toValue(options.plainWeight), FONT_WEIGHT_PLAIN)
+    const tiltWeight = resolveMeasuredWeight(toValue(options.tiltWeight), FONT_WEIGHT_TILT)
     const baseFontPx = resolveBaseFontPx(viewportWidth, readRemPx())
     const rawFontScale = toValue(options.fontScale)
     const fontScale = Number.isFinite(rawFontScale) && rawFontScale > 0 ? rawFontScale : 1
@@ -297,6 +316,8 @@ export function useTiltLayout(options: {
       segmentTexts.map((_, index) => index === pick.tiltIndex),
       baseWithScale,
       family,
+      plainWeight,
+      tiltWeight,
       pick.shortLastSegment
     )
 
@@ -311,6 +332,8 @@ export function useTiltLayout(options: {
           segmentTexts.map((_, index) => index === pick.tiltIndex),
           baseWithScale,
           family,
+          plainWeight,
+          tiltWeight,
           pick.shortLastSegment
         )
       }

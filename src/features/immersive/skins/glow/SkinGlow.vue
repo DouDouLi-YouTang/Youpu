@@ -4,9 +4,10 @@ import { AnimatePresence, motion } from 'motion-v'
 
 import { useLyricStore } from '@/stores/lyric.store'
 import { usePlayerStore } from '@/stores/player.store'
+import { buildFoliaFontStack, createFoliaFontSettingsDefaults } from '../../folia-font-settings'
 import { useImmersiveSettingsStore } from '../../immersive-settings.store'
 import { resolveSkinEmptyState } from '../shared/empty-state'
-import { useFoliaSerifReady } from '../shared/folia-font'
+import { FOLIA_SERIF_FAMILY, useFoliaSerifReady } from '../shared/folia-font'
 import { isGlowBlurQuantized } from '../shared/glow-blur-quantize'
 import { attachInterludeLines } from '../shared/interlude-lines'
 import SkinEmptyState from '../shared/SkinEmptyState.vue'
@@ -25,6 +26,7 @@ import { buildLineFloat } from './core/word-layout'
 import {
   GLOW_BREATHING_FLOAT_MULTIPLIER,
   GLOW_ENABLE_WORD_ROTATION,
+  GLOW_FONT_WEIGHT,
   GLOW_INTENSITY,
   GLOW_LINE_MAX_WIDTH_REM,
   GLOW_LINE_MIN_HEIGHT_PX,
@@ -97,6 +99,23 @@ const { palette, isDaylight, wordColors } = useFoliaPalette({
 /** 内置衬线字体的就绪信号：变化即重测词宽（见 use-glow-layout） */
 const { fontState } = useFoliaSerifReady()
 
+/** 流光自己的字体设置；缺档位时回退默认，旧存档不会让画面白屏。 */
+const fontSettings = computed(() => settings.folia.fonts?.glow ?? createFoliaFontSettingsDefaults())
+/** 自定义族优先，内置衬线族兜底；最终字符串同时喂给 CSS 与 canvas 测量。 */
+const glowFontFamily = computed(() =>
+  buildFoliaFontStack(
+    fontSettings.value.custom ? fontSettings.value.families : [],
+    [FOLIA_SERIF_FAMILY],
+    'serif'
+  )
+)
+/** 有效字重：未自定义时跟随流光主题的 700；字体开关不覆盖字重。 */
+const glowFontWeight = computed(() => fontSettings.value.weight ?? GLOW_FONT_WEIGHT)
+/** 字体就绪 / 字体链 / 字重任一变都要重算逐词几何。 */
+const glowFontKey = computed(
+  () => `${fontState.value}|${glowFontFamily.value}|${glowFontWeight.value}`
+)
+
 /**
  * 逐帧时钟（整屏一条 rAF）。
  *
@@ -141,7 +160,9 @@ const profile = computed(() =>
 const { layout } = useGlowLayout({
   words: displayWords,
   lineStartMs: () => activeLine.source.value?.timeMs ?? 0,
-  fontKey: fontState,
+  fontKey: glowFontKey,
+  fontFamily: glowFontFamily,
+  fontWeight: glowFontWeight,
   stage: stageRef,
   viewportWidth
 })
@@ -313,6 +334,8 @@ function handleSeek(): void {
             :intensity="GLOW_INTENSITY"
             :enable-word-rotation="GLOW_ENABLE_WORD_ROTATION"
             :font-size="fontSize"
+            :font-family="glowFontFamily"
+            :font-weight="glowFontWeight"
             :base-color="palette.primary"
             :active-color="palette.accent"
             :word-colors="wordColors"

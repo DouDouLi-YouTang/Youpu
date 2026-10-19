@@ -10,7 +10,7 @@ import {
   sanitizeSkinId,
   settingsFromBucketed
 } from './immersive-settings.migrate'
-import { createDefaultSettings, PERSIST_KEY } from './immersive-settings.model'
+import { createDefaultSettings, PERSIST_KEY, type FoliaSettings } from './immersive-settings.model'
 import { useImmersiveSettingsStore } from './immersive-settings.store'
 import { DEFAULT_SKIN_ID } from './skins/types'
 
@@ -232,6 +232,11 @@ describe('normalizeFoliaSettings 补齐 / 纠正嵌套设置', () => {
         glow: 'native',
         fume: 'latent'
       },
+      fonts: {
+        tilt: { custom: true, families: ['Arial', 'SimSun'], weight: 500 },
+        glow: { custom: false, families: ['Folia Noto Serif SC'], weight: 700 },
+        fume: { custom: true, families: ['Microsoft YaHei'], weight: 600 }
+      },
       backgroundOpacity: 42,
       backgroundBlur: 8,
       wordColoring: false
@@ -256,6 +261,11 @@ describe('normalizeFoliaSettings 补齐 / 纠正嵌套设置', () => {
         glow: 'native',
         fume: 'native'
       },
+      fonts: {
+        tilt: { custom: false, families: [], weight: null },
+        glow: { custom: false, families: [], weight: null },
+        fume: { custom: false, families: [], weight: null }
+      },
       backgroundOpacity: 100,
       backgroundBlur: 0,
       wordColoring: true
@@ -274,6 +284,11 @@ describe('normalizeFoliaSettings 补齐 / 纠正嵌套设置', () => {
           glow: 'common',
           fume: 'url'
         },
+        fonts: {
+          tilt: { custom: 'yes', families: [' Arial ', 'Arial', 7], weight: 550 },
+          glow: { custom: false, families: 'SimSun', weight: 700 },
+          fume: 'oops'
+        },
         backgroundOpacity: 900,
         backgroundBlur: -10,
         wordColoring: 'yes'
@@ -289,6 +304,11 @@ describe('normalizeFoliaSettings 补齐 / 纠正嵌套设置', () => {
         tilt: 'native',
         glow: 'native',
         fume: 'native'
+      },
+      fonts: {
+        tilt: { custom: false, families: ['Arial'], weight: null },
+        glow: { custom: false, families: [], weight: 700 },
+        fume: { custom: false, families: [], weight: null }
       },
       backgroundOpacity: 100,
       backgroundBlur: 0,
@@ -369,6 +389,40 @@ describe('normalizeFoliaSettings 补齐 / 纠正嵌套设置', () => {
     })
   })
 
+  it('部分 fonts 只补缺失主题，已有主题只清洗非法字段', () => {
+    const target: { folia?: Record<string, unknown> } = {
+      folia: {
+        ...createDefaultSettings().folia,
+        fonts: {
+          tilt: {
+            custom: true,
+            families: [' Arial ', 'Arial', '', 'SimSun'],
+            weight: 500
+          },
+          glow: {
+            custom: 'yes',
+            families: [' Folia Noto Serif SC ', 8],
+            weight: 450,
+            unknown: true
+          }
+        }
+      }
+    }
+
+    expect(normalizeFoliaSettings(target)).toBe(true)
+    expect(target.folia).toMatchObject({
+      fonts: {
+        tilt: { custom: true, families: ['Arial', 'SimSun'], weight: 500 },
+        glow: { custom: false, families: ['Folia Noto Serif SC'], weight: null },
+        fume: { custom: false, families: [], weight: null }
+      }
+    })
+    const normalizedFonts = (target.folia as { fonts: FoliaSettings['fonts'] }).fonts
+    expect(normalizedFonts.glow).not.toHaveProperty('unknown')
+    expect(normalizedFonts.tilt.families).not.toBe(normalizedFonts.glow.families)
+    expect(normalizedFonts.glow.families).not.toBe(normalizedFonts.fume.families)
+  })
+
   it('流光历史 common 归一为 native，设置页不再出现重复项', () => {
     const target: { folia?: Record<string, unknown> } = {
       folia: {
@@ -393,6 +447,43 @@ describe('normalizeFoliaSettings 补齐 / 纠正嵌套设置', () => {
       expect(normalizeFoliaSettings(target as { folia?: Record<string, unknown> })).toBe(true)
       expect(target.folia).toEqual(createDefaultSettings().folia)
     }
+  })
+
+  it('字体迁移幂等：第二次调用返回 false 且不再替换对象', () => {
+    const target: { folia?: Record<string, unknown> } = {
+      folia: {
+        ...createDefaultSettings().folia,
+        fonts: {
+          tilt: {
+            custom: true,
+            families: [' Arial ', 'SimSun', 'Arial'],
+            weight: 600
+          }
+        }
+      }
+    }
+
+    expect(normalizeFoliaSettings(target)).toBe(true)
+    const normalized = target.folia
+    expect(normalizeFoliaSettings(target)).toBe(false)
+    expect(target.folia).toBe(normalized)
+  })
+
+  it('Folia 字体配置与经典 customFont / customFontFamily 完全隔离', () => {
+    const target: {
+      folia?: FoliaSettings
+      customFont?: boolean
+      customFontFamily?: string[]
+    } = {
+      customFont: true,
+      customFontFamily: ['Classic Font'],
+      folia: createDefaultSettings().folia
+    }
+
+    expect(normalizeFoliaSettings(target)).toBe(false)
+    expect(target.customFont).toBe(true)
+    expect(target.customFontFamily).toEqual(['Classic Font'])
+    expect(target.folia?.fonts).toEqual(createDefaultSettings().folia.fonts)
   })
 })
 
@@ -548,6 +639,11 @@ describe('store.bootstrapSettings 启动引导', () => {
         glow: 'nope',
         fume: 'nope'
       },
+      fonts: {
+        tilt: { custom: 'yes', families: [' Arial ', 'Arial', 1], weight: 450 },
+        glow: { custom: true, families: ['SimSun'], weight: 700 },
+        fume: null
+      },
       backgroundOpacity: 900,
       backgroundBlur: -1,
       wordColoring: 1
@@ -558,8 +654,16 @@ describe('store.bootstrapSettings 启动引导', () => {
     store.bootstrapSettings()
 
     expect(store.lyricFontSize).toBe(40)
-    expect(store.folia).toEqual(createDefaultSettings().folia)
+    expect(store.folia).toEqual({
+      ...createDefaultSettings().folia,
+      fonts: {
+        tilt: { custom: false, families: ['Arial'], weight: null },
+        glow: { custom: true, families: ['SimSun'], weight: 700 },
+        fume: { custom: false, families: [], weight: null }
+      }
+    })
     expect(store.skin).toBe('fume')
+    expect(store.customFontFamily).toEqual(['Microsoft JhengHei UI', 'Microsoft JhengHei'])
   })
 
   it('迁移后把旧字体串收成数组（迁移 → normalize 的顺序不能反），并写回新结构', () => {
