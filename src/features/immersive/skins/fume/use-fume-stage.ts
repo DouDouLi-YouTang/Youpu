@@ -44,6 +44,7 @@
 
 import { onBeforeUnmount, watch, type Ref } from 'vue'
 
+import type { FoliaBackgroundView, FoliaBackgroundWorld } from '../shared/folia-background-world'
 import {
   FUME_BLOCK_OVERSCAN_PX,
   isFumeBlockOnScreen,
@@ -101,6 +102,10 @@ export interface UseFumeStageOptions {
   /** 排好的文章；null = 还没排出来（前奏 / 加载中） */
   article: Ref<FumeArticleLayout | null>
   backgroundScene: Ref<FumeBackgroundScene | null>
+  /** 覆盖背景的固定文章世界；原生背景或透明模式时为 null。 */
+  backgroundWorld?: Ref<FoliaBackgroundWorld | null>
+  /** 同一帧同步覆盖背景视图；不能经过 Vue 响应式，否则会晚于文字一帧。 */
+  onBackgroundView?: (view: FoliaBackgroundView) => void
   /** 总览镜头；`article === null` 时为 null */
   overviewCamera: Ref<{ x: number; y: number; scale: number } | null>
   /** 总览开始时刻（毫秒）；`+Infinity` = 永不 */
@@ -225,6 +230,14 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
    * 纯粹喂给 GC。它们只读、不持有引用，所以复用一个可变对象是安全的。
    */
   const viewportRef = { width: 0, height: 0 }
+  /** 复用同一对象，避免 60fps 下每帧分配一个背景视图。 */
+  const backgroundView: FoliaBackgroundView = {
+    viewportWidth: 0,
+    viewportHeight: 0,
+    cameraX: 0,
+    cameraY: 0,
+    scale: 1
+  }
   /**
    * 唱过文字的渐隐总时长（§6.3）。
    *
@@ -377,6 +390,7 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
     const viewportCenterY = height * 0.5
     const theme = options.theme.value
     const backgroundScene = options.backgroundScene.value
+    const backgroundWorld = options.backgroundWorld?.value ?? null
 
     /**
      * 主题失效（§11.1）：三色 / 字体任一变化都要把两套缓存丢掉。
@@ -396,6 +410,14 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
     // ── ② 无文章：只画背景 ────────────────────────────────────────────────
     const article = options.article.value
     if (!article) {
+      if (backgroundWorld) {
+        backgroundView.viewportWidth = width
+        backgroundView.viewportHeight = height
+        backgroundView.cameraX = backgroundWorld.width * 0.5
+        backgroundView.cameraY = backgroundWorld.height * 0.5
+        backgroundView.scale = 1
+        options.onBackgroundView?.(backgroundView)
+      }
       if (backgroundScene) {
         context.save()
         context.translate(viewportCenterX, viewportCenterY)
@@ -469,6 +491,15 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
     const screenScale = camera.scale
 
     // ── ⑤ 背景层（§9.8 的视差视图） ───────────────────────────────────────
+    if (backgroundWorld) {
+      const view = resolveFumeBackgroundView(backgroundWorld, camera, viewportRef)
+      backgroundView.viewportWidth = width
+      backgroundView.viewportHeight = height
+      backgroundView.cameraX = view.backgroundCameraX
+      backgroundView.cameraY = view.backgroundCameraY
+      backgroundView.scale = view.backgroundScale
+      options.onBackgroundView?.(backgroundView)
+    }
     if (backgroundScene) {
       const view = resolveFumeBackgroundView(backgroundScene, camera, viewportRef)
       context.save()
@@ -627,6 +658,7 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
       options.article,
       options.theme,
       options.backgroundScene,
+      options.backgroundWorld,
       options.overviewCamera,
       options.overviewStartTimeMs
     ],

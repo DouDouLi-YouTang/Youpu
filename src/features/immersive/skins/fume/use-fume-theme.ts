@@ -34,6 +34,7 @@ import { clearSegmentMeasureCache } from './measure/text-measure'
 import { buildFumeBackgroundScene } from './render/background'
 import { useFumeLayout } from './use-fume-layout'
 import type { SkinContext } from '../types'
+import { useFoliaBackgroundWorld } from './use-folia-background-world'
 
 export interface UseFumeThemeOptions {
   ctx: SkinContext
@@ -54,6 +55,7 @@ export interface UseFumeThemeResult {
   isLayoutPending: ReturnType<typeof useFumeLayout>['isLayoutPending']
   isViewportRefreshPending: ReturnType<typeof useFumeLayout>['isViewportRefreshPending']
   backgroundScene: ComputedRef<ReturnType<typeof buildFumeBackgroundScene> | null>
+  backgroundWorld: ReturnType<typeof useFoliaBackgroundWorld>
   overviewCamera: ComputedRef<ReturnType<typeof resolveArticleOverviewCamera> | null>
   overviewStartTimeMs: ComputedRef<number>
   stageStyle: ComputedRef<Record<string, string>>
@@ -114,6 +116,11 @@ export function useFumeTheme({ ctx }: UseFumeThemeOptions): UseFumeThemeResult {
     lyricsFontScale: computed(() => FUME_LYRICS_FONT_SCALE),
     heroScale: computed(() => FUME_HERO_SCALE),
     fontKey: fontState
+  })
+
+  const backgroundWorld = useFoliaBackgroundWorld({
+    article,
+    viewport: stageSize
   })
 
   const backgroundScene = computed(() => {
@@ -183,6 +190,7 @@ export function useFumeTheme({ ctx }: UseFumeThemeOptions): UseFumeThemeResult {
     isLayoutPending,
     isViewportRefreshPending,
     backgroundScene,
+    backgroundWorld,
     overviewCamera,
     overviewStartTimeMs,
     stageStyle,

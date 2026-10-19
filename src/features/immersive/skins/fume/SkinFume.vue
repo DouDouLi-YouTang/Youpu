@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 
 import { colorWithAlpha } from '../shared/color-mix'
 import FoliaSkinBackground from '../shared/FoliaSkinBackground.vue'
+import { resolveFoliaSkinId } from '../../immersive-settings.model'
+import { useImmersiveSettingsStore } from '../../immersive-settings.store'
 import SkinEmptyState from '../shared/SkinEmptyState.vue'
 import SkinSubtitle from '../shared/SkinSubtitle.vue'
 import type { SkinContext } from '../types'
@@ -55,6 +57,7 @@ import FumeLayoutPending from './components/FumeLayoutPending.vue'
  * `ctx.currentLineIndex()` / `ctx.isPlaying()`，届时直接在这里调用即可。
  */
 const props = defineProps<{ ctx: SkinContext }>()
+const settings = useImmersiveSettingsStore()
 
 const {
   palette,
@@ -70,11 +73,27 @@ const {
   isLayoutPending,
   isViewportRefreshPending,
   backgroundScene,
+  backgroundWorld,
   overviewCamera,
   overviewStartTimeMs,
   stageStyle,
   toAudioLevels
 } = useFumeTheme({ ctx: props.ctx })
+
+const backgroundRef = ref<InstanceType<typeof FoliaSkinBackground> | null>(null)
+
+/**
+ * 覆盖背景的当前模式（按主题独立）。
+ * native 的画布背景和 transparent 的空背景都不需要相机同步。
+ */
+const backgroundMode = computed(
+  () => settings.folia.backgroundModes[resolveFoliaSkinId(settings.skin)]
+)
+const mountedBackgroundWorld = computed(() =>
+  backgroundMode.value === 'native' || backgroundMode.value === 'transparent'
+    ? null
+    : backgroundWorld.value
+)
 
 /**
  * 画布之外那一层（副字幕 / 空态 / 加载卡配色）全部在 `use-fume-overlay.ts` ——
@@ -110,6 +129,8 @@ useFumeStage({
   theme,
   article,
   backgroundScene: computed(() => backgroundScene.value),
+  backgroundWorld: computed(() => mountedBackgroundWorld.value),
+  onBackgroundView: (view) => backgroundRef.value?.syncView(view),
   overviewCamera,
   overviewStartTimeMs,
   cameraSpeed: FUME_TUNING.cameraSpeed,
@@ -194,11 +215,13 @@ defineExpose({
 
 <template>
   <FoliaSkinBackground
+    ref="backgroundRef"
     :cover-url="ctx.coverUrl()"
     :palette="palette"
     :is-daylight="isDaylight"
     :paused="!ctx.isPlaying()"
     :clock="clock"
+    :world="mountedBackgroundWorld"
   >
     <!-- 原生档：画布自己画手绘纸面背景，这一层不需要额外背景 -->
   </FoliaSkinBackground>

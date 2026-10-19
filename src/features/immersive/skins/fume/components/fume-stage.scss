@@ -6,7 +6,9 @@
 .fume-stage-host {
   position: absolute;
   inset: 0;
-  overflow: hidden;
+  // 不做 overflow 裁切：覆盖背景由 FoliaSkinBackground 的舞台层自己裁，
+  // 这里再裁会把「只裁背景」变成「连文字 / 字幕 / 加载卡一起裁」。
+  overflow: visible;
   // 宿主本身不吃事件：交互元素（跳转按钮等）由外层单独放行
   pointer-events: none;
 }
