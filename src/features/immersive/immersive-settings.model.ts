@@ -43,9 +43,32 @@ export type ContributorDisplay = 'show' | 'hover' | 'hide'
  */
 export type FoliaColorScheme = 'song' | 'daylight' | 'midnight' | 'mono'
 
+/** 三套 Folia 主题的稳定标识；用于按主题保存背景与字体配置。 */
+export const FOLIA_SKIN_IDS = ['tilt', 'glow', 'fume'] as const
+export type FoliaSkinId = (typeof FOLIA_SKIN_IDS)[number]
+
+/** 设置页展示名（背景 / 字体页签共用）。 */
+export const FOLIA_SKIN_LABELS: Record<FoliaSkinId, string> = {
+  tilt: '倾诉',
+  glow: '流光',
+  fume: '浮名'
+}
+
+/**
+ * 把持久化皮肤 id 归一到 Folia 设置槽位。
+ *
+ * 历史存档里的 `classic` 指的就是「流光」面板；非法值沿用默认皮肤对应的槽位，
+ * 保证迁移永远只有一个明确目标。
+ */
+export function resolveFoliaSkinId(skin: unknown): FoliaSkinId {
+  if (skin === 'tilt' || skin === 'fume') return skin
+  return 'glow'
+}
+
 /** Folia 系主题可选的背景模式；`native` = 该皮肤原本的背景。 */
 export type FoliaBackgroundChoice =
   | 'native'
+  | 'transparent'
   | import('./backgrounds/folia/types').FoliaBackgroundMode
 /**
  * Folia 背景模式（含「原主题背景」）的合法值，供持久化清洗使用。
@@ -57,6 +80,7 @@ export type FoliaBackgroundChoice =
  */
 export const FOLIA_BACKGROUND_CHOICES: readonly FoliaBackgroundChoice[] = [
   'native',
+  'transparent',
   'common',
   'monet',
   'nomand',
@@ -92,8 +116,13 @@ export interface FoliaSettings {
   subtitleBlur: boolean
   /** 文字配色方案；默认 `'song'`，保留逐歌主题 */
   colorMode: FoliaColorScheme
-  /** 背景模式；`native` = 各皮肤原本的背景（倾诉几何 / 流光 common / 浮名手绘纸面） */
-  backgroundMode: FoliaBackgroundChoice
+  /**
+   * 三套主题各自保存的背景模式。
+   *
+   * `native` = 该皮肤原本的背景（倾诉几何 / 流光 Common / 浮名手绘纸面）；
+   * `transparent` = 只保留主题纯色底，不挂载任何背景组件。
+   */
+  backgroundModes: Record<FoliaSkinId, FoliaBackgroundChoice>
   /** 背景透明度 0–100；100 = 原样 */
   backgroundOpacity: number
   /** 背景模糊 px，0–40；0 = 不模糊 */
@@ -273,7 +302,11 @@ export function createDefaultSettings(): ImmersiveSettings {
       subtitleContentMode: 'both',
       subtitleBlur: true,
       colorMode: 'song',
-      backgroundMode: 'native',
+      backgroundModes: {
+        tilt: 'native',
+        glow: 'native',
+        fume: 'native'
+      },
       backgroundOpacity: 100,
       backgroundBlur: 0,
       wordColoring: true

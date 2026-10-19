@@ -14,6 +14,7 @@ import { computed, ref, shallowRef, watch, type ComputedRef, type Ref } from 'vu
 import { useLyricStore } from '@/stores/lyric.store'
 import { usePlayerStore } from '@/stores/player.store'
 import { useImmersiveSettingsStore } from '../../immersive-settings.store'
+import { resolveFoliaSkinId } from '../../immersive-settings.model'
 import { FOLIA_SERIF_FAMILY, useFoliaSerifReady } from '../shared/folia-font'
 import { attachInterludeLines } from '../shared/interlude-lines'
 import { getLineRenderEndTimeMs } from '../shared/render-hints'
@@ -116,7 +117,7 @@ export function useFumeTheme({ ctx }: UseFumeThemeOptions): UseFumeThemeResult {
   })
 
   const backgroundScene = computed(() => {
-    if (settings.folia.backgroundMode !== 'native') return null
+    if (settings.folia.backgroundModes[resolveFoliaSkinId(settings.skin)] !== 'native') return null
     return buildFumeBackgroundScene({
       viewport: stageSize.value,
       world: article.value
@@ -150,7 +151,9 @@ export function useFumeTheme({ ctx }: UseFumeThemeOptions): UseFumeThemeResult {
 
   const stageStyle = computed<Record<string, string>>(() => ({
     backgroundColor:
-      settings.folia.backgroundMode === 'native' ? palette.value.background : 'transparent',
+      settings.folia.backgroundModes[resolveFoliaSkinId(settings.skin)] === 'native'
+        ? palette.value.background
+        : 'transparent',
     fontFamily: `"${FOLIA_SERIF_FAMILY}", serif`
   }))
 

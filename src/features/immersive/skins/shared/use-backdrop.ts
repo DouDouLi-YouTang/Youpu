@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 
 import { LYRIC_TIMING_MAP, useImmersiveSettingsStore } from '../../immersive-settings.store'
+import { resolveFoliaSkinId } from '../../immersive-settings.model'
 import { useEffectiveDisplayMode } from '../../use-skin-context'
 import { useImmersivePlayer } from '../../use-immersive-player'
 import { useActiveSkin } from '../registry'
@@ -65,7 +66,8 @@ export function useBackdrop() {
     // 浮名原生背景由不透明画布铺满，需让独立进度条浮到皮肤层之上；
     // 其他背景与主题继续沿用全局层序，避免扩大例外范围。
     'skin-fume-native-background':
-      activeSkin.value.id === 'fume' && settings.folia.backgroundMode === 'native',
+      activeSkin.value.id === 'fume' &&
+      settings.folia.backgroundModes[resolveFoliaSkinId(activeSkin.value.id)] === 'native',
     // 明暗主题与专辑主色：沉浸页整体配色，与「哪个面板」无关
     [`rnp-${activeColorScheme.value}`]: true,
     [`accent-color-${settings.accentColorVariant}`]: true

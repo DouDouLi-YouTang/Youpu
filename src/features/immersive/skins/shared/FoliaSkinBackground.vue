@@ -3,7 +3,10 @@ import { computed } from 'vue'
 
 import FoliaBackground from '@/features/immersive/backgrounds/folia/FoliaBackground.vue'
 import type { FoliaBackgroundMode } from '@/features/immersive/backgrounds/folia/types'
-import { useImmersiveSettingsStore } from '@/features/immersive/immersive-settings.store'
+import {
+  resolveFoliaSkinId,
+  useImmersiveSettingsStore
+} from '@/features/immersive/immersive-settings.store'
 import { audioBands } from '@/features/immersive/use-audio-bands'
 import type { AudioBands } from '@/features/immersive/use-audio-bands'
 import type { SmoothClock } from './use-smooth-clock'
@@ -30,8 +33,12 @@ const props = defineProps<{
 
 const settings = useImmersiveSettingsStore()
 
-const isNative = computed(() => settings.folia.backgroundMode === 'native')
-const overlayMode = computed(() => settings.folia.backgroundMode as FoliaBackgroundMode)
+const backgroundMode = computed(
+  () => settings.folia.backgroundModes[resolveFoliaSkinId(settings.skin)]
+)
+const isNative = computed(() => backgroundMode.value === 'native')
+const isTransparent = computed(() => backgroundMode.value === 'transparent')
+const overlayMode = computed(() => backgroundMode.value as FoliaBackgroundMode)
 
 /**
  * FoliaBackground 的两个音频入参是**函数**，不是响应式值。
@@ -62,7 +69,7 @@ const overlayStyle = computed<Record<string, string>>(() => ({
   <template v-if="isNative">
     <slot />
   </template>
-  <div v-else class="folia-skin-background" :style="overlayStyle">
+  <div v-else-if="!isTransparent" class="folia-skin-background" :style="overlayStyle">
     <FoliaBackground
       :mode="overlayMode"
       :cover-url="props.coverUrl"

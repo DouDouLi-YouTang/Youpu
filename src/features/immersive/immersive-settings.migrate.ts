@@ -2,7 +2,11 @@ import {
   createDefaultSettings,
   FOLIA_BACKGROUND_CHOICES,
   FOLIA_COLOR_SCHEMES,
+  FOLIA_SKIN_IDS,
+  resolveFoliaSkinId,
+  type FoliaBackgroundChoice,
   type FoliaSettings,
+  type FoliaSkinId,
   type ImmersiveSettings
 } from './immersive-settings.model'
 import { DEFAULT_SKIN_ID } from './skins/types'
@@ -103,15 +107,55 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
   return Math.max(min, Math.min(max, value))
 }
 
+function normalizeBackgroundMode(
+  value: unknown,
+  skin: FoliaSkinId,
+  fallback: FoliaBackgroundChoice
+): FoliaBackgroundChoice {
+  const mode = pickEnum(value, FOLIA_BACKGROUND_CHOICES, fallback)
+  // 流光原生实现就是 Common。历史值 `common` 与显式选择原生是同一个画面，
+  // 归一到 native 后设置项只剩一个真源，也不会再出现重复候选。
+  if (skin === 'glow' && mode === 'common') return 'native'
+  return mode
+}
+
 /**
  * 清洗 Folia 三套主题共用的持久化设置。
  *
  * 旧存档没有 `folia` 时从默认对象补齐；只覆盖缺失或非法的字段，合法值保持不变。
+ * 背景模式按主题拆分：
+ *  - 完全没有 `backgroundModes` 时，把旧 `backgroundMode` 迁移给持久化主题
+ *    （历史 `classic` → 流光，其它保持自己的槽位），其余主题为 native；
+ *  - 已存在 `backgroundModes` 时只逐键校验，缺失 / 非法键各自回退 native，不再读旧字段。
+ *
+ * `skin` 由 store 在 bootstrap 时显式传入；纯函数调用也可从 target.skin 读取。
  * 返回是否发生了修改，供 bootstrap 决定是否写回。
  */
-export function normalizeFoliaSettings(target: { folia?: Partial<FoliaSettings> | null }): boolean {
+export function normalizeFoliaSettings(
+  target: { folia?: Partial<FoliaSettings> | null; skin?: string },
+  skin: unknown = target.skin
+): boolean {
   const defaults = createDefaultSettings().folia
-  const raw = isRecord(target.folia) ? target.folia : {}
+  const raw = (isRecord(target.folia) ? target.folia : {}) as Record<string, unknown>
+  const hasBackgroundModes = Object.prototype.hasOwnProperty.call(raw, 'backgroundModes')
+  const rawModes = isRecord(raw.backgroundModes) ? raw.backgroundModes : null
+  const backgroundModes = Object.fromEntries(FOLIA_SKIN_IDS.map((id) => [id, 'native'])) as Record<
+    FoliaSkinId,
+    FoliaBackgroundChoice
+  >
+
+  if (hasBackgroundModes && rawModes) {
+    for (const id of FOLIA_SKIN_IDS) {
+      backgroundModes[id] = normalizeBackgroundMode(rawModes[id], id, 'native')
+    }
+  } else if (!hasBackgroundModes && raw.backgroundMode !== undefined) {
+    backgroundModes[resolveFoliaSkinId(skin)] = normalizeBackgroundMode(
+      raw.backgroundMode,
+      resolveFoliaSkinId(skin),
+      'native'
+    )
+  }
+
   const next: FoliaSettings = {
     colorScheme: pickEnum(raw.colorScheme, COLOR_SCHEMES, defaults.colorScheme),
     subtitleContentMode: pickEnum(
@@ -121,7 +165,7 @@ export function normalizeFoliaSettings(target: { folia?: Partial<FoliaSettings> 
     ),
     subtitleBlur: typeof raw.subtitleBlur === 'boolean' ? raw.subtitleBlur : defaults.subtitleBlur,
     colorMode: pickEnum(raw.colorMode, FOLIA_COLOR_SCHEMES, defaults.colorMode),
-    backgroundMode: pickEnum(raw.backgroundMode, FOLIA_BACKGROUND_CHOICES, defaults.backgroundMode),
+    backgroundModes,
     backgroundOpacity: clampNumber(raw.backgroundOpacity, 0, 100, defaults.backgroundOpacity),
     backgroundBlur: clampNumber(raw.backgroundBlur, 0, 40, defaults.backgroundBlur),
     wordColoring: typeof raw.wordColoring === 'boolean' ? raw.wordColoring : defaults.wordColoring

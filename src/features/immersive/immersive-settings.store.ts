@@ -89,7 +89,7 @@ export const useImmersiveSettingsStore = defineStore('immersive-settings', {
     bootstrapSettings() {
       let changed = this.migrateBucketedSettings()
       if (normalizeFontFamily(this)) changed = true
-      if (normalizeFoliaSettings(this)) changed = true
+      if (normalizeFoliaSettings(this, this.skin)) changed = true
       if (sanitizeSkinId(this.skin, SKIN_IDS, DEFAULT_SKIN_ID) !== this.skin) {
         this.skin = DEFAULT_SKIN_ID
         changed = true

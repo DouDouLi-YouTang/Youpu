@@ -227,7 +227,11 @@ describe('normalizeFoliaSettings 补齐 / 纠正嵌套设置', () => {
       subtitleContentMode: 'translation',
       subtitleBlur: false,
       colorMode: 'mono',
-      backgroundMode: 'sora',
+      backgroundModes: {
+        tilt: 'sora',
+        glow: 'native',
+        fume: 'latent'
+      },
       backgroundOpacity: 42,
       backgroundBlur: 8,
       wordColoring: false
@@ -247,7 +251,11 @@ describe('normalizeFoliaSettings 补齐 / 纠正嵌套设置', () => {
       colorMode: 'daylight',
       subtitleContentMode: 'both',
       subtitleBlur: true,
-      backgroundMode: 'native',
+      backgroundModes: {
+        tilt: 'native',
+        glow: 'native',
+        fume: 'native'
+      },
       backgroundOpacity: 100,
       backgroundBlur: 0,
       wordColoring: true
@@ -261,7 +269,11 @@ describe('normalizeFoliaSettings 补齐 / 纠正嵌套设置', () => {
         subtitleContentMode: 'lyrics',
         subtitleBlur: 'yes',
         colorMode: 'rainbow',
-        backgroundMode: 'unknown',
+        backgroundModes: {
+          tilt: 'unknown',
+          glow: 'common',
+          fume: 'url'
+        },
         backgroundOpacity: 900,
         backgroundBlur: -10,
         wordColoring: 'yes'
@@ -273,7 +285,11 @@ describe('normalizeFoliaSettings 补齐 / 纠正嵌套设置', () => {
       subtitleContentMode: 'both',
       subtitleBlur: true,
       colorMode: 'song',
-      backgroundMode: 'native',
+      backgroundModes: {
+        tilt: 'native',
+        glow: 'native',
+        fume: 'native'
+      },
       backgroundOpacity: 100,
       backgroundBlur: 0,
       wordColoring: true
@@ -286,13 +302,89 @@ describe('normalizeFoliaSettings 补齐 / 纠正嵌套设置', () => {
     expect(clamped.folia).toMatchObject({ backgroundOpacity: 0, backgroundBlur: 40 })
   })
 
-  it('旧的 url 背景（本项目没有候选内容）回退到 native，避免渲染空背景', () => {
+  it('旧 backgroundMode=url 回退 native，不会渲染空背景', () => {
     const target: { folia?: Record<string, unknown> } = {
-      folia: { ...createDefaultSettings().folia, backgroundMode: 'url' }
+      folia: {
+        ...createDefaultSettings().folia,
+        backgroundMode: 'url'
+      }
+    }
+    delete (target.folia as Record<string, unknown>).backgroundModes
+
+    expect(normalizeFoliaSettings(target, 'tilt')).toBe(true)
+    expect(target.folia).toMatchObject({
+      backgroundModes: { tilt: 'native', glow: 'native', fume: 'native' }
+    })
+  })
+
+  it('旧字段 backgroundMode 只迁移到持久化主题，并且只迁移一次', () => {
+    const target: { folia?: Record<string, unknown> } = {
+      folia: {
+        ...createDefaultSettings().folia,
+        backgroundMode: 'sora'
+      }
+    }
+    delete (target.folia as Record<string, unknown>).backgroundModes
+
+    expect(normalizeFoliaSettings(target, 'fume')).toBe(true)
+    expect(target.folia).toMatchObject({
+      backgroundModes: { tilt: 'native', glow: 'native', fume: 'sora' }
+    })
+    expect(target.folia).not.toHaveProperty('backgroundMode')
+
+    const before = JSON.stringify(target.folia)
+    expect(normalizeFoliaSettings(target, 'fume')).toBe(false)
+    expect(JSON.stringify(target.folia)).toBe(before)
+  })
+
+  it('历史 classic 皮肤把旧背景迁移到流光的槽位', () => {
+    const target: { folia?: Record<string, unknown> } = {
+      folia: {
+        ...createDefaultSettings().folia,
+        backgroundMode: 'monet'
+      }
+    }
+    delete (target.folia as Record<string, unknown>).backgroundModes
+
+    normalizeFoliaSettings(target, 'classic')
+    expect(target.folia).toMatchObject({
+      backgroundModes: { tilt: 'native', glow: 'monet', fume: 'native' }
+    })
+  })
+
+  it('部分 backgroundModes 只补缺失键，非法值与 url 各自回退 native', () => {
+    const target: { folia?: Record<string, unknown> } = {
+      folia: {
+        ...createDefaultSettings().folia,
+        backgroundModes: {
+          tilt: 'sora',
+          fume: 'url'
+        }
+      }
     }
 
-    expect(normalizeFoliaSettings(target)).toBe(true)
-    expect(target.folia).toMatchObject({ backgroundMode: 'native' })
+    expect(normalizeFoliaSettings(target, 'tilt')).toBe(true)
+    expect(target.folia).toMatchObject({
+      backgroundModes: { tilt: 'sora', glow: 'native', fume: 'native' }
+    })
+  })
+
+  it('流光历史 common 归一为 native，设置页不再出现重复项', () => {
+    const target: { folia?: Record<string, unknown> } = {
+      folia: {
+        ...createDefaultSettings().folia,
+        backgroundModes: {
+          tilt: 'common',
+          glow: 'common',
+          fume: 'common'
+        }
+      }
+    }
+
+    expect(normalizeFoliaSettings(target, 'glow')).toBe(true)
+    expect(target.folia).toMatchObject({
+      backgroundModes: { tilt: 'common', glow: 'native', fume: 'common' }
+    })
   })
 
   it('folia 不是对象（null / 数组 / 字符串）→ 整体回退默认对象', () => {
@@ -451,7 +543,11 @@ describe('store.bootstrapSettings 启动引导', () => {
       subtitleContentMode: 'nope',
       subtitleBlur: 'nope',
       colorMode: 'nope',
-      backgroundMode: 'nope',
+      backgroundModes: {
+        tilt: 'nope',
+        glow: 'nope',
+        fume: 'nope'
+      },
       backgroundOpacity: 900,
       backgroundBlur: -1,
       wordColoring: 1

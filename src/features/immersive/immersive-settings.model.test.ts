@@ -142,7 +142,11 @@ describe('createDefaultSettings 与其他模块耦合的默认值（改动属于
       subtitleContentMode: 'both',
       subtitleBlur: true,
       colorMode: 'song',
-      backgroundMode: 'native',
+      backgroundModes: {
+        tilt: 'native',
+        glow: 'native',
+        fume: 'native'
+      },
       backgroundOpacity: 100,
       backgroundBlur: 0,
       wordColoring: true
@@ -158,8 +162,11 @@ describe('createDefaultSettings 与其他模块耦合的默认值（改动属于
     const a = createDefaultSettings()
     const b = createDefaultSettings()
     expect(a.folia).not.toBe(b.folia)
+    expect(a.folia.backgroundModes).not.toBe(b.folia.backgroundModes)
     a.folia.colorMode = 'mono'
+    a.folia.backgroundModes.tilt = 'sora'
     expect(b.folia.colorMode).toBe('song')
+    expect(b.folia.backgroundModes.tilt).toBe('native')
   })
 })
 
