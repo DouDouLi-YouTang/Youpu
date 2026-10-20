@@ -1267,14 +1267,19 @@ async function ensureServerNodeModules(serverDir: string): Promise<void> {
   const pair = await readServerVersionPair(serverDir)
   if (pair && pair.source !== pair.modules) {
     const canRebuild = await pathExists(zipPath)
-    const message =
-      `[api-server] node_modules(${pair.modules})与源码(${pair.source})版本不一致,` +
-      (canRebuild ? '按 node_modules.zip 重建\n' : '且缺少 node_modules.zip,无法自动修复\n')
-    console.warn(message.trim())
-    getApiServerLogStream()?.write(message)
+    let note = '且缺少 node_modules.zip,无法自动修复'
     if (canRebuild) {
       await rm(modulesDir, { recursive: true, force: true }).catch(() => undefined)
+      // rm 失败(文件被占用等)时目录仍在,下面会直接复用旧依赖 —— 日志必须如实反映,
+      // 否则会留下「说重建了、其实没重建」的假象。
+      note = (await pathExists(modulesDir))
+        ? '重建失败(旧 node_modules 删不掉),沿用现有依赖'
+        : '按 node_modules.zip 重建'
     }
+    const message =
+      `[api-server] node_modules(${pair.modules})与源码(${pair.source})版本不一致,` + `${note}\n`
+    console.warn(message.trim())
+    getApiServerLogStream()?.write(message)
   }
 
   if (await pathExists(modulesDir)) return
