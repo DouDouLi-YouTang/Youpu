@@ -5,6 +5,7 @@ import {
   resolveFoliaBackgroundBlurGeometry,
   resolveFoliaBackgroundMatrix,
   resolveFoliaBackgroundSurfaceStyle,
+  resolveFoliaBackgroundViewportVignette,
   resolveFoliaBackgroundWorldStyle,
   resolveFoliaBackgroundWorld
 } from './folia-background-world'
@@ -142,6 +143,41 @@ describe('resolveFoliaBackgroundSurfaceStyle', () => {
   })
 })
 
+describe('resolveFoliaBackgroundViewportVignette', () => {
+  const paperBounds = { left: 100, top: 200, right: 1700, bottom: 2600 }
+
+  it('浮名 Common 有纸张边界时由视口层补画暗角', () => {
+    expect(resolveFoliaBackgroundViewportVignette({ mode: 'common', paperBounds })).toBe(true)
+  })
+
+  it('没有纸张边界（其它皮肤 / 原生档）不补，暗角仍在几何层内', () => {
+    expect(resolveFoliaBackgroundViewportVignette({ mode: 'common' })).toBe(false)
+  })
+
+  it('非 common 模式不补', () => {
+    for (const mode of ['latent', 'nomand', 'monet', 'sora', 'url']) {
+      expect(resolveFoliaBackgroundViewportVignette({ mode, paperBounds })).toBe(false)
+    }
+  })
+
+  it('关暗角 / 关几何层时不补（暗角是几何层的一部分）', () => {
+    expect(
+      resolveFoliaBackgroundViewportVignette({
+        mode: 'common',
+        paperBounds,
+        config: { common: { disableVignette: true } }
+      })
+    ).toBe(false)
+    expect(
+      resolveFoliaBackgroundViewportVignette({
+        mode: 'common',
+        paperBounds,
+        config: { common: { disableGeometricBackground: true } }
+      })
+    ).toBe(false)
+  })
+})
+
 describe('resolveFoliaBackgroundBlurGeometry', () => {
   it('关闭模糊时完全不生成外扩层', () => {
     expect(resolveFoliaBackgroundBlurGeometry(0)).toEqual({ blurPx: 0, insetPx: 0 })
@@ -179,9 +215,13 @@ describe('resolveFoliaBackgroundWorldStyle', () => {
       left: '20px',
       top: '20px',
       width: '1800px',
-      height: '1440px',
-      transform: 'matrix(1, 0, 0, 1, -400, -320)'
+      height: '1440px'
     })
+  })
+
+  it('不含 transform：相机矩阵由绘制循环命令式写入，Vue 不能重置它', () => {
+    const world = { width: 1800, height: 1440, viewportWidth: 1000, viewportHeight: 800 }
+    expect(resolveFoliaBackgroundWorldStyle(world, 0)).not.toHaveProperty('transform')
   })
 
   it('非法或负数外扩值按 0 补偿，不产生负位移', () => {

@@ -90,7 +90,7 @@
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(var(--bottombar-height, 90px) - 6px);
+  bottom: calc(var(--bottombar-height, 76px) - 6px);
   /* z-index 1:低于歌词层(2)与控制条(5)。.immersive-content 已设 pointer-events:none,
        不再拦截鼠标;歌词行(.rnp-lyrics-line,pointer-events:auto)在 z-index:2 优先拦截
        底部歌词行的 @click 跳转,进度条在无歌词行处可正常 hover/拖动。
@@ -112,7 +112,7 @@
     padding: 0;
   }
   &.is-idle {
-    transform: translateY(calc(var(--bottombar-height, 90px) - 6px));
+    transform: translateY(calc(var(--bottombar-height, 76px) - 6px));
     pointer-events: none;
   }
   &.is-idle-fade {
@@ -278,7 +278,7 @@
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(var(--bottombar-height, 90px) - 6px);
+  bottom: calc(var(--bottombar-height, 76px) - 6px);
   // z-index 1:低于歌词层(2)与控制条(5)。.immersive-content 已设 pointer-events:none,
   // 不再拦截鼠标;歌词行(.rnp-lyrics-line,pointer-events:auto)在 z-index:2 优先拦截
   // 底部歌词行的 @click 跳转,进度条在无歌词行处可正常 hover/拖动。
@@ -301,7 +301,7 @@
     }
   }
   &.is-idle {
-    transform: translateY(calc(var(--bottombar-height, 90px) - 5px));
+    transform: translateY(calc(var(--bottombar-height, 76px) - 5px));
     pointer-events: none;
   }
   &.is-idle-fade {

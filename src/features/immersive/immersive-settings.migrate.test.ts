@@ -312,7 +312,8 @@ describe('normalizeFoliaSettings 补齐 / 纠正嵌套设置', () => {
       },
       backgroundOpacity: 100,
       backgroundBlur: 0,
-      wordColoring: true
+      wordColoring: true,
+      showFps: false
     })
 
     const clamped: { folia?: Record<string, unknown> } = {

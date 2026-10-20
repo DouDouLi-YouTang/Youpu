@@ -138,6 +138,12 @@ export interface FoliaSettings {
    * 默认 true：这是上游与现有实现的默认观感。
    */
   wordColoring: boolean
+  /**
+   * 左上角帧率显示。统计的是沉浸页**实际出帧**（requestAnimationFrame），
+   * 包含背景、歌词与控制条的全部绘制开销 —— 不是某个皮肤自己的绘制循环。
+   * 默认关闭：它只用于排查性能，不该出现在日常观感里。
+   */
+  showFps: boolean
 }
 
 /** 流体帧率上限档位 → 实际 fps。0=∞ */
@@ -320,7 +326,8 @@ export function createDefaultSettings(): ImmersiveSettings {
       },
       backgroundOpacity: 100,
       backgroundBlur: 0,
-      wordColoring: true
+      wordColoring: true,
+      showFps: false
     }
   }
 }

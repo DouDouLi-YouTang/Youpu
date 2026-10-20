@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 import { usePlayerStore } from '@/stores/player.store'
 import { resetIdle } from '@/features/immersive/controls/use-controls-idle'
+import { useIdleHoldWhile } from '@/features/immersive/controls/use-idle-hold'
 
 /**
  * 控制条左列倍速控件（贴在封面信息后，悬停展开，与右侧音质弹层同款）。
@@ -40,6 +41,9 @@ function scheduleHideRatePopup(): void {
     rateHideTimer = undefined
   }, 150)
 }
+// 弹层展开期间不自动隐藏（弹层向上弹、鼠标已离开屏幕底部那条悬停唤出区），
+// 拖动滑块时另有「按住即持有」（见 immersive-controls 的 pointerdown）。
+useIdleHoldWhile(() => ratePopupVisible.value)
 function onRateSlider(value: number | number[]): void {
   const rate = Array.isArray(value) ? value[0] : value
   rateModel.value = rate

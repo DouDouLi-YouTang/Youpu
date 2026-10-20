@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import FoliaBackground from '@/features/immersive/backgrounds/folia/FoliaBackground.vue'
 import type { FoliaBackgroundMode } from '@/features/immersive/backgrounds/folia/types'
@@ -12,6 +12,7 @@ import type { AudioBands } from '@/features/immersive/use-audio-bands'
 import type { SmoothClock } from './use-smooth-clock'
 import {
   resolveFoliaBackgroundBlurGeometry,
+  resolveFoliaBackgroundViewportVignette,
   resolveCenteredFoliaBackgroundMatrix,
   resolveFoliaBackgroundMatrix,
   resolveFoliaBackgroundSurfaceStyle,
@@ -61,6 +62,17 @@ const surfaceRef = ref<HTMLElement | null>(null)
 const blurGeometry = computed(() =>
   resolveFoliaBackgroundBlurGeometry(settings.folia.backgroundBlur)
 )
+/**
+ * 世界容器的**几何**样式（位置 / 尺寸）。
+ *
+ * ⚠️ 只留 left/top/width/height —— transform 绝不进 `:style`。Vue 在每次 patch 时会把
+ * 绑定对象之外的内联 transform 一起接管：绘制循环刚写入的矩阵会被它清掉或覆盖，
+ * 而重排恰好发生在 patch 与写入之间，就会漏出「一帧错位」（暂停时更明显，
+ * 那一帧会停在屏幕上）。transform 的唯一写入方是 `syncView`。
+ *
+ * 这里仍然用 `:style` 绑定 width/height：它们与文章一起变，且 Vue 写它们**不会**
+ * 动 transform —— 只要 transform 不出现在同一个绑定对象里。
+ */
 const worldStyle = computed<Record<string, string> | undefined>(() =>
   props.world
     ? resolveFoliaBackgroundWorldStyle(props.world, blurGeometry.value.insetPx)
@@ -70,9 +82,31 @@ const surfaceStyle = computed<Record<string, string> | undefined>(() =>
   props.world ? resolveFoliaBackgroundSurfaceStyle(overlayMode.value, props.world) : undefined
 )
 
+/**
+ * 暗角是否由本层在视口上补画。
+ *
+ * Common 的暗角平时画在几何层内部；浮名把几何层收进纸张边界后，它会随几何层一起被
+ * 裁在纸张矩形里，纸张内外亮度断层（看起来像背景有一圈边界）。这一层铺满视口、
+ * 不随相机移动，由它补画才算「盖住整个视野」。判定与几何层内部同源，
+ * 见 `resolveFoliaBackgroundViewportVignette`。
+ */
+const viewportVignette = computed(() =>
+  resolveFoliaBackgroundViewportVignette({
+    mode: overlayMode.value,
+    config: props.config,
+    paperBounds: props.world?.paperBounds
+  })
+)
+
 let lastWorldTransform = ''
+/**
+ * 上一次写 transform 的元素。
+ *
+ * 只比对字符串不够：元素被重建（切背景模式）或 transform 被别处清掉时，
+ * 新元素上根本没有那个矩阵，缓存却还说「写过」—— 于是这一帧漏写、背景停在左上角。
+ */
+let lastTransformEl: HTMLElement | null = null
 let lastSyncedView: FoliaBackgroundView | null = null
-let lastWorld: FoliaBackgroundWorld | null = null
 
 /**
  * 命令式同步：只写 CSS transform，不经过 Vue 响应式，也不新增 rAF。
@@ -83,9 +117,10 @@ function syncView(view: FoliaBackgroundView): void {
   if (!worldEl || isNative.value || isTransparent.value) return
 
   const transform = resolveFoliaBackgroundMatrix(view)
-  if (transform !== lastWorldTransform) {
+  if (worldEl !== lastTransformEl || transform !== lastWorldTransform) {
     worldEl.style.transform = transform
     lastWorldTransform = transform
+    lastTransformEl = worldEl
   }
   lastSyncedView = {
     viewportWidth: view.viewportWidth,
@@ -99,38 +134,46 @@ function syncView(view: FoliaBackgroundView): void {
 defineExpose<FoliaSkinBackgroundHandle>({ syncView })
 
 /**
- * 浮名切到覆盖背景时，FoliaBackground 刚挂载的那一帧还没有绘制循环唤醒。
- * 用父级最近一次相机视图在 post-flush 补一次，避免首帧停在居中兜底矩阵。
+ * 挂载 / 切背景模式时补第一帧的 transform。
+ *
+ * 绘制循环还没跑起来之前（或刚切到覆盖背景、`FoliaBackground` 刚挂载），
+ * world 容器上没有任何 transform。先贴最近一次的相机视图，避免首帧停在左上角；
+ * 连视图都还没有时用居中兜底矩阵。
+ *
+ * ⚠️ **不能监听 `props.world`**：窗口 resize 时每排完一版文章就会换一个新的 world 对象，
+ * 若在这里重置 transform，就会覆盖掉绘制循环刚写入的真实相机矩阵（`lastWorldTransform`
+ * 被清空 → 下一帧再写回来），表现是「改窗口大小背景瞬移一下再弹回」。
+ * world 的尺寸变化由 `:style` 绑定的几何负责，transform 的唯一写入方是 `syncView`。
  */
-async function syncMountedView(): Promise<void> {
-  await nextTick()
+function applyInitialTransform(): void {
   const worldEl = worldRef.value
   if (!worldEl || isNative.value || isTransparent.value) return
 
-  lastWorldTransform = ''
-  const view = lastSyncedView
-  if (view) syncView(view)
-  else if (props.world) worldEl.style.transform = resolveCenteredFoliaBackgroundMatrix(props.world)
+  if (lastSyncedView) {
+    syncView(lastSyncedView)
+    return
+  }
+  if (!props.world) return
+  worldEl.style.transform = resolveCenteredFoliaBackgroundMatrix(props.world)
+  lastWorldTransform = worldEl.style.transform
+  lastTransformEl = worldEl
 }
 
 watch(
-  () => [props.world, overlayMode.value, props.config],
+  () => [overlayMode.value, props.config],
   () => {
+    // 模式 / 配置变化可能重建子组件：等 patch 完成后再补一次（元素判断见 `syncView`）。
     lastWorldTransform = ''
-    if (props.world !== lastWorld) {
-      lastWorld = props.world ?? null
-      lastSyncedView = null
-    }
-    const worldEl = worldRef.value
-    if (!worldEl) return
-    if (props.world) worldEl.style.transform = resolveCenteredFoliaBackgroundMatrix(props.world)
-    void syncMountedView()
+    void nextTick().then(applyInitialTransform)
   },
   { flush: 'post' }
 )
 
+onMounted(applyInitialTransform)
+
 onBeforeUnmount(() => {
   lastWorldTransform = ''
+  lastTransformEl = null
   lastSyncedView = null
 })
 
@@ -208,6 +251,13 @@ const blurLayerStyle = computed<Record<string, string>>(() => {
         </div>
       </div>
     </div>
+
+    <!--
+      视口级暗角：与几何层内部的暗角同一条渐变（Folia 的 rgba(0,0,0,.6)），
+      但铺满视口、不随相机移动 —— 几何层被收进纸张边界时由它负责「盖住整个视野」。
+      放在模糊层之外：模糊层比视口大一圈（inset 为负），铺在里面会让渐变的边界跟着外扩。
+    -->
+    <div v-if="viewportVignette" class="folia-background-vignette" />
   </div>
 </template>
 
@@ -248,5 +298,18 @@ const blurLayerStyle = computed<Record<string, string>>(() => {
 
 .folia-background-surface.has-world {
   inset: auto;
+}
+
+/*
+ * 视口级暗角：数值与 `backgrounds/geometric-background.scss` 的 `.rnp-geo-vignette`
+ * 逐项对齐（中心透明 40%、末色黑、整体 opacity .6）。改一处必须同步另一处，
+ * 否则「纸张框里的暗角」与「视口上的暗角」在切换几何层范围时会跳一档。
+ */
+.folia-background-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.6;
+  background: radial-gradient(circle, transparent 40%, rgb(0, 0, 0) 100%);
 }
 </style>

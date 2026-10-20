@@ -80,7 +80,7 @@ onUnmounted(() => {
           </a-layout-content>
         </a-layout>
       </a-layout>
-      <a-layout-footer class="!h-[88px] flex-shrink-0 !p-0">
+      <a-layout-footer class="!h-[72px] flex-shrink-0 !p-0">
         <PlayerBar />
       </a-layout-footer>
 

@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { SkinOutlined } from '@ant-design/icons-vue'
 
 import { useImmersiveSettingsStore } from '@/features/immersive/immersive-settings.store'
 import { getSkin, skins } from '@/features/immersive/skins/registry'
+import { useImmersivePanels } from '@/features/immersive/use-immersive-panels'
 import { useImmersivePlayer } from '@/features/immersive/use-immersive-player'
 import type { SkinId } from '@/features/immersive/skins/types'
 
@@ -27,6 +28,10 @@ import type { SkinId } from '@/features/immersive/skins/types'
  * 正好落在设置面板所在的区域，z-index 不够就会被整个盖住 —— 而它是唯一入口，
  * 盖住就等于切不了。
  *
+ * 2026-10-20 起两者**互斥**（谁开谁关，见 `use-immersive-panels`），正常情况下不会再
+ * 同屏；z-index 这条留着是因为开关之间有过渡帧 —— 收起设置面板的 0.2s 里列表已经在
+ * 展开，没有这层高度差就会看到列表从设置面板底下钻出来。
+ *
  * 跟随 idle 显隐（与关闭按钮一致，共用 immersive-close-hidden），演示模式下隐藏。
  */
 defineProps<{
@@ -37,18 +42,21 @@ defineProps<{
 const settings = useImmersiveSettingsStore()
 const { idle } = useImmersivePlayer()
 
-const expanded = ref(false)
+// 展开状态与设置面板**互斥**（见 use-immersive-panels）：两个弹层落点重叠，
+// 同时开着会互相盖住；写入单一槽位即抢占，点设置按钮会顺手把这个列表收掉。
+const panels = useImmersivePanels()
+const expanded = panels.isOpen('skins')
 
 // 高亮当前生效皮肤：持久化值无效时与外壳一致地回退到默认皮肤
 const activeId = computed(() => getSkin(settings.skin).id)
 
 function toggleExpanded(): void {
-  expanded.value = !expanded.value
+  panels.toggle('skins')
 }
 
 function select(id: SkinId): void {
   settings.applySkin(id)
-  expanded.value = false
+  panels.close('skins')
 }
 </script>
 

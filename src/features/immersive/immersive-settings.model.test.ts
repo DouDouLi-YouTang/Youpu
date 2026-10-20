@@ -154,7 +154,8 @@ describe('createDefaultSettings 与其他模块耦合的默认值（改动属于
       },
       backgroundOpacity: 100,
       backgroundBlur: 0,
-      wordColoring: true
+      wordColoring: true,
+      showFps: false
     })
     // 改动 Folia 的明暗或副字幕不会污染经典字段
     s.folia.colorScheme = 'light'

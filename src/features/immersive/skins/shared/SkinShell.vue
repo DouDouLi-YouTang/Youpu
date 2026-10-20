@@ -5,10 +5,22 @@ import { SettingOutlined } from '@ant-design/icons-vue'
 import AppTooltip from '@/components/common/AppTooltip.vue'
 import ImmersiveControls from '@/features/immersive/ImmersiveControls.vue'
 import ImmersiveSettings from '@/features/immersive/ImmersiveSettings.vue'
+import { resetIdle } from '@/features/immersive/controls/use-controls-idle'
+import { useIdleHoldWhile } from '@/features/immersive/controls/use-idle-hold'
+import {
+  isEditableShortcutTarget,
+  resolvePlayerShortcut,
+  resolveSeekTarget,
+  resolveVolumeTarget,
+  type PlayerShortcut
+} from '@/features/immersive/controls/player-shortcuts'
 import { useImmersiveSettingsStore } from '@/features/immersive/immersive-settings.store'
 import { useActiveSkin } from '@/features/immersive/skins/registry'
 import { useAudioBands } from '@/features/immersive/use-audio-bands'
+import { useFpsMeter } from '@/features/immersive/use-fps-meter'
+import { useImmersivePanels } from '@/features/immersive/use-immersive-panels'
 import { useImmersivePlayer } from '@/features/immersive/use-immersive-player'
+import { usePlayerStore } from '@/stores/player.store'
 import { useSkinContext } from '@/features/immersive/use-skin-context'
 import SkinChromeButtons from './SkinChromeButtons.vue'
 import SkinSwitcher from './SkinSwitcher.vue'
@@ -29,10 +41,20 @@ defineProps<{ accentVars: Record<string, string> }>()
 
 const { open, close } = useImmersivePlayer()
 const settings = useImmersiveSettingsStore()
+// 方向键快捷键（←/→ 进度、↑/↓ 音量）读写的就是播放器 store
+const player = usePlayerStore()
 
 // 频谱：本组件只在沉浸页打开时存在 —— setup 里 start 即「打开时启动」，
 // 卸载时 useAudioBands() 注册的 onBeforeUnmount 自动 stop（订阅归零即停 rAF）。
 useAudioBands().start()
+
+/**
+ * 左上角帧率显示（Folia 设置的 `folia.showFps`）。
+ *
+ * 统计的是沉浸页**实际出帧**（rAF），不是某个皮肤自己的绘制循环 —— 背景、歌词、
+ * 控制条的合成开销都算在里面。开关关闭时本 hook 不建 rAF 循环。
+ */
+const fps = useFpsMeter(computed(() => settings.folia.showFps))
 
 // 皮肤：上下文（store 状态的统一视图）+ 当前皮肤（settings.skin，无效值回退默认）
 const ctx = useSkinContext()
@@ -55,16 +77,28 @@ const {
   leaveFullscreenIfOwned
 } = useBackdrop()
 
-// 设置面板显隐（由右上角设置按钮触发，ImmersiveSettings 双向绑定）
-const settingsOpen = ref(false)
+// 设置面板显隐（由右上角设置按钮触发，ImmersiveSettings 双向绑定）。
+// 与面板主题列表（SkinSwitcher）**互斥**：两个弹层落点重叠，同时开着会互相盖住 ——
+// 状态收在 use-immersive-panels 的单一槽位里，写入即抢占。
+const panels = useImmersivePanels()
+const settingsOpen = computed({
+  get: () => panels.isOpen('settings').value,
+  set: (visible: boolean) => {
+    if (visible) panels.open('settings')
+    else panels.close('settings')
+  }
+})
 // 切到没有设置入口的皮肤（未来新增皮肤可能如此）时把面板收起来，
 // 避免用户既没有按钮可关、看到的又是上一套设置。
 watch(hasPanelSettings, (has) => {
   if (!has) settingsOpen.value = false
 })
 function toggleSettings(): void {
-  settingsOpen.value = !settingsOpen.value
+  panels.toggle('settings')
 }
+// 弹层开着时不自动隐藏：设置面板/面板主题列表里的按钮就在顶部那一排，控制条一隐，
+// 「关闭设置」「切换面板」按钮会跟着 `.immersive-close-hidden` 一起消失。
+useIdleHoldWhile(() => panels.anyOpen.value)
 
 function handleToggleFullScreen(): void {
   void toggleFullScreen()
@@ -111,15 +145,47 @@ function stopClock(): void {
   clockTimer = null
 }
 
-// ESC 关闭：沉浸层打开时注册全局监听，关闭即移除。
+// ESC 关闭 + 方向键快捷键：沉浸层打开时注册全局监听，关闭即移除。
 function onKeydown(e: globalThis.KeyboardEvent): void {
-  if (e.key === 'Escape' && open.value) {
+  if (!open.value) return
+
+  if (e.key === 'Escape') {
     e.preventDefault()
-    // ESC 分层关闭：设置面板打开时先关面板，再按才退出沉浸层
-    if (settingsOpen.value) settingsOpen.value = false
+    // ESC 分层关闭：先收顶部的弹层（设置面板 / 面板主题列表，两个互斥、至多一个开着），
+    // 再按才退全屏，最后才退出沉浸层。
+    if (panels.anyOpen.value) panels.closeAll()
     else if (isFullscreen.value) leaveFullscreenIfOwned()
     else close()
+    return
   }
+
+  // 键盘操作也算「用户在动」：唤出控制条，否则按方向键时画面毫无反馈
+  //（鼠标静止 1.5s 后控制条已隐没、光标也已隐藏）。
+  const shortcut = resolvePlayerShortcut(e.key)
+  if (!shortcut || isEditableShortcutTarget(e.target)) return
+
+  e.preventDefault()
+  applyPlayerShortcut(shortcut)
+  resetIdle()
+}
+
+/**
+ * 方向键的落点。两个动作都走 store 的公开接口（`seek` / `setVolume`），
+ * 不直接碰音频控制器 —— 拖动进度条、点音量滑块走的是同一条路径，
+ * 失焦恢复、静音取消这些副作用因此完全一致。
+ */
+function applyPlayerShortcut(shortcut: PlayerShortcut): void {
+  if (shortcut === 'seek-back' || shortcut === 'seek-forward') {
+    const target = resolveSeekTarget(
+      player.currentTimeMs,
+      player.durationMs,
+      shortcut === 'seek-forward' ? 'forward' : 'back'
+    )
+    if (target !== player.currentTimeMs) player.seek(target)
+    return
+  }
+  const next = resolveVolumeTarget(player.volume, shortcut === 'volume-up' ? 'up' : 'down')
+  if (next !== player.volume) player.setVolume(next)
 }
 watch(
   open,
@@ -143,6 +209,9 @@ onBeforeUnmount(() => {
   document.removeEventListener('fullscreenchange', syncFullscreenState)
   stopClock()
   if (presentationHintTimer) clearTimeout(presentationHintTimer)
+  // 本外壳随沉浸层一起卸载（ImmersivePlayer 用 v-if="open" 挂载）：弹层状态是
+  // 模块级单例，不在这里清掉的话，下次打开沉浸页会带着上次的弹层一起出现。
+  panels.closeAll()
 })
 </script>
 
@@ -183,6 +252,13 @@ onBeforeUnmount(() => {
 
     <!-- 参考项目全屏时钟：全屏后出现在左上角 -->
     <div v-if="isFullscreen" class="rnp-full-screen-clock">{{ currentClock }}</div>
+
+    <!--
+      帧率显示（Folia 设置的 `folia.showFps`）：左上角。
+      位置与全屏时钟同一行；非全屏时时钟不渲染，它独占左上角。
+      不吃鼠标事件、不随 idle 隐藏 —— 它是排查工具，用户开它就是要一直看。
+    -->
+    <div v-if="settings.folia.showFps" class="rnp-fps-meter" aria-hidden="true">{{ fps }} FPS</div>
 
     <!-- 演示模式退出提示：开启后仅显示几秒告知如何退出,然后淡出 -->
     <Transition name="hint-fade">

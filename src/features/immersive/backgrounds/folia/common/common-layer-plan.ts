@@ -11,6 +11,8 @@ import type { FoliaPaperBounds } from '../types'
  *  2. 把 `staticMode` 当成「暂停几何层」→ 首页关掉动态背景后还留着一批静态形状。
  *     正确语义是 `staticMode` **移除整层**，`paused` 才是切成静态快照。
  *  3. `disableGeometricBackground` 与 `disableVignette` 混用 → 关掉暗角时连形状一起没了。
+ *  4. 暗角被关在纸张矩形里 → 纸张内外亮度断层，看上去像背景自己有一圈边界
+ *     （见 `resolveCommonVignettePlacement`）。
  */
 
 export interface CommonLayerPlan {
@@ -20,8 +22,34 @@ export interface CommonLayerPlan {
   backgroundOpacity: number
   /** 是否渲染几何层（`staticMode` 时整层消失） */
   showGeometric: boolean
-  /** 是否显示几何层自带的暗角 */
-  showVignette: boolean
+  /** 暗角画在哪一层（见 `resolveCommonVignettePlacement`） */
+  vignette: CommonVignettePlacement
+}
+
+/** 暗角画在哪一层 */
+export type CommonVignettePlacement = 'none' | 'geometry' | 'viewport'
+
+/**
+ * 暗角的落位。
+ *
+ * Folia 的暗角是几何层内部的一层 `radial-gradient`（透明中心 → 四周压暗）。
+ * 浮名把几何层收进纸张边界之后，那层暗角会被几何层的 `overflow: hidden` 裁在纸张
+ * 矩形里 —— 纸张外没有任何压暗、纸张边缘处亮度直接跳一档，看起来就是一圈「背景边界」。
+ * 暗角本来该盖住整个视野，所以只要几何层被收窄（传了 `paperBounds`），它就必须离开
+ * 纸张框，改由宿主铺满**视口**绘制（`FoliaSkinBackground` 的 `.folia-background-vignette`）。
+ *
+ * 暗角仍是几何层的一部分：整层被移除时它一起消失（`staticMode` / 关几何层），
+ * `disableVignette` 则单独关掉它。
+ */
+export function resolveCommonVignettePlacement(input: {
+  staticMode: boolean
+  disableGeometricBackground: boolean
+  disableVignette: boolean
+  /** 几何层是否被收窄到纸张边界（浮名覆盖背景） */
+  paperBounds?: FoliaPaperBounds | null
+}): CommonVignettePlacement {
+  if (input.staticMode || input.disableGeometricBackground || input.disableVignette) return 'none'
+  return input.paperBounds ? 'viewport' : 'geometry'
 }
 
 /**
@@ -68,6 +96,7 @@ export function resolveCommonLayerPlan(input: {
   staticMode: boolean
   disableGeometricBackground: boolean
   disableVignette: boolean
+  paperBounds?: FoliaPaperBounds | null
 }): CommonLayerPlan {
   return {
     showFluid: input.useCoverColorBg,
@@ -75,7 +104,6 @@ export function resolveCommonLayerPlan(input: {
     backgroundOpacity: input.useCoverColorBg ? input.coverColorOpacity : 1,
     // staticMode 移除整层（不是暂停）：这条与几何层内部的 paused 是两回事
     showGeometric: !input.staticMode && !input.disableGeometricBackground,
-    // 暗角开关独立于形状开关：关暗角不该连形状一起关掉
-    showVignette: !input.disableVignette
+    vignette: resolveCommonVignettePlacement(input)
   }
 }

@@ -36,10 +36,11 @@ import FluidCoverLayer from './FluidCoverLayer.vue'
  * 所以这一层只做三件事：
  *
  *  1. `disableGeometricBackground` → **整层不挂载**（对应它的 `hideShapes` 语义）；
- *  2. `disableVignette` → 用 `:deep()` 关掉它内部那个 `.rnp-geo-vignette` 元素。
- *     这是本文件唯一一处「依赖对方类名」的耦合：对方组件没有暴露这个开关，
- *     而 `common.disableVignette` 是本模式契约的一部分，只能这样落位。
- *     如果对方改名或换结构，这条规则会静默失效 —— 排查暗角关不掉时先看这里。
+ *  2. `disableVignette` → 通过 `vignette-placement` 让几何层别画它内部那层暗角。
+ *     ⚠️ 浮名传了 `paperBounds` 时几何层被收窄到纸张矩形，暗角**不能**留在几何层里
+ *     （会被 `overflow: hidden` 裁在纸张边界上，纸张内外亮度断层 = 一圈背景边界），
+ *     这一档由 `vignette-placement = 'viewport'` 表示，改由宿主铺满视口绘制。
+ *     两处判断同源，见 `resolveCommonVignettePlacement`。
  *  3. **把逐歌主题交给它，并让它别自铺底色**（`theme` / `:paint-background="false"`）。
  *
  * ## 为什么几何层不能自铺底色（2026-10-14 修正）
@@ -83,7 +84,8 @@ const plan = computed(() =>
     coverColorOpacity: props.coverColorOpacity,
     staticMode: props.staticMode === true,
     disableGeometricBackground: props.disableGeometricBackground,
-    disableVignette: props.disableVignette
+    disableVignette: props.disableVignette,
+    paperBounds: props.paperBounds
   })
 )
 
@@ -110,12 +112,7 @@ defineExpose({ plan, defaultOpacity: DEFAULT_COMMON_BACKGROUND_OPACITY })
     <div class="folia-common-background" :style="backgroundLayerStyle" />
 
     <!-- 3. 几何层：staticMode 时整层消失（不是暂停） -->
-    <div
-      v-if="plan.showGeometric"
-      class="folia-common-geometric"
-      :class="{ 'is-vignette-off': !plan.showVignette }"
-      :style="geometryStyle"
-    >
+    <div v-if="plan.showGeometric" class="folia-common-geometric" :style="geometryStyle">
       <!--
         `paint-background=false`：底色归上面第 2 层（逐歌主题），几何层必须透明，
         否则会把主题底色整块盖掉（见文件头）。
@@ -123,8 +120,15 @@ defineExpose({ plan, defaultOpacity: DEFAULT_COMMON_BACKGROUND_OPACITY })
         —— 那套翻转是「几何背景」皮肤为了浅色底才加的。
         这里给不透明黑而不是 `rgba(...,.6)`：样式表上那层已经有 `opacity: .6`，
         两处都写 0.6 会相乘成 0.36，暗角会明显偏淡。
+        `vignette-placement` 与本文件的 plan 同源：几何层收窄到纸张时暗角由宿主在视口层画
+        （见 `resolveCommonVignettePlacement`），这里只负责把几何层里那份关掉。
       -->
-      <GeometricBackground :theme="theme" :paint-background="false" vignette-color="rgb(0, 0, 0)" />
+      <GeometricBackground
+        :theme="theme"
+        :paint-background="false"
+        vignette-color="rgb(0, 0, 0)"
+        :vignette-placement="plan.vignette"
+      />
     </div>
   </div>
 </template>
@@ -158,15 +162,5 @@ defineExpose({ plan, defaultOpacity: DEFAULT_COMMON_BACKGROUND_OPACITY })
 .folia-common-fluid-fade-enter-from,
 .folia-common-fluid-fade-leave-to {
   opacity: 0;
-}
-
-/*
- * `disableVignette` 的落位方式：几何层组件没暴露这个开关，只能按类名关掉它内部的暗角。
- * `:deep()` 必须配合父选择器（`.folia-common-geometric`）才有正确的特异性 ——
- * 写成裸 `:deep(.rnp-geo-vignette)` 会生成一个带 scope 属性的高特异性选择器，
- * 反而更难被后续样式覆盖。
- */
-.folia-common-geometric.is-vignette-off :deep(.rnp-geo-vignette) {
-  display: none;
 }
 </style>

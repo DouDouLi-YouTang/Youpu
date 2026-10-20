@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { resolveCommonGeometryStyle, resolveCommonLayerPlan } from './common-layer-plan'
+import {
+  resolveCommonGeometryStyle,
+  resolveCommonLayerPlan,
+  resolveCommonVignettePlacement
+} from './common-layer-plan'
 
 const base = {
   useCoverColorBg: false,
@@ -16,7 +20,7 @@ describe('resolveCommonLayerPlan', () => {
       showFluid: false,
       backgroundOpacity: 1,
       showGeometric: true,
-      showVignette: true
+      vignette: 'geometry'
     })
   })
 
@@ -25,7 +29,7 @@ describe('resolveCommonLayerPlan', () => {
       showFluid: true,
       backgroundOpacity: 0.75,
       showGeometric: true,
-      showVignette: true
+      vignette: 'geometry'
     })
   })
 
@@ -62,7 +66,7 @@ describe('resolveCommonLayerPlan', () => {
 
   it('disableVignette 独立：关暗角不影响几何层与流体层', () => {
     const plan = resolveCommonLayerPlan({ ...base, useCoverColorBg: true, disableVignette: true })
-    expect(plan.showVignette).toBe(false)
+    expect(plan.vignette).toBe('none')
     expect(plan.showGeometric).toBe(true)
     expect(plan.showFluid).toBe(true)
   })
@@ -79,7 +83,7 @@ describe('resolveCommonLayerPlan', () => {
       showFluid: false,
       backgroundOpacity: 1,
       showGeometric: false,
-      showVignette: false
+      vignette: 'none'
     })
   })
 })
@@ -117,5 +121,40 @@ describe('resolveCommonGeometryStyle', () => {
   it('没有边界时回退到外壳的 inset 铺满', () => {
     expect(resolveCommonGeometryStyle(undefined)).toEqual({ inset: '0' })
     expect(resolveCommonGeometryStyle(null)).toEqual({ inset: '0' })
+  })
+})
+
+describe('resolveCommonVignettePlacement', () => {
+  const paperBounds = { left: 120, top: 80, right: 920, bottom: 1680 }
+  const base = {
+    staticMode: false,
+    disableGeometricBackground: false,
+    disableVignette: false
+  }
+  /** `resolveCommonLayerPlan` 还要流体底的两个开关，这里补齐 */
+  const planBase = { ...base, useCoverColorBg: false, coverColorOpacity: 0.75 }
+
+  it('几何层铺满时暗角留在几何层内（既有行为）', () => {
+    expect(resolveCommonVignettePlacement(base)).toBe('geometry')
+    expect(resolveCommonVignettePlacement({ ...base, paperBounds: null })).toBe('geometry')
+  })
+
+  it('几何层收窄到纸张时暗角改由视口层绘制（不被裁在纸张边界上）', () => {
+    expect(resolveCommonVignettePlacement({ ...base, paperBounds })).toBe('viewport')
+  })
+
+  it('关暗角 / 关几何层 / staticMode 都让暗角整体消失', () => {
+    expect(resolveCommonVignettePlacement({ ...base, paperBounds, disableVignette: true })).toBe(
+      'none'
+    )
+    expect(
+      resolveCommonVignettePlacement({ ...base, paperBounds, disableGeometricBackground: true })
+    ).toBe('none')
+    expect(resolveCommonVignettePlacement({ ...base, paperBounds, staticMode: true })).toBe('none')
+  })
+
+  it('plan 与落位函数同源', () => {
+    expect(resolveCommonLayerPlan({ ...planBase, paperBounds }).vignette).toBe('viewport')
+    expect(resolveCommonLayerPlan(planBase).vignette).toBe('geometry')
   })
 })

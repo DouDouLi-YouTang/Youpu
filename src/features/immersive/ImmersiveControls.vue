@@ -11,6 +11,10 @@ import VolumeControl from '@/features/immersive/controls/VolumeControl.vue'
 import QualityPicker from '@/features/immersive/controls/QualityPicker.vue'
 import RatePicker from '@/features/immersive/controls/RatePicker.vue'
 import { useControlsIdle } from '@/features/immersive/controls/use-controls-idle'
+import {
+  useIdleHoldOnPointerPress,
+  useIdleHoldWhile
+} from '@/features/immersive/controls/use-idle-hold'
 import { resetProgressDrag, useControlsProgress } from '@/features/immersive/controls/use-progress'
 
 /**
@@ -43,6 +47,13 @@ const artistsText = computed(() =>
 // 队列抽屉开关
 const queueVisible = ref(false)
 
+// 「用户正在动控制条 → 不许自动隐藏」的两条来源（见 controls/use-idle-hold.ts）：
+//  1. 队列面板展开期间（面板从底部拉起，鼠标在上面就不在屏幕底部那条唤出区里）；
+//  2. 指针按住控制条期间 —— 拖滑块时指针常常一动不动，只有「按住即持有」挡得住。
+// 三个弹层（音量/倍速/音质）各自的持有在它们的组件里。
+useIdleHoldWhile(() => queueVisible.value)
+const { onPointerDown: onBarPointerDown } = useIdleHoldOnPointerPress()
+
 // 进度条与时间指示器共用的 seekValue(模块级,见 use-progress.ts)由本组件镜像
 // player.currentTimeMs —— 本组件随沉浸层 open 挂载/卸载,监听生命周期正好对齐;
 // 拖动中 seekValue 由拖拽处理自己写,这里不覆盖。
@@ -60,7 +71,7 @@ onBeforeUnmount(resetProgressDrag)
   <!-- 进度条 + 悬停预览：独立 fixed 元素，不在控制条网格内（见 controls/ProgressBar.vue） -->
   <ProgressBar :hidden="hidden" />
 
-  <div class="immersive-controls" :class="idleClass">
+  <div class="immersive-controls" :class="idleClass" @pointerdown="onBarPointerDown">
     <!-- 左：封面缩略 + 曲名 + 倍速 -->
     <div class="immersive-controls-left">
       <a-avatar

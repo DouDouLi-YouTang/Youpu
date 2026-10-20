@@ -188,7 +188,7 @@ export function useFumeOverlay(options: UseFumeOverlayOptions): UseFumeOverlayRe
     const palette = options.palette.value
     return {
       /**
-       * 副字幕的底距：跟随控制条显隐（在场 112px / 隐藏 32px，带过渡）——
+       * 副字幕的底距：跟随控制条显隐（在场 98px / 隐藏 32px，带过渡）——
        * 与「流光」同一套口径，见 `shared/use-subtitle-bottom`。
        * 变量名归共享组件所有（`shared/SkinSubtitle.vue` 读 `--skin-subtitle-bottom`）。
        */

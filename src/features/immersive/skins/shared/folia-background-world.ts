@@ -1,4 +1,9 @@
-import type { FoliaPaperBounds } from '@/features/immersive/backgrounds/folia/types'
+import type {
+  FoliaBackgroundConfig,
+  FoliaPaperBounds
+} from '@/features/immersive/backgrounds/folia/types'
+import { resolveCommonOverrides } from '@/features/immersive/backgrounds/folia/shared/host-props'
+import { resolveCommonVignettePlacement } from '@/features/immersive/backgrounds/folia/common/common-layer-plan'
 
 /**
  * 覆盖背景使用的文章世界。
@@ -160,11 +165,44 @@ export function resolveFoliaBackgroundSurfaceStyle(
 }
 
 /**
- * 世界容器的定位样式。
+ * 覆盖背景是否需要在视口层补画暗角。
+ *
+ * Common 的暗角通常画在几何层内部；浮名把几何层收进纸张边界之后，那层暗角会被裁在
+ * 纸张矩形里，纸张内外亮度断层（看起来像背景有一圈边界）。所以此时由本层（铺满视口、
+ * 不随相机移动）补画一份，几何层内部那份同时关掉 —— 两边判断同源
+ * （`resolveCommonVignettePlacement`），不会出现两份或零份。
+ *
+ * 几何层未开启时不补：暗角是几何层的一部分，几何层没挂载就不该只留暗角。
+ */
+export function resolveFoliaBackgroundViewportVignette(input: {
+  mode: string
+  config?: FoliaBackgroundConfig
+  paperBounds?: FoliaPaperBounds | null
+}): boolean {
+  if (input.mode !== 'common' || !input.paperBounds) return false
+  const common = resolveCommonOverrides(input.config)
+  return (
+    resolveCommonVignettePlacement({
+      staticMode: false,
+      disableGeometricBackground: common.disableGeometricBackground,
+      disableVignette: common.disableVignette,
+      paperBounds: input.paperBounds
+    }) === 'viewport'
+  )
+}
+
+/**
+ * 世界容器的定位样式（**只含几何，不含 transform**）。
  *
  * 模糊层为了隐藏模糊透明边会向外扩，world 的坐标原点随之外移。这里显式把
  * world 放回视口左上角，保证 `resolveFoliaBackgroundMatrix` 的相机矩阵仍以
  * 视口为基准；否则模糊值一改，背景与文字就会整体错位。
+ *
+ * ⚠️ `transform` **刻意不在这里**：它由 `FoliaSkinBackground.syncView` 命令式写入，
+ * 每帧与歌词使用同一份相机快照。放进这个返回对象会被 Vue 的 `:style` 绑定接管 ——
+ * 窗口 resize 时每版重排都会换一个新的 world 对象，Vue 于是把 transform 重置成
+ * 「居中兜底矩阵」，覆盖掉上一帧的真实相机矩阵，下一帧绘制循环再写回来。
+ * 表现就是「窗口一改大小，背景先瞬移一下再弹回」。
  */
 export function resolveFoliaBackgroundWorldStyle(
   world: FoliaBackgroundWorld,
@@ -175,8 +213,7 @@ export function resolveFoliaBackgroundWorldStyle(
     left: `${inset}px`,
     top: `${inset}px`,
     width: `${world.width}px`,
-    height: `${world.height}px`,
-    transform: resolveCenteredFoliaBackgroundMatrix(world)
+    height: `${world.height}px`
   }
 }
 

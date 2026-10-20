@@ -51,6 +51,10 @@ const colorModeOptions = [
       <a-checkbox v-model:checked="settings.folia.wordColoring">逐词关键词着色</a-checkbox>
       <span class="setting-note">关闭后，所有歌词使用同一套正文 / 高亮配色</span>
     </div>
+    <div class="setting-row">
+      <a-checkbox v-model:checked="settings.folia.showFps">显示帧率</a-checkbox>
+      <span class="setting-note">在左上角显示沉浸页的实际渲染帧率</span>
+    </div>
   </section>
 </template>
 

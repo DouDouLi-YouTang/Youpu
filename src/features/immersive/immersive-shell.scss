@@ -19,8 +19,12 @@
   -webkit-app-region: no-drag;
   color: var(--color-text-primary);
 
-  // 底部控制条高度 = ImmersiveControls .immersive-controls 的 height，改动需同步两处
-  --bottombar-height: 90px;
+  // 底部控制条高度 —— `.immersive-controls` 的 height 直接读这个变量
+  // （见 ../immersive-controls.scss），进度条的贴底位置、控制条下沉距离、
+  // 歌词区底部留白也都由它派生。**改高度只改这里**；另一处 JS 常量
+  // `BOTTOMBAR_HEIGHT`（controls/use-controls-idle.ts，判定「鼠标是否停在
+  // 控制条区域」）需同步。
+  --bottombar-height: 76px;
   // 文字阴影：仅本 class 开启时定义 --rnp-drop-shadow，避免阴影常开；light 主题下阴影更浅
   &.rnp-shadow {
     --rnp-drop-shadow: drop-shadow(0px 4px 5px rgba(0, 0, 0, 0.3));
@@ -59,9 +63,22 @@
     --rnp-accent-color-bg-rgb: 240, 240, 240 !important;
     color: var(--rnp-accent-color-shade-2);
   }
-  // 全屏 + idle 隐藏光标
-  &.rnp-full-screen.rnp-idle {
+  // 鼠标静止（idle）时隐藏鼠标光标 —— **所有主题、全屏与非全屏一致**。
+  //
+  // 原来只在全屏下生效；非全屏时鼠标停在画面上不动，光标一直悬在歌词中间很碍眼。
+  // 光标跟随 `idle`（1.5s 静止，`use-controls-idle` 写入），鼠标一动立即恢复。
+  //
+  // ⚠️ 必须用 `:deep(*)` 而不是 `*`：两个原因叠加 ——
+  //  1. scoped 样式会给最后一段加本组件的属性选择器，`& *` 只能命中外壳自己的元素，
+  //     皮肤与控制条里的元素没有那个属性；
+  //  2. 按钮与滑块各自写着 `cursor: pointer`，与继承来的 `cursor: none` 抗不过，
+  //     所以要 `!important` 才压得住（否则鼠标停在按钮上时唯独那颗按钮露出箭头）。
+  &.rnp-idle {
     cursor: none;
+
+    :deep(*) {
+      cursor: none !important;
+    }
   }
   // 迷你歌曲信息：只在 lyric-only 模式显示，开启 autoHideMiniSongInfo 时跟随 rnp-idle 隐藏
   &.display-mode-lyric-only {
@@ -382,6 +399,35 @@
   pointer-events: none;
   cursor: default;
   transition: left 0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+}
+
+/*
+ * 帧率显示：左上角，与全屏时钟同一行。
+ *
+ * 非全屏时时钟不渲染，它自己贴 left:20；全屏时时钟在 left:20，这里顺延到
+ * left:76（时钟宽 60 + 16 间距）由下面的 `.rnp-full-screen` 规则接管。
+ * 数字用等宽字形（`tabular-nums`），否则 59 ↔ 100 位数变化时整块会左右抖。
+ */
+.rnp-fps-meter {
+  position: absolute;
+  top: 18.5px;
+  left: 20px;
+  z-index: 6;
+  padding: 0 8px;
+  height: 25px;
+  border-radius: 9999px;
+  background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.08);
+  color: var(--rnp-accent-color-shade-2, var(--color-text-primary));
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 25px;
+  pointer-events: none;
+  cursor: default;
+}
+
+.rnp-full-screen .rnp-fps-meter {
+  left: 76px;
 }
 
 // 演示模式退出提示：顶部居中常驻，呼吸式淡入淡出提醒用户可退出

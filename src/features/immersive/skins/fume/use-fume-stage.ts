@@ -52,10 +52,16 @@ import {
   resolveFumeGlowBases,
   resolveFumeStaticLayers
 } from './core/block-frame'
-import { resolveFumeBackgroundView } from './core/camera'
+import {
+  CAMERA_SCALE_MAX,
+  CAMERA_SCALE_MIN,
+  resolveFocusBlock,
+  resolveFumeBackgroundView
+} from './core/camera'
 import {
   clampCameraFrameDeltaMs,
   createFumeCameraState,
+  reanchorFumeCamera,
   stepFumeCamera,
   syncFumeCameraToArticle,
   type FumeCameraStepInput,
@@ -87,6 +93,7 @@ import {
 import { createFumeRetiredSnapshotQueue } from './render/retired-snapshot-queue'
 import { FUME_BLOCK_MEASURE } from './measure/fume-block-measure'
 import { FUME_IDLE_TIME_DRIFT } from './fume-adapter'
+import { clamp } from './core/fume-math'
 import { resolveFumeThemeFingerprint } from './core/theme-fingerprint'
 
 /** 舞台逻辑尺寸（CSS px）—— 排版与绘制共用同一个来源（`FumeStage` 的 resize 事件） */
@@ -184,6 +191,26 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
   /** 「已经排过一版文章」——用来区分「暂停」与「还没开始」 */
   let lastArticle: FumeArticleLayout | null = null
   /**
+   * 上一版文章对应的屏幕位置（世界坐标 → 屏幕中心的位移，屏幕 px）与视口短边。
+   *
+   * 窗口 resize 会触发整篇重排：同一句歌词在新文章里的世界坐标会变。相机跨文章存活，
+   * 必须按「焦点旧位置 → 新位置」重锚，否则歌词与背景会一起跳到别处（暂停时更明显，
+   * 因为停帧后错位的那一帧会永久留在画面上）。这里记住重排前的焦点在屏幕上的偏移，
+   * 重排后原样保留 —— 用户拖动窗口时，正在看的那句应当停在原地。
+   */
+  let lastFocus: { x: number; y: number } | null = null
+  /**
+   * 上一帧焦点在**文章世界里的位置比例**（0–1）与当时的屏幕偏移（px）。
+   *
+   * 为什么不能只存绝对坐标：暂停时绘制循环停帧，`lastFocus` 会停在旧文章里；
+   * 重排后同一句歌词在文章中的**相对位置**基本不变（列 / 行重排只是把纸张变宽变窄），
+   * 比例比绝对坐标更可靠。绝对坐标仍保留给「同尺寸重排」这种比例不变的场景。
+   */
+  let lastFocusRatio: { x: number; y: number } | null = null
+  /** 上一帧焦点相对屏幕中心的偏移（屏幕 px，含缩放） */
+  let lastFocusScreenOffset: { x: number; y: number } | null = null
+  let lastViewportSide = 0
+  /**
    * 上一帧的主题指纹（§11.1 的失效清单）。
    *
    * 快照与栅格里**烤了颜色与字体**，而这两样都能在播放中途变（切明暗主题、
@@ -275,6 +302,84 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
   function shouldKeepFrames(): boolean {
     if (!lastArticle && !options.article.value) return true
     return options.playing.value
+  }
+
+  /** 当前帧的焦点世界坐标（与相机步进同源：行下标 + 播放时间） */
+  function resolveCurrentFocus(article: FumeArticleLayout): { x: number; y: number } | null {
+    const block = resolveFocusBlock(article, options.currentLineIndex(), options.currentTimeMs())
+    if (!block) return null
+    return { x: block.x + block.width * 0.5, y: block.y + block.height * 0.5 }
+  }
+
+  /**
+   * 视口变化导致重排后，把相机重新锚到「同一句歌词 + 原来的屏幕偏移」。
+   *
+   * 两次焦点读的都是**当帧时间**：重排只改世界坐标，当前句没变，所以新旧焦点
+   * 指向的是同一句歌词的两个位置，差值就是重排带来的位移。
+   *
+   * 视口比例按短边算 —— 与 `resolveCameraScaleForBlock` 的目标字号同源
+   * （短边的 11.5%）：不折算的话，拖动窗口会让画面在重排瞬间突然放大/缩小。
+   */
+  function reanchorToCurrentFocus(article: FumeArticleLayout, width: number, height: number): void {
+    const viewportSide = Math.max(Math.min(width, height), 1)
+    const scaleRatio = lastViewportSide > 0 ? viewportSide / lastViewportSide : 1
+    const nextScale = clamp(
+      cameraState.camera.scale * clamp(scaleRatio, 0.25, 4),
+      CAMERA_SCALE_MIN,
+      CAMERA_SCALE_MAX
+    )
+
+    // 新文章里同一句的位置：能按行下标拿到就用它；拿不到时按比例映射。
+    const nextFocus =
+      resolveCurrentFocus(article) ??
+      (lastFocusRatio
+        ? { x: lastFocusRatio.x * article.width, y: lastFocusRatio.y * article.height }
+        : null)
+
+    // 首帧还没有任何焦点记录（挂载后第一次重排）：退回整页中心，
+    // 至少不会停在新文章边界之外。
+    if (!nextFocus) {
+      reanchorFumeCamera(
+        cameraState,
+        { x: article.width * 0.5, y: article.height * 0.5 },
+        scaleRatio
+      )
+      return
+    }
+
+    // 重排前焦点相对屏幕中心的偏移（px）；新相机让同一句留在同一位置。
+    const offsetX =
+      lastFocusScreenOffset?.x ??
+      (lastFocus ? (lastFocus.x - cameraState.camera.x) * cameraState.camera.scale : 0)
+    const offsetY =
+      lastFocusScreenOffset?.y ??
+      (lastFocus ? (lastFocus.y - cameraState.camera.y) * cameraState.camera.scale : 0)
+    reanchorFumeCamera(
+      cameraState,
+      { x: nextFocus.x - offsetX / nextScale, y: nextFocus.y - offsetY / nextScale },
+      scaleRatio
+    )
+  }
+
+  /**
+   * 记录本帧焦点（世界坐标 / 文章比例 / 屏幕偏移）。
+   *
+   * **每一帧都要调**（包括暂停后的第一帧）：暂停时绘制循环停帧，但「焦点在屏幕上的
+   * 位置」必须与当时画出来的那一帧一致，否则下一次重排的屏幕偏移会取到上一帧的值。
+   */
+  function rememberFocus(article: FumeArticleLayout, width: number, height: number): void {
+    const block = resolveCurrentFocus(article)
+    if (!block) return
+    lastFocus = block
+    lastFocusRatio = {
+      x: article.width > 0 ? block.x / article.width : 0.5,
+      y: article.height > 0 ? block.y / article.height : 0.5
+    }
+    lastFocusScreenOffset = {
+      x: (block.x - cameraState.camera.x) * cameraState.camera.scale,
+      y: (block.y - cameraState.camera.y) * cameraState.camera.scale
+    }
+    lastViewportSide = Math.max(Math.min(width, height), 1)
   }
 
   /**
@@ -424,10 +529,19 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
 
     // 文章换了：重置首帧标志与帧计时（相机**不**重置，见文件头）
     if (article !== lastArticle) {
+      // 换文章的两条来源必须分开：切歌是「另一篇」，镜头保留惯性继续滑（原语义）；
+      // 视口重排是「同一篇的几何变了」，必须按当前焦点重锚，否则画面整体跳走。
+      // 判据是「上一版文章的首块起始时间与新版一致」—— 同一首歌重排时首行不变，
+      // 切歌时几乎必然不同（`firstRenderableStartTimeMs` 在适配层已归一）。
+      const sameSong =
+        lastArticle !== null &&
+        lastArticle.firstRenderableStartTimeMs === article.firstRenderableStartTimeMs
+      const isResizeRebuild = sameSong && lastFocus !== null
       lastArticle = article
       hasPrintedContent = false
       lastFrameAt = null
       syncFumeCameraToArticle(cameraState, article)
+      if (isResizeRebuild) reanchorToCurrentFocus(article, width, height)
       // 快照里烤了颜色 / 字体 / 尺寸，文章一换必须全换（§11.1）。
       // 走「整张退休 + 分批释放」而不是一次清完，见 `retireSnapshotCache`。
       retireSnapshotCache()
@@ -474,6 +588,11 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
     )
     const camera = cameraState.camera
     const screenScale = camera.scale
+
+    // ── ④.5 记录本帧焦点（供下一次重排重锚） ──────────────────────────────
+    // 必须放在步进**之后**：记录的是这一帧实际画出去的位置。放在步进之前会记到
+    // 上一帧的相机上，暂停时（停帧）那次残差值会一直留到下一次 resize。
+    rememberFocus(article, width, height)
 
     // ── ⑤ 背景层（§9.8 的视差视图） ───────────────────────────────────────
     if (backgroundWorld) {
@@ -626,7 +745,13 @@ export function useFumeStage(options: UseFumeStageOptions): UseFumeStageResult {
     if (shouldKeepFrames()) rafId = requestAnimationFrame(draw)
   }
 
-  /** 排一帧（已在队列里就不重复排） */
+  /**
+   * 排一帧（已在队列里就不重复排）。
+   *
+   * `options.article` 在下面的 watch 列表里：暂停时绘制循环停帧，重排提交后这个
+   * watcher 会唤醒恰好一帧，让 `draw` 走一遍 `article !== lastArticle` 分支完成重锚，
+   * 之后照常停帧。
+   */
   function schedule(): void {
     if (disposed || rafId !== null) return
     rafId = requestAnimationFrame(draw)

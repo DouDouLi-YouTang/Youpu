@@ -6,6 +6,7 @@ import { usePlayerStore } from '@/stores/player.store'
 import { useLyricStore } from '@/stores/lyric.store'
 import { formatDuration } from '@/utils/format'
 import { useControlsProgress } from '@/features/immersive/controls/use-progress'
+import { useIdleHoldOnPointerPress } from '@/features/immersive/controls/use-idle-hold'
 
 /**
  * 沉浸控制条 —— 贴底进度条 + 悬停歌词预览。
@@ -26,6 +27,11 @@ const { seekValue, totalTime, sliderMax, onSliderChange, onSliderAfterChange } =
   useControlsProgress()
 
 const song = computed(() => player.currentItem?.song ?? null)
+
+// 按住进度条（含拖动）期间不自动隐藏：它是独立 fixed 元素、在控制条之外，
+// antd 拖动会 setPointerCapture + stopPropagation，既不触发控制条的 pointerdown
+// 也没有 mousemove，只能自己持有。
+const { onPointerDown: onBarPointerDown } = useIdleHoldOnPointerPress()
 
 const formatMs = (value: number | number[]): string => {
   const v = Array.isArray(value) ? value[0] : value
@@ -129,6 +135,7 @@ function karaokePreviewWordStyle(timeMs: number, durationMs: number): Record<str
       'is-idle': hidden && !settings.bottomProgressbar,
       'is-idle-fade': hidden && settings.bottomProgressbar
     }"
+    @pointerdown="onBarPointerDown"
     @mouseenter="onProgressPreviewEnter"
     @mousemove="onProgressPreviewMove"
     @mouseleave="onProgressPreviewLeave"

@@ -174,7 +174,8 @@ export function normalizeFoliaSettings(
     fonts,
     backgroundOpacity: clampNumber(raw.backgroundOpacity, 0, 100, defaults.backgroundOpacity),
     backgroundBlur: clampNumber(raw.backgroundBlur, 0, 40, defaults.backgroundBlur),
-    wordColoring: typeof raw.wordColoring === 'boolean' ? raw.wordColoring : defaults.wordColoring
+    wordColoring: typeof raw.wordColoring === 'boolean' ? raw.wordColoring : defaults.wordColoring,
+    showFps: typeof raw.showFps === 'boolean' ? raw.showFps : defaults.showFps
   }
 
   if (JSON.stringify(next) === JSON.stringify(raw)) return false

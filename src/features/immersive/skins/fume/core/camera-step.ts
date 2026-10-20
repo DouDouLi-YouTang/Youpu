@@ -133,6 +133,53 @@ function beginRetarget(
 }
 
 /**
+ * 按「焦点在世界里的位移」重锚相机（视口变化导致重排后调用）。
+ *
+ * ## 为什么需要它（不是「顺手优化」）
+ *
+ * 窗口一改大小，整篇文章会被重排：纸张宽度、栏数、字号、每个区块的 `x/y` 全都变。
+ * 相机状态**刻意跨文章存活**（§17.1 第 1 条），而 `syncFumeCameraToArticle` 对
+ * 已有文章只做 clamp —— 于是相机还停在旧文章坐标系里的那个点。新文章里同一句歌词
+ * 已经挪到别处，画面就表现为「歌词与背景一起瞬移」；更糟的是暂停时绘制循环会停帧，
+ * 错位的一帧会**永久留在屏幕上**（用户看到的是「暂停后停在未知位置」）。
+ *
+ * 所以重排后要把相机平移到「焦点的新位置 + 原来的屏幕偏移」，屏幕偏移为零时
+ * 等价于「镜头重新对准同一句歌词」。缩放按视口短边比例折算：`resolveCameraScaleForBlock`
+ * 的目标字号本来就是视口短边的 11.5%，不跟着折算会让画面在重排瞬间明显变大/变小。
+ *
+ * 切歌**不能**走这条路径（那是另一篇文章，应当保留镜头惯性继续滑，见文件头的
+ * 原语义）—— 调用方用「视口变化」来区分。
+ */
+export function reanchorFumeCamera(
+  state: FumeCameraState,
+  anchor: { x: number; y: number },
+  viewportScale: number
+): void {
+  if (!state.initialized) return
+
+  const scale = clamp(
+    state.camera.scale * clamp(viewportScale, 0.25, 4),
+    CAMERA_SCALE_MIN,
+    CAMERA_SCALE_MAX
+  )
+
+  state.camera.x = anchor.x
+  state.camera.y = anchor.y
+  state.camera.focusX = anchor.x
+  state.camera.focusY = anchor.y
+  state.camera.scale = scale
+  state.camera.focusScale = scale
+  state.camera.velocityX = 0
+  state.camera.velocityY = 0
+  state.camera.velocityScale = 0
+  // 旧的桥接路径是按旧文章算的，重锚后继续走会在两个坐标系之间插值
+  state.retarget.bridgeMode = 'none'
+  state.retarget.fromX = anchor.x
+  state.retarget.fromY = anchor.y
+  state.retarget.fromScale = scale
+}
+
+/**
  * 把相机同步到（新的）文章（§9.7）。
  *
  * - **首次**拿到文章：放到整页中心、scale 1.18、速度归零。1.18 不是随便取的：

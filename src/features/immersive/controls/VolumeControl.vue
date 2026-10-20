@@ -4,6 +4,7 @@ import { AudioMutedOutlined, SoundOutlined } from '@ant-design/icons-vue'
 
 import { usePlayerStore } from '@/stores/player.store'
 import { resetIdle } from '@/features/immersive/controls/use-controls-idle'
+import { useIdleHoldWhile } from '@/features/immersive/controls/use-idle-hold'
 
 /**
  * 控制条右侧音量控件：静音按钮 + 悬停弹出竖向滑块（对齐参考 .prg-spk:491-548）。
@@ -52,6 +53,10 @@ function showVolumePopup(): void {
   }
   volumePopup.value = true
 }
+
+// 弹层展开期间不自动隐藏：音量条向上弹 120px，鼠标停在它上面就离开了屏幕底部那条
+// 「悬停唤出区」，光靠 resetIdle 会在 1.5s 后把控制条（连同这个弹层）收走。
+useIdleHoldWhile(() => volumePopup.value)
 function scheduleHideVolumePopup(): void {
   volumeHideTimer = setTimeout(() => {
     volumePopup.value = false

@@ -31,7 +31,7 @@
   // 控制条 absolute 脱离布局、覆盖底部 --bottombar-height；封面槽须在底部让出该高度
   // + 12px 呼吸，否则 cover-valign=bottom 时封面贴到窗口底被控制条压住
   box-sizing: border-box;
-  padding-bottom: calc(var(--bottombar-height, 90px) + 12px);
+  padding-bottom: calc(var(--bottombar-height, 76px) + 12px);
   // 封面块已强制正方/正圆且 flex 不压缩，窗口过矮时顶部裁切，绝不压扁成椭圆
   overflow: hidden;
 

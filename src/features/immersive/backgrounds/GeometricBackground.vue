@@ -94,6 +94,12 @@ const props = defineProps<{
    * （随明暗翻转，供「几何背景」皮肤在浅色下用）。
    */
   vignetteColor?: string
+  /**
+   * 暗角画在哪一层。`none` 不画；`viewport` 表示由宿主在铺满视口的一层上画
+   * （`common` 的几何层被收窄到纸张边界时用这一档，见 `common-layer-plan.ts`）。
+   * 默认 `geometry` = 本组件内部，即既有行为。
+   */
+  vignettePlacement?: 'none' | 'geometry' | 'viewport'
 }>()
 
 // 种子：按歌曲折叠。**不含播放进度** —— 背景不该随每一句歌词重掷
@@ -196,6 +202,9 @@ const colorVars = computed<Record<string, string>>(() => {
 
 /** 是否自铺底色。Folia 的几何层透明，见 props 的说明 */
 const paintsBackground = computed(() => props.paintBackground !== false)
+
+/** 是否在本组件内画暗角（`viewport` 档由宿主负责，见 props 的说明） */
+const showsVignette = computed(() => (props.vignettePlacement ?? 'geometry') === 'geometry')
 </script>
 
 <template>
@@ -229,7 +238,7 @@ const paintsBackground = computed(() => props.paintBackground !== false)
     />
 
     <!-- 径向暗角：中心透明、四周压暗，让中心的歌词更突出 -->
-    <div class="rnp-geo-vignette" />
+    <div v-if="showsVignette" class="rnp-geo-vignette" />
   </div>
 </template>
 

@@ -8,8 +8,13 @@
  * 控制条**隐藏**时净空不再需要，底距掉回基线 **32px**，走一组 spring 过渡
  * （`stiffness: 280, damping: 28`）。
  *
- * 本项目控制条高 90px（`--bottombar-height`），比上游的 112px 矮 —— 所以在场档
- * 取 `90 + 22 = 112px`（与上游同值，只是拆法不同），隐藏档取 32px。
+ * 本项目控制条比上游矮，所以在场档按「**控制条高 + 22px 净空**」算：
+ * 控制条 90px 时正好也是上游那个 112px（22 就是由此来的），2026-10-20 控制条降到
+ * 76px 后跟着变成 **98px**。隐藏档仍取基线 32px。
+ *
+ * 净空写成 JS 常量、控制条高度取 `BOTTOMBAR_HEIGHT`（controls/use-controls-idle.ts）
+ * 而不是在 CSS 里 `calc()`：底距是内联变量、要 rAF 插值（见下），拿不到 CSS 里的
+ * `--bottombar-height`。代价是这里与 CSS 各存一份高度 —— 改控制条高度时两处都要动。
  *
  * ## 为什么不做成 CSS 过渡
  *
@@ -31,10 +36,18 @@
 
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
-import { useControlsHidden } from '../../controls/use-controls-idle'
+import { BOTTOMBAR_HEIGHT, useControlsHidden } from '../../controls/use-controls-idle'
 
-/** 控制条在场时的字幕底距（px）—— 与上游的 112px 同值 */
-export const SUBTITLE_BOTTOM_VISIBLE_PX = 112
+/** 副字幕与控制条之间的净空（px）—— 上游拆法里的 22，本项目沿用 */
+const SUBTITLE_GAP_ABOVE_BAR_PX = 22
+
+/**
+ * 控制条在场时的字幕底距（px）= 控制条高 + 净空。
+ *
+ * 取值跟着控制条高度走：控制条 90px 时是上游那个 112px；2026-10-20 控制条降到 76px，
+ * 这里同步成 98px —— 否则控制条变矮、字幕不动，两者之间会凭空多出一截空隙。
+ */
+export const SUBTITLE_BOTTOM_VISIBLE_PX = BOTTOMBAR_HEIGHT + SUBTITLE_GAP_ABOVE_BAR_PX
 /** 控制条隐藏时的字幕底距（px）—— 上游的基线 32px */
 export const SUBTITLE_BOTTOM_HIDDEN_PX = 32
 
@@ -81,7 +94,7 @@ export function useSubtitleBottom() {
     } else {
       rafId = null
       // 收尾取整：插值的最后一帧可能停在 111.998，肉眼看不出来但会让
-      // 「是否等于 112」这类断言失败
+      // 「是否等于 98」这类断言失败
       bottomPx.value = target.value
     }
   }

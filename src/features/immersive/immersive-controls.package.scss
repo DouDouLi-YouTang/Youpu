@@ -24,7 +24,8 @@
   grid-template-columns: minmax(220px, 1fr) minmax(360px, 600px) minmax(220px, 1fr);
   align-items: center;
   gap: 1rem;
-  height: 90px;
+  // 高度读外壳变量（定义在 immersive-shell.scss），改高度只改变量
+  height: var(--bottombar-height, 76px);
   padding: 0 1.5rem;
   /* 对齐参考 material-you-compatibility.scss:51 transition: transform .3s ease, opacity .3s ease */
   transition:
@@ -32,7 +33,7 @@
     opacity 0.3s ease;
   will-change: transform, opacity;
   &.is-idle {
-    transform: translateY(calc(var(--bottombar-height, 90px) - 5px));
+    transform: translateY(calc(var(--bottombar-height, 76px) - 5px));
     pointer-events: none;
     :deep(.rnp-time-indicator) {
       opacity: 0;
@@ -61,7 +62,7 @@
 }
 
 // 默认 idle:整条下滑出视口(对齐参考 material-you-compatibility.scss:57
-// translateY(calc(var(--bottombar-height) - 5px))——控制条高 90,下滑 85px 几乎沉出底部,
+// translateY(calc(var(--bottombar-height) - 5px))——控制条有多高就下滑多少,
 // 留 5px 余量)。控制条无背景,下滑后不可见;pointer-events:none 不挡下层。
 
 // presentationMode:纯 opacity 淡出(对齐参考 experimental.scss:45-54),
@@ -277,7 +278,7 @@
 
 // 三列 pointer-events:none:列空白穿透到父控制条(已 auto)由其接收,挡住下层歌词;
 // 交互元素(按钮组/音量/时间)显式 auto 恢复可点。进度条 z-index 1 在控制条(5)之下,
-// 控制条透明且 90px 以上不覆盖进度条,进度条上半段仍可点。
+// 控制条透明、且只占屏幕最底那一条,进度条在它上方不被覆盖。
 
 .immersive-controls-left {
   display: flex;

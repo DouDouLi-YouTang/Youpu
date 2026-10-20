@@ -17,6 +17,7 @@ import {
   MIN_CAMERA_FRAME_DELTA_MS,
   clampCameraFrameDeltaMs,
   createFumeCameraState,
+  reanchorFumeCamera,
   resolveCameraFloatConfig,
   stepFumeCamera,
   syncFumeCameraToArticle,
@@ -214,6 +215,66 @@ describe('§9.7 syncFumeCameraToArticle', () => {
 
     expect(state.initialized).toBe(false)
     expect(state.camera).toEqual(before)
+  })
+})
+
+describe('§9.7 reanchorFumeCamera（视口重排后重锚）', () => {
+  it('把相机与软焦点一起挪到新锚点，并清掉速度与旧桥接', () => {
+    const state = createFumeCameraState()
+    state.initialized = true
+    state.camera = makeFumeCamera({ x: 100, y: 200, velocityX: 50, velocityY: -30, scale: 1 })
+    state.retarget.bridgeMode = 'direct'
+    state.retarget.fromX = 1
+    state.retarget.fromY = 2
+    state.retarget.fromScale = 0.5
+
+    reanchorFumeCamera(state, { x: 640, y: 480 }, 1)
+
+    expect(state.camera).toMatchObject({
+      x: 640,
+      y: 480,
+      focusX: 640,
+      focusY: 480,
+      scale: 1,
+      focusScale: 1,
+      velocityX: 0,
+      velocityY: 0,
+      velocityScale: 0
+    })
+    expect(state.retarget.bridgeMode).toBe('none')
+    expect(state.retarget.fromX).toBe(640)
+    expect(state.retarget.fromY).toBe(480)
+  })
+
+  it('视口变小 → 相机缩放按比例缩小（观感尺寸保持不变）', () => {
+    const state = createFumeCameraState()
+    state.initialized = true
+    state.camera = makeFumeCamera({ x: 0, y: 0, scale: 2 })
+
+    reanchorFumeCamera(state, { x: 0, y: 0 }, 0.5)
+
+    expect(state.camera.scale).toBe(1)
+    expect(state.camera.focusScale).toBe(1)
+  })
+
+  it('缩放折算后的结果仍受 CAMERA_SCALE 上下限约束', () => {
+    const state = createFumeCameraState()
+    state.initialized = true
+    state.camera = makeFumeCamera({ scale: CAMERA_SCALE_MAX })
+
+    reanchorFumeCamera(state, { x: 0, y: 0 }, 4)
+
+    expect(state.camera.scale).toBe(CAMERA_SCALE_MAX)
+  })
+
+  it('未初始化（还没有文章）时什么都不做', () => {
+    const state = createFumeCameraState()
+    const before = { ...state.camera }
+
+    reanchorFumeCamera(state, { x: 100, y: 100 }, 2)
+
+    expect(state.camera).toEqual(before)
+    expect(state.initialized).toBe(false)
   })
 })
 

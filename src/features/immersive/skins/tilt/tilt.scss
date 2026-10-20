@@ -37,7 +37,7 @@
   // 左右/顶部留白比经典皮肤大：全屏大字需要呼吸，且窄屏幕上文字不长到贴上窗体边
   padding: clamp(24px, 4vh, 56px) clamp(24px, 5vw, 96px);
   // 控制条是 absolute 覆盖层，这里主动让开它的高度
-  padding-bottom: calc(var(--bottombar-height, 90px) + clamp(24px, 4vh, 56px));
+  padding-bottom: calc(var(--bottombar-height, 76px) + clamp(24px, 4vh, 56px));
   color: var(--tilt-primary-color, var(--rnp-accent-color-shade-2, var(--color-text-primary)));
   // ── 内置字体（2026-10-11 用户定：「换成俏皮一点的字体」）──
   // **整块面板**都用它：歌词行、空态歌名/歌手卡、底部罗马音/译文副字幕

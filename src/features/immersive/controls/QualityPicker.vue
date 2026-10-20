@@ -5,6 +5,7 @@ import { usePlayerStore } from '@/stores/player.store'
 import type { PlayableLevel } from '@/domain/player'
 import { QUALITY_OPTIONS, qualityLabel } from '@/domain/quality'
 import { resetIdle } from '@/features/immersive/controls/use-controls-idle'
+import { useIdleHoldWhile } from '@/features/immersive/controls/use-idle-hold'
 
 /**
  * 控制条右侧音质选择（对齐参考 .brt 码率按钮）：码率胶囊按钮 + 悬停弹出列表。
@@ -32,6 +33,8 @@ function scheduleHideLevelPopup(): void {
     levelHideTimer = undefined
   }, 150)
 }
+// 弹层展开期间不自动隐藏（同音量/倍速弹层）
+useIdleHoldWhile(() => levelPopupVisible.value)
 function onLevelSelect(level: PlayableLevel): void {
   player.setLevel(level)
   levelPopupVisible.value = false
