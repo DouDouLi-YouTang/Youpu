@@ -3,7 +3,8 @@
  * 打包后 Electron 主进程 fork 的后端入口。
  *
  * 故意放在 resources/scripts/ 而非 server/ 下:
- * - 应用内「后端在线更新」会整体替换 server/ 目录(保留 node_modules)
+ * - server/ 是 vendored 的上游镜像,升级应用时会整体重新投放
+ *   (2026-10-20 起后端只随应用更新,不再有应用内的在线更新)
  * - 上游 api-enhanced 的 app.js 默认 checkVersion:true,会 exec 无超时的 `npm info`,
  *   在桌面端(无 npm / 国内网络)卡住 Promise.all,端口永远不 listen
  * - 本脚本固定 checkVersion:false 并监听 127.0.0.1,与前端 DEFAULT_BASE_URL 对齐

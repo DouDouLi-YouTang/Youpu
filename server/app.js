@@ -14,7 +14,7 @@ async function start() {
   // Desktop 打包/本地一体启动: 关闭 npm 版本检查。
   // checkVersion 会 exec `npm info ...` 且无超时, 在桌面端(尤其国内网络 / 无 npm PATH)
   // 会卡住 serveNcmApi 的 Promise.all, 端口永远不 listen, 前端表现为“后端连不上”。
-  // 版本更新已由 Electron 主进程的 api-server:check-update 负责。
+  // 版本不在此处检查：后端随应用安装包一起更新（2026-10-20 起不再有在线更新）。
   await require('./server').serveNcmApi({
     checkVersion: false,
     host: process.env.HOST || '127.0.0.1',
