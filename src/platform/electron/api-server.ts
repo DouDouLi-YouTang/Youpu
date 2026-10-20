@@ -29,28 +29,11 @@ export async function stopApiServer(): Promise<string> {
   return invokeCommand<string>('api-server:stop')
 }
 
+// ⚠️ 后端不提供在线更新（2026-10-20 移除）：它只替换源码、保留旧 node_modules，
+// 上游新增依赖后后端会起不来且无法自愈。后端现在只随应用安装包更新，
+// 这里只剩版本读取 / 健康检查 / 重启。
 export async function getApiServerVersion(): Promise<string | null> {
   return invokeCommand<string | null>('api-server:get-version')
-}
-
-export interface ApiServerCheckResult {
-  current: string
-  latest: string
-  hasUpdate: boolean
-}
-
-export async function checkApiServerUpdate(): Promise<ApiServerCheckResult> {
-  return invokeCommand<ApiServerCheckResult>('api-server:check-update')
-}
-
-export interface ApiServerUpdateResult {
-  oldVersion: string
-  newVersion: string
-  restarted: boolean
-}
-
-export async function updateApiServer(): Promise<ApiServerUpdateResult> {
-  return invokeCommand<ApiServerUpdateResult>('api-server:update')
 }
 
 export async function getApiServerHealth(): Promise<ApiServerHealthResult> {

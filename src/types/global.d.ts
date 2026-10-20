@@ -144,8 +144,6 @@ declare global {
         | 'api-server:start'
         | 'api-server:stop'
         | 'api-server:get-version'
-        | 'api-server:check-update'
-        | 'api-server:update'
         | 'api-server:health'
         | 'api-server:is-running'
         | 'api-server:restart'
@@ -192,8 +190,6 @@ declare global {
       start(): Promise<string>
       stop(): Promise<string>
       getVersion(): Promise<string | null>
-      checkUpdate(): Promise<{ current: string; latest: string; hasUpdate: boolean }>
-      update(): Promise<{ oldVersion: string; newVersion: string; restarted: boolean }>
       health(): Promise<ApiServerHealthResult>
       isRunning(): Promise<boolean>
       restart(): Promise<ApiServerRestartResult>

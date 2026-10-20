@@ -12,7 +12,6 @@ import { useSettingsStore } from '@/stores/settings.store'
 import { setMessageInstance } from './message-holder'
 import { useGlobalPlaybackShortcuts } from '@/composables/useGlobalPlaybackShortcuts'
 import { setUnauthorizedHandler } from '@/services/api/api-client'
-import { runStartupBackendUpdateCheck } from '@/services/api-server-maintenance'
 import { runStartupAppUpdateCheck } from '@/services/app-update-maintenance'
 import { useTheme, zhCN } from './providers/theme-provider'
 
@@ -159,7 +158,6 @@ function showCloseModal(api: NonNullable<typeof window.muiceDesktop>): void {
 }
 
 onMounted(() => {
-  runStartupBackendUpdateCheck()
   runStartupAppUpdateCheck(router)
   if (!navigator.onLine) onOffline()
   window.addEventListener('offline', onOffline)

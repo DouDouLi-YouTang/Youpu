@@ -13,7 +13,6 @@ import {
 } from '@ant-design/icons-vue'
 
 import {
-  checkApiServerUpdate,
   getApiServerHealth,
   getApiServerVersion,
   restartApiServer,
@@ -26,7 +25,6 @@ import {
   onAppUpdateProgress,
   type AppUpdateStatus
 } from '@/platform/electron/app-update'
-import { performBackendUpdateBackground } from '@/services/api-server-maintenance'
 import { logger } from '@/services/logger'
 import { isElectronRuntime } from '@/platform/electron/commands'
 import {
@@ -46,7 +44,6 @@ import {
   useSettingsStore,
   type AccentPresetKey,
   type AppUpdateChannelMode,
-  type BackendUpdateMode,
   type CloseAction
 } from '@/stores/settings.store'
 import packageJson from '../../../package.json'
@@ -72,12 +69,6 @@ const closeActionOptions = [
   { label: '每次询问', value: 'ask' as CloseAction },
   { label: '直接退出', value: 'quit' as CloseAction },
   { label: '最小化到托盘', value: 'tray' as CloseAction }
-]
-
-const backendUpdateModeOptions = [
-  { label: '关闭', value: 'off' as BackendUpdateMode },
-  { label: '有新版本时提示', value: 'notify' as BackendUpdateMode },
-  { label: '自动更新', value: 'auto' as BackendUpdateMode }
 ]
 
 const accentOptions: { label: string; value: AccentPresetKey }[] = [
@@ -215,12 +206,12 @@ const backendStatusColor = computed(() => {
   return apiHealth.value.ok ? 'success' : 'error'
 })
 
-// 后端 api-enhanced:版本展示 + 检查更新 + 在线更新
+// 后端 api-enhanced：版本展示 + 健康状态 + 重启。
+// 不提供「在线更新」：后端随应用安装包更新（源码与依赖必须同一次构建），
+// 详见 src/services/api-server-maintenance.ts 的文件头说明。
 const BACKEND_REPO_URL = 'https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced'
 const apiVersion = ref<string | null>(null)
 const apiHealth = ref<ApiServerHealthResult | null>(null)
-const checking = ref(false)
-const updating = ref(false)
 const checkingHealth = ref(false)
 const restarting = ref(false)
 
@@ -282,50 +273,6 @@ async function handleRestartBackend(): Promise<void> {
     message.error('重启后端失败，请稍后重试')
   } finally {
     restarting.value = false
-  }
-}
-
-async function handleCheckUpdate(): Promise<void> {
-  if (!isElectronRuntime()) return
-  checking.value = true
-  try {
-    const result = await checkApiServerUpdate()
-    apiVersion.value = result.current
-    if (result.hasUpdate) {
-      Modal.confirm({
-        title: '发现新版本',
-        content: `当前 ${result.current}，最新 ${result.latest}，是否立即更新？`,
-        okText: '立即更新',
-        cancelText: '稍后',
-        centered: true,
-        onOk: () => {
-          // 不返回 Promise:Modal 立即关闭,更新转入后台,完成后 message 提示
-          void doUpdate()
-        }
-      })
-    } else {
-      message.success(`已是最新版本 (${result.current})`)
-    }
-  } catch (e) {
-    logger.error('检查后端更新失败', e)
-    message.error('检查更新失败，请稍后重试')
-  } finally {
-    checking.value = false
-  }
-}
-
-async function doUpdate(): Promise<void> {
-  if (!isElectronRuntime()) return
-  updating.value = true
-  try {
-    // 共享函数负责"后台运行"提示与完成通知,这里仅刷新版本与状态
-    const result = await performBackendUpdateBackground()
-    if (result) {
-      apiVersion.value = result.newVersion
-      await refreshBackendHealth()
-    }
-  } finally {
-    updating.value = false
   }
 }
 
@@ -777,7 +724,7 @@ onUnmounted(() => {
           <span class="settings-card__icon"><ApiOutlined /></span>
           <div>
             <h3 class="settings-card__title">后端</h3>
-            <p class="settings-card__sub">网易云 API 服务状态与更新</p>
+            <p class="settings-card__sub">网易云 API 服务状态与维护（随应用一起更新）</p>
           </div>
         </div>
         <div class="settings-card__rows">
@@ -811,17 +758,6 @@ onUnmounted(() => {
               </div>
             </template>
           </div>
-          <div class="settings-row">
-            <div class="settings-row__meta">
-              <p class="settings-row__label">更新检查</p>
-              <p class="settings-row__hint">关闭 / 有新版本提示 / 自动更新</p>
-            </div>
-            <a-select
-              v-model:value="settingsStore.backendUpdateMode"
-              :options="backendUpdateModeOptions"
-              class="settings-row__control"
-            />
-          </div>
           <div class="settings-row settings-row--stack">
             <div class="settings-row__meta">
               <p class="settings-row__label">源码仓库</p>
@@ -833,9 +769,6 @@ onUnmounted(() => {
           <div class="settings-actions">
             <a-button :loading="checkingHealth" @click="refreshBackendHealth">刷新状态</a-button>
             <a-button :loading="restarting" danger @click="handleRestartBackend">重启后端</a-button>
-            <a-button type="primary" :loading="checking || updating" @click="handleCheckUpdate">
-              检查更新
-            </a-button>
           </div>
         </div>
       </section>

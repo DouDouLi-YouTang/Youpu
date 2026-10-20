@@ -8,7 +8,7 @@ import {
   statSync,
   truncateSync
 } from 'node:fs'
-import { cp, mkdir, open, readFile, readdir, rm, rmdir, stat, unlink } from 'node:fs/promises'
+import { mkdir, open, readFile, readdir, rm, rmdir, stat, unlink } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -440,11 +440,6 @@ function readEmbeddedApiServerConfig(): { host: string; port: number } {
   }
 }
 
-/** gh-proxy 加速前缀(直连 GitHub 国内超时)。 */
-const GH_PROXY = 'https://gh-proxy.com/'
-/** api-enhanced 源仓库全名(owner/repo)。 */
-const API_ENHANCED_REPO = 'NeteaseCloudMusicApiEnhanced/api-enhanced'
-
 /** 内嵌 API 服务的地址：由根目录 config/api-server.json 决定（可用环境变量临时覆盖）。 */
 const apiServerConfig = readEmbeddedApiServerConfig()
 const API_SERVER_HOST = apiServerConfig.host
@@ -827,92 +822,6 @@ async function restartApiServer(): Promise<ApiServerRestartResult> {
   }
 }
 
-/** 下载 zip 到内存。 */
-async function downloadBuffer(url: string, timeoutMs = 120_000): Promise<Buffer> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
-  if (!res.ok) throw new Error(`下载后端代码失败: HTTP ${res.status}`)
-  return Buffer.from(await res.arrayBuffer())
-}
-
-/**
- * 获取 api-enhanced 仓库 main 分支最新 commit SHA(供应链加固)。
- *
- * 用 SHA 下载 archive 而非浮动 main 分支 zip,可防止代理在 main 指向变化期间
- * 篡改/回滚 zip 内容:SHA 经 GitHub API(独立端点)获取,下载走 codeload 端点,
- * 代理需同时攻破两个端点且 SHA 一致才能注入恶意代码。
- *
- * 双源:gh-proxy 代理(主)+ 直连 api.github.com(备,api.github.com 国内一般可达)。
- * 任一拿到 SHA 即可;都失败则抛错(不降级到无 SHA 下载,安全优先)。
- */
-async function fetchMainCommitSha(): Promise<string> {
-  const sources = [
-    `${GH_PROXY}https://api.github.com/repos/${API_ENHANCED_REPO}/commits/main`,
-    `https://api.github.com/repos/${API_ENHANCED_REPO}/commits/main`
-  ]
-  for (const url of sources) {
-    try {
-      const res = await fetch(url, {
-        headers: { Accept: 'application/vnd.github+json' },
-        signal: AbortSignal.timeout(15_000)
-      })
-      if (!res.ok) continue
-      const data = (await res.json()) as { sha?: string }
-      if (data.sha) return data.sha
-    } catch {
-      // 试下一个源
-    }
-  }
-  throw new Error('无法获取远程 commit SHA,请检查网络')
-}
-
-/**
- * 用解压出的代码替换 server 目录,保留 node_modules 与 .git。
- *
- * 原子性:先把当前可替换内容备份到 backupDir(cp,跨盘安全),再删旧 + cp 新;
- * cp 中途失败(磁盘满/权限)时从备份回滚,避免 server 处于半更新损坏态导致下次
- * 启动 fork 失败。备份步骤本身失败则直接抛错(此时 serverDir 尚未被修改)。
- */
-async function replaceServerCode(
-  extractedDir: string,
-  serverDir: string,
-  backupDir: string
-): Promise<void> {
-  const keep = new Set(['node_modules', '.git'])
-  await mkdir(backupDir, { recursive: true })
-  // 1. 备份当前可替换内容
-  for (const entry of await readdir(serverDir, { withFileTypes: true })) {
-    if (keep.has(entry.name)) continue
-    await cp(join(serverDir, entry.name), join(backupDir, entry.name), { recursive: true })
-  }
-  try {
-    // 2. 删除当前内容
-    for (const entry of await readdir(serverDir, { withFileTypes: true })) {
-      if (keep.has(entry.name)) continue
-      await rm(join(serverDir, entry.name), { recursive: true, force: true })
-    }
-    // 3. 复制新内容
-    for (const entry of await readdir(extractedDir, { withFileTypes: true })) {
-      if (keep.has(entry.name)) continue
-      await cp(join(extractedDir, entry.name), join(serverDir, entry.name), { recursive: true })
-    }
-  } catch (error) {
-    // 回滚:删掉已写入的残留新内容,从备份恢复
-    for (const entry of await readdir(serverDir, { withFileTypes: true })) {
-      if (keep.has(entry.name)) continue
-      await rm(join(serverDir, entry.name), { recursive: true, force: true }).catch(() => undefined)
-    }
-    for (const entry of await readdir(backupDir, { withFileTypes: true })) {
-      await cp(join(backupDir, entry.name), join(serverDir, entry.name), { recursive: true })
-    }
-    throw error
-  }
-}
-
-/** 停止主进程管理的 server。 */
-async function stopPackagedApiServer(): Promise<void> {
-  await stopTrackedApiServer()
-}
-
 /** 构建托盘右键菜单,isPlaying 决定第一项文字。 */
 function buildTrayMenu(isPlaying: boolean): Electron.Menu {
   const sendCommand = (command: 'play-pause' | 'prev' | 'next'): void => {
@@ -1220,78 +1129,6 @@ function registerIpcHandlers(): void {
     }
   })
 
-  // 检查 api-enhanced 是否有新版本:读当前版本 + fetch 远程 package.json 对比。
-  ipcMain.handle('api-server:check-update', async () => {
-    const currentPkg = JSON.parse(await readFile(join(getServerDir(), 'package.json'), 'utf8'))
-    const current = currentPkg.version as string
-    // jsdelivr 主源,gh-proxy raw 备源(任一拿到 version 即可)
-    const sources = [
-      'https://cdn.jsdelivr.net/gh/NeteaseCloudMusicApiEnhanced/api-enhanced@main/package.json',
-      'https://gh-proxy.com/https://raw.githubusercontent.com/NeteaseCloudMusicApiEnhanced/api-enhanced/main/package.json'
-    ]
-    let latest: string | null = null
-    for (const url of sources) {
-      try {
-        const res = await fetch(url, { signal: AbortSignal.timeout(15000) })
-        if (!res.ok) continue
-        const remotePkg = (await res.json()) as { version?: string }
-        if (remotePkg.version) {
-          latest = remotePkg.version
-          break
-        }
-      } catch {
-        // 试下一个源
-      }
-    }
-    if (!latest) throw new Error('无法获取远程版本,请检查网络')
-    return { current, latest, hasUpdate: latest !== current }
-  })
-
-  // 从 api-enhanced 源仓库拉取最新代码,替换 server 目录(保留 node_modules)并重启。
-  ipcMain.handle('api-server:update', async () => {
-    const serverDir = getServerDir()
-    const oldPkg = JSON.parse(await readFile(join(serverDir, 'package.json'), 'utf8'))
-    const oldVersion = oldPkg.version as string
-
-    // pin 到 main 最新 commit SHA 下载 archive,而非浮动 main 分支 zip(供应链加固):
-    // SHA 经 GitHub API 独立端点获取,代理需同时攻破 API 与 codeload 两个端点且 SHA
-    // 一致才能注入恶意代码。SHA 获取失败则中止(不降级到无 SHA 下载,安全优先)。
-    const sha = await fetchMainCommitSha()
-    const zipUrl = `${GH_PROXY}https://github.com/${API_ENHANCED_REPO}/archive/${sha}.zip`
-
-    const zipBuf = await downloadBuffer(zipUrl)
-    const tmpDir = join(app.getPath('temp'), `api-enhanced-update-${Date.now()}`)
-    const backupDir = join(app.getPath('temp'), `api-enhanced-backup-${Date.now()}`)
-    await mkdir(tmpDir, { recursive: true })
-    try {
-      new AdmZip(zipBuf).extractAllTo(tmpDir, true)
-      // GitHub archive 顶层目录名为 `repo-<sha>`。校验该目录存在,防止代理返回
-      // 篡改 zip(篡改 zip 的顶层目录名不会与该 SHA 对应,校验失败即拒绝替换)。
-      const extractedDir = join(tmpDir, `api-enhanced-${sha}`)
-      try {
-        await readdir(extractedDir)
-      } catch {
-        throw new Error('解压目录校验失败,下载内容可能已被篡改')
-      }
-
-      await stopPackagedApiServer()
-      await replaceServerCode(extractedDir, serverDir, backupDir)
-    } finally {
-      await rm(tmpDir, { recursive: true, force: true })
-      await rm(backupDir, { recursive: true, force: true }).catch(() => undefined)
-    }
-
-    // 打包模式自动重启 fork;dev 模式 server 由 concurrently 持有,无法自动重启
-    await startPackagedApiServer()
-
-    const newPkg = JSON.parse(await readFile(join(serverDir, 'package.json'), 'utf8'))
-    return {
-      oldVersion,
-      newVersion: newPkg.version as string,
-      restarted: app.isPackaged
-    }
-  })
-
   // 后端健康检查:HTTP 探测 + tracked 进程状态
   ipcMain.handle('api-server:health', () => getApiServerHealth())
 
@@ -1386,15 +1223,61 @@ async function pathExists(p: string): Promise<boolean> {
 }
 
 /**
- * 打包模式下首次启动或整体升级后,从 node_modules.zip 还原 node_modules。
- * 后端在线升级 replaceServerCode 保留 node_modules 目录,故仅当目录缺失时才解压:
- * 既不覆盖后端升级结果,也避免每次启动重复解压。解压用系统 tar(native、异步,
- * 不阻塞主进程);失败则清理残留目录,下次启动重试,避免半解压损坏态。
+ * 读取 server 源码与依赖清单声明的版本,用于判断两者是否来自同一次构建。
+ *
+ * - 源码版本:`server/package.json` 的 `version`
+ * - 依赖版本:`server/node_modules/.package-lock.json` 的 `version`(npm 安装时写入,
+ *   顶层就是这个值;实测安装目录里为 `"4.36.2"`)
+ *
+ * 任一读不到都返回 null —— 调用方据此**不做任何清理**,只走原来的「目录在就跳过」。
+ */
+async function readServerVersionPair(
+  serverDir: string
+): Promise<{ source: string; modules: string } | null> {
+  try {
+    const pkg = JSON.parse(await readFile(join(serverDir, 'package.json'), 'utf8')) as {
+      version?: unknown
+    }
+    const lock = JSON.parse(
+      await readFile(join(serverDir, 'node_modules', '.package-lock.json'), 'utf8')
+    ) as { version?: unknown }
+    if (typeof pkg.version !== 'string' || typeof lock.version !== 'string') return null
+    return { source: pkg.version, modules: lock.version }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 打包模式下准备 server/node_modules。
+ *
+ * 历史教训(2026-10-20):这里曾**只看目录在不在**。后端在线更新会整体替换源码、
+ * 保留 node_modules,而上游某次升级新增了 `fzstd` / `jsdom` —— 源码 require 不到,
+ * fork 在 listen 之前就退出,重启永远无效,连 `node_modules.zip` 也被那次更新删了。
+ * 因此现在多一步一致性校验:源码版本与依赖清单版本不一致 = 两者不是同一次构建,
+ * 直接按 zip 重建(安装包里的 zip 与 package.json 同源,解出来必然匹配)。
+ *
+ * 解压用系统 tar(native、异步,不阻塞主进程);失败则清理残留目录,下次启动重试,
+ * 避免半解压损坏态。
  */
 async function ensureServerNodeModules(serverDir: string): Promise<void> {
   const modulesDir = join(serverDir, 'node_modules')
-  if (await pathExists(modulesDir)) return
   const zipPath = join(serverDir, 'node_modules.zip')
+
+  const pair = await readServerVersionPair(serverDir)
+  if (pair && pair.source !== pair.modules) {
+    const canRebuild = await pathExists(zipPath)
+    const message =
+      `[api-server] node_modules(${pair.modules})与源码(${pair.source})版本不一致,` +
+      (canRebuild ? '按 node_modules.zip 重建\n' : '且缺少 node_modules.zip,无法自动修复\n')
+    console.warn(message.trim())
+    getApiServerLogStream()?.write(message)
+    if (canRebuild) {
+      await rm(modulesDir, { recursive: true, force: true }).catch(() => undefined)
+    }
+  }
+
+  if (await pathExists(modulesDir)) return
   if (!(await pathExists(zipPath))) {
     throw new Error('server node_modules 缺失且未找到 node_modules.zip,安装包可能损坏')
   }

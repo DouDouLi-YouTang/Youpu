@@ -18,7 +18,6 @@ export const ACCENT_PRESETS: Record<AccentPresetKey, string> = {
 }
 
 export type CloseAction = 'ask' | 'quit' | 'tray'
-export type BackendUpdateMode = 'off' | 'notify' | 'auto'
 /** 应用更新通道：off 不检查 / notify 有新版提示 / beta 接收 Beta 预发布 / latest 只接收正式版 */
 export type AppUpdateChannelMode = 'off' | 'latest' | 'beta'
 
@@ -37,8 +36,6 @@ interface SettingsState {
   fmCardSize: FmCardSize
   /** 歌曲列表中是否在歌曲名前显示封面缩略图。 */
   showCoverInList: boolean
-  /** 后端更新检查模式:off 关闭检查 / notify 有新版本时提示 / auto 自动更新。 */
-  backendUpdateMode: BackendUpdateMode
   /** 音频输出设备 deviceId(空串=系统默认,来自 enumerateDevices)。 */
   audioOutputDeviceId: string
   /** 是否显示按钮悬停气泡提示。 */
@@ -61,7 +58,6 @@ export const useSettingsStore = defineStore('settings', {
     playbackCacheMaxBytes: DEFAULT_PLAYBACK_CACHE_MAX_BYTES,
     fmCardSize: 'large-h',
     showCoverInList: true,
-    backendUpdateMode: 'off',
     audioOutputDeviceId: '',
     showButtonTooltips: true,
     appUpdateChannel: 'latest'

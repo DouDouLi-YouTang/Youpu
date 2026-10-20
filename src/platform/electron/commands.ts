@@ -8,8 +8,6 @@ export type DesktopCommand =
   | 'api-server:start'
   | 'api-server:stop'
   | 'api-server:get-version'
-  | 'api-server:check-update'
-  | 'api-server:update'
   | 'api-server:health'
   | 'api-server:is-running'
   | 'api-server:restart'

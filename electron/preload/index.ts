@@ -10,8 +10,6 @@ const allowedChannels = [
   'api-server:start',
   'api-server:stop',
   'api-server:get-version',
-  'api-server:check-update',
-  'api-server:update',
   'api-server:health',
   'api-server:is-running',
   'api-server:restart',
@@ -255,20 +253,6 @@ const desktopApi = {
     },
     getVersion(): Promise<string | null> {
       return ipcRenderer.invoke('api-server:get-version') as Promise<string | null>
-    },
-    checkUpdate(): Promise<{ current: string; latest: string; hasUpdate: boolean }> {
-      return ipcRenderer.invoke('api-server:check-update') as Promise<{
-        current: string
-        latest: string
-        hasUpdate: boolean
-      }>
-    },
-    update(): Promise<{ oldVersion: string; newVersion: string; restarted: boolean }> {
-      return ipcRenderer.invoke('api-server:update') as Promise<{
-        oldVersion: string
-        newVersion: string
-        restarted: boolean
-      }>
     },
     health(): Promise<ApiServerHealthResult> {
       return ipcRenderer.invoke('api-server:health') as Promise<ApiServerHealthResult>
