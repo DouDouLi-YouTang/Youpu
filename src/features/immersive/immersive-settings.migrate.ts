@@ -1,0 +1,184 @@
+import {
+  createDefaultSettings,
+  FOLIA_BACKGROUND_CHOICES,
+  FOLIA_COLOR_SCHEMES,
+  FOLIA_SKIN_IDS,
+  resolveFoliaSkinId,
+  type FoliaBackgroundChoice,
+  type FoliaSettings,
+  type FoliaSkinId,
+  type ImmersiveSettings
+} from './immersive-settings.model'
+import { normalizeFoliaFontSettings } from './folia-font-settings'
+import { DEFAULT_SKIN_ID } from './skins/types'
+
+/**
+ * 沉浸设置的**纯迁移逻辑** —— 与 store 分开，只为了能在 node 环境单测
+ * （vitest 的 environment 是 node，没有 localStorage / jsdom；store 里的迁移要读
+ * localStorage，直接测 store 得注入一堆 mock）。
+ *
+ * 这里只做「数据的形状变换」，不碰 store、不碰 storage。
+ * ⚠️ 依赖必须指向 `immersive-settings.model`（纯数据层），**不能**指向 store ——
+ * store 反过来 import 本文件，指过去就成环了（见 model 顶部说明）。
+ *
+ * 持久化格式换过两次，这里一律按**形状**判断，不看版本号（老数据从来没有版本号）：
+ *   v1 扁平   —— 顶层直接挂设置字段 + skin。字段名与当前结构一一对应，无需搬运，
+ *                只有 `customFontFamily` 的旧格式（string）要收成数组。
+ *   v2 分桶   —— `{ skin, panels: { classic, tilt } }`。那是皮肤系统刚上线时的中间版本：
+ *                当时把「经典」与「倾诉」当成两个各有全套设置的面板。该设计已被用户否决
+ *                （Folia 三主题当时没有独立设置），所以 v2 只需把 **classic 那一桶**
+ *                取出来当全局经典设置，
+ *                tilt 桶按设计丢弃。
+ *   v3 扁平   —— 当前结构：与 v1 同形，但含义不同，这份设置**只属于「经典」面板**
+ *                （当时只沿用少数沉浸页通用项，读的是同一份）。
+ */
+
+/**
+ * 判断是不是 v2 的**分桶**结构。
+ *
+ * 判据是「顶层有 panels 对象」。v1 / v3 的顶层都是设置字段本身，绝不会出现 panels；
+ * 单看 `skin` 之类没法区分，因为两种结构都有 skin。
+ */
+export function isBucketed(raw: Record<string, unknown>): boolean {
+  const panels = raw.panels
+  return (
+    panels !== undefined && typeof panels === 'object' && panels !== null && !Array.isArray(panels)
+  )
+}
+
+/**
+ * 从 v2 的分桶数据里取出「经典」那一桶，作为全局设置。
+ *
+ * 以当前默认值为底、**只覆盖老数据里出现过的已知键**（未知键天然被忽略，不会污染新结构）。
+ * 取不到 classic 桶 / 桶不是对象 → 返回空 Partial（调用方保留默认值，不覆盖成 undefined）。
+ *
+ * ⚠️ 返回值里的 `customFontFamily` 可能仍是旧格式（string），调用方必须接着跑
+ * `normalizeFontFamily`。
+ */
+export function settingsFromBucketed(raw: Record<string, unknown>): Partial<ImmersiveSettings> {
+  const panels = raw.panels
+  if (!panels || typeof panels !== 'object' || Array.isArray(panels)) return {}
+  const classic = (panels as Record<string, unknown>)[DEFAULT_SKIN_ID]
+  if (!classic || typeof classic !== 'object' || Array.isArray(classic)) return {}
+
+  const base = createDefaultSettings()
+  const out: Record<string, unknown> = {}
+  for (const key of Object.keys(base)) {
+    const value = (classic as Record<string, unknown>)[key]
+    if (value !== undefined) out[key] = value
+  }
+  return out as Partial<ImmersiveSettings>
+}
+
+/**
+ * 把 `customFontFamily` 从旧格式（string）收成数组，**幂等**。
+ * 返回是否发生了修改（调用方据此决定要不要写回 storage）。
+ *
+ * 旧版本（更早的 store）持久化的是字符串，pinia-plugin-persistedstate 恢复时
+ * 会用它覆盖默认的 `[]`，必须在首次使用前转一次 —— 否则 `use-backdrop` 的
+ * `customFontFamily.map(...)` 拿到字符串会直接抛 TypeError。
+ */
+export function normalizeFontFamily(target: { customFontFamily: string[] }): boolean {
+  if (Array.isArray(target.customFontFamily)) return false
+  const legacy = target.customFontFamily as unknown
+  target.customFontFamily = legacy ? [legacy as string] : []
+  return true
+}
+
+/** 把非法的皮肤 id 纠正成默认值。返回是否发生了修改。 */
+export function sanitizeSkinId(id: string, allowed: readonly string[], fallback: string): string {
+  return allowed.includes(id) ? id : fallback
+}
+
+const COLOR_SCHEMES = ['dark', 'light', 'auto'] as const
+const SUBTITLE_CONTENT_MODES = ['both', 'translation', 'romanization', 'none'] as const
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function pickEnum<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return typeof value === 'string' && (allowed as readonly string[]).includes(value)
+    ? (value as T)
+    : fallback
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
+  return Math.max(min, Math.min(max, value))
+}
+
+function normalizeBackgroundMode(
+  value: unknown,
+  skin: FoliaSkinId,
+  fallback: FoliaBackgroundChoice
+): FoliaBackgroundChoice {
+  const mode = pickEnum(value, FOLIA_BACKGROUND_CHOICES, fallback)
+  // 流光原生实现就是 Common。历史值 `common` 与显式选择原生是同一个画面，
+  // 归一到 native 后设置项只剩一个真源，也不会再出现重复候选。
+  if (skin === 'glow' && mode === 'common') return 'native'
+  return mode
+}
+
+/**
+ * 清洗 Folia 三套主题共用的持久化设置。
+ *
+ * 旧存档没有 `folia` 时从默认对象补齐；只覆盖缺失或非法的字段，合法值保持不变。
+ * 背景模式按主题拆分：
+ *  - 完全没有 `backgroundModes` 时，把旧 `backgroundMode` 迁移给持久化主题
+ *    （历史 `classic` → 流光，其它保持自己的槽位），其余主题为 native；
+ *  - 已存在 `backgroundModes` 时只逐键校验，缺失 / 非法键各自回退 native，不再读旧字段。
+ *
+ * `skin` 由 store 在 bootstrap 时显式传入；纯函数调用也可从 target.skin 读取。
+ * 返回是否发生了修改，供 bootstrap 决定是否写回。
+ */
+export function normalizeFoliaSettings(
+  target: { folia?: Partial<FoliaSettings> | null; skin?: string },
+  skin: unknown = target.skin
+): boolean {
+  const defaults = createDefaultSettings().folia
+  const raw = (isRecord(target.folia) ? target.folia : {}) as Record<string, unknown>
+  const hasBackgroundModes = Object.prototype.hasOwnProperty.call(raw, 'backgroundModes')
+  const rawModes = isRecord(raw.backgroundModes) ? raw.backgroundModes : null
+  const rawFonts = isRecord(raw.fonts) ? raw.fonts : null
+  const backgroundModes = Object.fromEntries(FOLIA_SKIN_IDS.map((id) => [id, 'native'])) as Record<
+    FoliaSkinId,
+    FoliaBackgroundChoice
+  >
+  const fonts = Object.fromEntries(
+    FOLIA_SKIN_IDS.map((id) => [id, normalizeFoliaFontSettings(rawFonts?.[id])])
+  ) as FoliaSettings['fonts']
+
+  if (hasBackgroundModes && rawModes) {
+    for (const id of FOLIA_SKIN_IDS) {
+      backgroundModes[id] = normalizeBackgroundMode(rawModes[id], id, 'native')
+    }
+  } else if (!hasBackgroundModes && raw.backgroundMode !== undefined) {
+    backgroundModes[resolveFoliaSkinId(skin)] = normalizeBackgroundMode(
+      raw.backgroundMode,
+      resolveFoliaSkinId(skin),
+      'native'
+    )
+  }
+
+  const next: FoliaSettings = {
+    colorScheme: pickEnum(raw.colorScheme, COLOR_SCHEMES, defaults.colorScheme),
+    subtitleContentMode: pickEnum(
+      raw.subtitleContentMode,
+      SUBTITLE_CONTENT_MODES,
+      defaults.subtitleContentMode
+    ),
+    subtitleBlur: typeof raw.subtitleBlur === 'boolean' ? raw.subtitleBlur : defaults.subtitleBlur,
+    colorMode: pickEnum(raw.colorMode, FOLIA_COLOR_SCHEMES, defaults.colorMode),
+    backgroundModes,
+    fonts,
+    backgroundOpacity: clampNumber(raw.backgroundOpacity, 0, 100, defaults.backgroundOpacity),
+    backgroundBlur: clampNumber(raw.backgroundBlur, 0, 40, defaults.backgroundBlur),
+    wordColoring: typeof raw.wordColoring === 'boolean' ? raw.wordColoring : defaults.wordColoring,
+    showFps: typeof raw.showFps === 'boolean' ? raw.showFps : defaults.showFps
+  }
+
+  if (JSON.stringify(next) === JSON.stringify(raw)) return false
+  target.folia = next
+  return true
+}

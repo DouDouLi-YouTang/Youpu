@@ -4,9 +4,9 @@ import {
   createReadStream,
   createWriteStream,
   mkdirSync,
+  readFileSync,
   statSync,
-  truncateSync,
-  writeFileSync
+  truncateSync
 } from 'node:fs'
 import { cp, mkdir, open, readFile, readdir, rm, rmdir, stat, unlink } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -30,40 +30,7 @@ import {
 } from 'electron'
 
 import { getCoverPath, saveCover } from './cover-cache'
-import {
-  attachAudioEngine,
-  attachRenderer,
-  destroyAudioEngine,
-  engineLoad,
-  enginePause,
-  enginePlay,
-  engineSeek,
-  engineSetMeta,
-  engineSetRate,
-  engineSetSink,
-  engineSetVolume,
-  engineStop,
-  getEngineRestorePayload,
-  initAudioEngine,
-  isEnginePlaying,
-  onEngineStateChanged,
-  routeMediaAction,
-  setEngineEventForwarder
-} from './audio-engine'
-import { registerBgPlayerProtocol } from './bg-player'
 import { registerDownloadIpcHandlers } from './downloads'
-import {
-  attachWindow as attachLowMemoryWindow,
-  disposeLowMemoryMode,
-  ensureWindowVisible,
-  getLowMemoryStatus,
-  initLowMemoryMode,
-  loadPersistedMode,
-  normalizeLowMemoryModeValue,
-  setLowMemoryMode
-} from './memory-mode'
-import type { LowMemoryMode } from '../../src/domain/low-memory'
-import type { QueueItem } from '../../src/domain/player'
 import {
   checkForAppUpdate,
   downloadAppUpdate,
@@ -142,17 +109,6 @@ protocol.registerSchemesAsPrivileged([
       corsEnabled: true,
       bypassCSP: true
     }
-  },
-  {
-    // 低内存模式的后台播放器页面(纯 <audio> 的极小隐藏窗口):
-    // HTML 由主进程内存返回,注册成 privileged scheme 让它拥有正常 origin,
-    // mediaSession/自定义协议音源(muice-cache:// 等)都能用。
-    scheme: 'muice-bg',
-    privileges: {
-      standard: true,
-      secure: true,
-      supportFetchAPI: true
-    }
   }
 ])
 
@@ -204,6 +160,14 @@ async function serveAudioFile(filePath: string, request: Request): Promise<Respo
   const mime = await sniffAudioMime(filePath)
   const range = request.headers.get('range')
 
+  // 自定义协议跨 origin 时,媒体元素(以及渲染层基于 createMediaElementSource 的
+  // 频谱分析)需要响应带 CORS 头,否则 Web Audio 读到的数据恒为 0。
+  // 纯增量:响应头只增加能力,不影响不带 CORS 的普通播放。
+  const commonHeaders: Record<string, string> = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Range'
+  }
+
   if (range) {
     const m = /bytes=(\d*)-(\d*)/.exec(range)
     if (m) {
@@ -215,7 +179,7 @@ async function serveAudioFile(filePath: string, request: Request): Promise<Respo
         if (suffix <= 0) {
           return new Response('Range Not Satisfiable', {
             status: 416,
-            headers: { 'Content-Range': `bytes */${total}` }
+            headers: { ...commonHeaders, 'Content-Range': `bytes */${total}` }
           })
         }
         start = Math.max(0, total - suffix)
@@ -226,7 +190,7 @@ async function serveAudioFile(filePath: string, request: Request): Promise<Respo
         if (start >= total) {
           return new Response('Range Not Satisfiable', {
             status: 416,
-            headers: { 'Content-Range': `bytes */${total}` }
+            headers: { ...commonHeaders, 'Content-Range': `bytes */${total}` }
           })
         }
         end = Math.min(requestedEnd, total - 1)
@@ -235,6 +199,7 @@ async function serveAudioFile(filePath: string, request: Request): Promise<Respo
       return new Response(Readable.toWeb(stream) as ReadableStream<Uint8Array>, {
         status: 206,
         headers: {
+          ...commonHeaders,
           'Content-Type': mime,
           'Content-Length': String(end - start + 1),
           'Content-Range': `bytes ${start}-${end}/${total}`,
@@ -248,6 +213,7 @@ async function serveAudioFile(filePath: string, request: Request): Promise<Respo
   return new Response(Readable.toWeb(stream) as ReadableStream<Uint8Array>, {
     status: 200,
     headers: {
+      ...commonHeaders,
       'Content-Type': mime,
       'Content-Length': String(total),
       'Accept-Ranges': 'bytes'
@@ -421,9 +387,9 @@ function registerCoverProtocol(): void {
   })
 }
 
-/** 主窗口;低内存模式回收渲染进程后会被销毁并置空,唤起时由 createMainWindow 重建。 */
+/** 主窗口。 */
 let mainWindow: BrowserWindow | null = null
-/** 应用正在退出:置位后不再让低内存模式回收/重建窗口,避免退出过程中又拉起一个渲染进程。 */
+/** 应用正在退出:置位后不再响应 second-instance/activate 唤起窗口,避免退出过程中又拉起一个渲染进程。 */
 let quitting = false
 let apiServerProcess: ChildProcess | null = null
 let tray: Tray | null = null
@@ -446,13 +412,43 @@ function getServerDir(): string {
   return join(getProjectRoot(), 'server')
 }
 
+/**
+ * 读取 `config/api-server.json`：主进程与开发后端共用同一份端口配置。
+ *
+ * 只依赖 `app.isPackaged` 与相对路径，不 import CJS 脚本 —— 主进程是 ESM 打包产物，
+ * 直接 require 相对路径会在 asar / 打包目录下解析失败。读取失败时回退 3000，
+ * 与旧行为一致（不会因配置缺失而拒绝启动）。
+ */
+function readEmbeddedApiServerConfig(): { host: string; port: number } {
+  const defaultHost = '127.0.0.1'
+  const defaultPort = 3000
+  try {
+    const raw = JSON.parse(
+      readFileSync(join(getProjectRoot(), 'config', 'api-server.json'), 'utf-8')
+    ) as { host?: unknown; port?: unknown }
+    const host =
+      process.env.YOUPU_API_HOST?.trim() ||
+      (typeof raw.host === 'string' ? raw.host.trim() : '') ||
+      defaultHost
+    const port = Number(process.env.YOUPU_API_PORT || raw.port)
+    return {
+      host,
+      port: Number.isInteger(port) && port >= 1 && port <= 65535 ? port : defaultPort
+    }
+  } catch {
+    return { host: defaultHost, port: defaultPort }
+  }
+}
+
 /** gh-proxy 加速前缀(直连 GitHub 国内超时)。 */
 const GH_PROXY = 'https://gh-proxy.com/'
 /** api-enhanced 源仓库全名(owner/repo)。 */
 const API_ENHANCED_REPO = 'NeteaseCloudMusicApiEnhanced/api-enhanced'
 
-const API_SERVER_HOST = '127.0.0.1'
-const API_SERVER_PORT = 3000
+/** 内嵌 API 服务的地址：由根目录 config/api-server.json 决定（可用环境变量临时覆盖）。 */
+const apiServerConfig = readEmbeddedApiServerConfig()
+const API_SERVER_HOST = apiServerConfig.host
+const API_SERVER_PORT = apiServerConfig.port
 
 type ApiServerMode = 'development' | 'packaged'
 
@@ -766,6 +762,11 @@ function startDevelopmentApiServer(): ChildProcess {
     cwd: getProjectRoot(),
     windowsHide: true,
     stdio: 'ignore',
+    env: {
+      ...process.env,
+      YOUPU_API_HOST: API_SERVER_HOST,
+      YOUPU_API_PORT: String(API_SERVER_PORT)
+    },
     // Windows 上 npm 是 .cmd 脚本,Node 18+ 起(CVE-2024-27980 补丁)不带 shell 直接 spawn
     // .cmd/.bat 会抛 spawn EINVAL(errno -4071)。开 shell 让 cmd.exe 解析 .cmd 脚本。
     shell: process.platform === 'win32'
@@ -914,12 +915,9 @@ async function stopPackagedApiServer(): Promise<void> {
 
 /** 构建托盘右键菜单,isPlaying 决定第一项文字。 */
 function buildTrayMenu(isPlaying: boolean): Electron.Menu {
-  // webContents.send 需要对已销毁的 webContents 兜底:低内存模式回收后窗口被销毁,
-  // 播放控制命令改由音频引擎的降级会话执行(audio-engine routeMediaAction)。
   const sendCommand = (command: 'play-pause' | 'prev' | 'next'): void => {
     const contents = mainWindow?.webContents
     if (contents && !contents.isDestroyed()) contents.send('tray:command', command)
-    else routeMediaAction(command)
   }
   return Menu.buildFromTemplate([
     {
@@ -938,7 +936,10 @@ function buildTrayMenu(isPlaying: boolean): Electron.Menu {
     {
       label: '显示主窗口',
       click: () => {
-        ensureWindowVisible()
+        if (mainWindow) {
+          mainWindow.show()
+          mainWindow.focus()
+        }
       }
     },
     {
@@ -962,10 +963,12 @@ function createTray(): void {
     // 左键单击托盘图标显示/隐藏主窗口
     tray.on('click', () => {
       const win = mainWindow
-      if (win && !win.isDestroyed() && win.isVisible()) {
+      if (!win || win.isDestroyed()) return
+      if (win.isVisible()) {
         win.hide()
       } else {
-        ensureWindowVisible()
+        win.show()
+        win.focus()
       }
     })
   } catch (err) {
@@ -1022,9 +1025,7 @@ function animateWindowResize(
 }
 
 /**
- * 创建(或重建)主窗口,并注册低内存模式的回收钩子。
- * 低内存模式会销毁窗口对象,唤起时再次调用本函数,因此这里必须对同一个窗口的
- * 引用做局部绑定 —— 不能依赖外部 mainWindow(重建期间它可能是 null)。
+ * 创建主窗口。
  */
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -1044,9 +1045,15 @@ function createMainWindow(): BrowserWindow {
       // Mis-pointing this leaves `window.muiceDesktop` undefined in renderer
       // and every titlebar button click resolves to a no-op via the catch.
       preload: join(__dirname, '../preload/index.mjs'),
+      // 渲染层拿不到主进程的配置模块，端口通过启动参数注入；preload 再把它挂到
+      // window.muiceDesktop.apiBaseUrl（见 electron/preload/index.ts）。
+      additionalArguments: [`--youpu-api-base-url=http://${API_SERVER_HOST}:${API_SERVER_PORT}`],
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: false,
+      // 音频元素在主窗口里播放:窗口隐藏/最小化到托盘时,Chromium 默认会节流后台页面
+      // (暂停定时器、降低媒体解码优先级),可能导致播放中断。关掉节流保证后台持续播放。
+      backgroundThrottling: false
     }
   })
   mainWindow = win
@@ -1064,7 +1071,6 @@ function createMainWindow(): BrowserWindow {
   })
 
   // 拦截关闭事件:发 IPC 给 renderer 弹确认框,由 renderer 决定是退出还是最小化到托盘。
-  // destroy() 不触发 close,低内存模式回收走的就是那条路,不会弹确认框。
   win.on('close', (e) => {
     e.preventDefault()
     if (!win.webContents.isDestroyed()) win.webContents.send('window:close-requested')
@@ -1079,37 +1085,12 @@ function createMainWindow(): BrowserWindow {
     if (!win.webContents.isDestroyed()) win.webContents.send('window:maximize-change', false)
   })
 
-  // 低内存模式:窗口每次重建都要重新挂监听(监听器随窗口对象一起销毁)。
-  // 迷你模式不回收:主进程的 isMini 开关不随窗口重建,回收后新窗口会按迷你尺寸
-  // (320×80)重建而 isMini=false,标题栏与布局再也切不回正常模式。
-  attachLowMemoryWindow(win, () => !isMini)
-
   if (process.env.ELECTRON_RENDERER_URL) {
     void win.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
     void win.loadFile(join(__dirname, '../renderer/index.html'))
   }
   return win
-}
-
-/** 低内存模式回收渲染进程前后的兜底:清空引用,后续 show/focus 由 ensureWindowVisible 重建。 */
-function teardownMainWindowReference(): void {
-  mainWindow = null
-}
-
-/**
- * 低内存模式的配置持久化:与 memory-mode 的 loadPersistedMode 约定同一份文件
- * (userData/low-memory.json,`{ "mode": "on" }`),不引入额外依赖。
- */
-const LOW_MEMORY_CONFIG_FILE = 'low-memory.json'
-
-function persistLowMemoryMode(mode: LowMemoryMode): void {
-  try {
-    const file = join(app.getPath('userData'), LOW_MEMORY_CONFIG_FILE)
-    writeFileSync(file, JSON.stringify({ mode }), 'utf8')
-  } catch (error) {
-    console.warn('[low-memory] 保存低内存模式失败:', error)
-  }
 }
 
 function registerImageCors(): void {
@@ -1211,73 +1192,10 @@ function registerIpcHandlers(): void {
   // 避免深色 UI 上出现浅色/白色边框线)。初始 dark,renderer 主题切换时通过 IPC 更新。
   nativeTheme.themeSource = 'dark'
 
-  // renderer 推播放状态给主进程:供托盘菜单更新文字(音频引擎的播放状态由
-  // onEngineStateChanged 单独驱动托盘,两边取并集即可保持一致)。
+  // renderer 推播放状态给主进程,供托盘菜单更新
   ipcMain.on('player:state-push', (_event, state: string) => {
     lastPlayerState = state
-    tray?.setContextMenu(buildTrayMenu(state === 'playing' || isEnginePlaying()))
-  })
-
-  // ---- 音频引擎控制命令:渲染层 AudioController 的 IPC 实现,音频从不依赖渲染进程 ----
-  interface AudioLoadIpcPayload {
-    url: string
-    resumeAtMs?: number
-    autoplay: boolean
-    volume: number
-    muted: boolean
-    rate: number
-    sinkId?: string
-    item: unknown
-    meta?: { title: string; artist: string; album: string; artworkUrl: string | null }
-  }
-  ipcMain.handle('audio:load', (_event, payload: AudioLoadIpcPayload) => {
-    void engineLoad({
-      url: payload.url,
-      resumeAtMs: payload.resumeAtMs,
-      autoplay: payload.autoplay,
-      volume: payload.volume,
-      muted: payload.muted,
-      rate: payload.rate,
-      sinkId: payload.sinkId,
-      item: (payload.item ?? null) as QueueItem | null
-    })
-    if (payload.meta) void engineSetMeta(payload.meta)
-    return true
-  })
-  ipcMain.handle('audio:play', () => void enginePlay())
-  ipcMain.handle('audio:pause', () => void enginePause())
-  ipcMain.handle('audio:stop', () => void engineStop())
-  ipcMain.handle('audio:seek', (_event, ms: number) => void engineSeek(Number(ms) || 0))
-  ipcMain.handle(
-    'audio:volume',
-    (_event, payload: { value: number; muted: boolean }) =>
-      void engineSetVolume(payload.value, payload.muted)
-  )
-  ipcMain.handle('audio:rate', (_event, value: number) => void engineSetRate(Number(value) || 1))
-  ipcMain.handle('audio:sink', (_event, id: string) => void engineSetSink(String(id ?? '')))
-  ipcMain.handle(
-    'audio:set-meta',
-    (_event, meta: { title: string; artist: string; album: string; artworkUrl: string | null }) =>
-      void engineSetMeta(meta)
-  )
-  // 渲染层启动完成(接管控制权),返回当前引擎状态快照。
-  // 注意先取载荷再清降级会话:降级期间切过的歌要随载荷还给渲染层。
-  ipcMain.handle('audio:attach', () => {
-    const payload = getEngineRestorePayload()
-    attachRenderer()
-    return payload
-  })
-
-  // 低内存模式:设置页读取状态 / 切换模式(模式写盘,重启后由 loadPersistedMode 读回)。
-  // backgroundPlaying 从音频引擎合并:渲染进程已回收、音乐仍在播时设置页要能看到。
-  ipcMain.handle('low-memory:get-status', () => ({
-    ...getLowMemoryStatus(),
-    backgroundPlaying: isEnginePlaying()
-  }))
-  ipcMain.handle('low-memory:set-mode', (_event, mode: unknown) => {
-    setLowMemoryMode(normalizeLowMemoryModeValue(mode))
-    persistLowMemoryMode(getLowMemoryStatus().mode)
-    return { ...getLowMemoryStatus(), backgroundPlaying: isEnginePlaying() }
+    tray?.setContextMenu(buildTrayMenu(state === 'playing'))
   })
 
   ipcMain.handle('api-server:start', async () => {
@@ -1518,14 +1436,16 @@ async function startPackagedApiServer(): Promise<boolean> {
   // 与 dev 的 server:dev 对齐:加载 netease-dns-preload.cjs 劫持网易云域名到
   // 可达 IPv4。用 execArgv 而非 NODE_OPTIONS,避免安装路径含空格时引号解析问题。
   const dnsPreload = join(process.resourcesPath, 'scripts', 'netease-dns-preload.cjs')
-  // 若 3000 已被占用但 HTTP 探活失败(僵尸/半死进程),先尽力释放端口再 fork,
+  // 若配置端口已被占用但 HTTP 探活失败(僵尸/半死进程),先尽力释放端口再 fork,
   // 否则子进程 listen EADDRINUSE → 立即 exit 1,前端一直显示后端连不上。
   const portBusy = await probeApiServerPort(500)
   if (portBusy.ok) {
     const httpAlive = await probeApiServerHttp(1500)
     if (httpAlive.ok) return true
-    console.warn('[api-server] 端口 3000 被占用但 HTTP 无响应,尝试释放后重启')
-    getApiServerLogStream()?.write('[api-server] 端口 3000 被占用但 HTTP 无响应,尝试释放后重启\n')
+    console.warn(`[api-server] 端口 ${API_SERVER_PORT} 被占用但 HTTP 无响应,尝试释放后重启`)
+    getApiServerLogStream()?.write(
+      `[api-server] 端口 ${API_SERVER_PORT} 被占用但 HTTP 无响应,尝试释放后重启\n`
+    )
     if (process.platform === 'win32') {
       try {
         await new Promise<void>((resolve) => {
@@ -1544,14 +1464,19 @@ async function startPackagedApiServer(): Promise<boolean> {
       } catch {
         // 释放失败仍继续 fork,由子进程日志暴露 EADDRINUSE
       }
-      await waitForPortState(false, 3000)
+      await waitForPortState(false, API_SERVER_PORT)
     }
   }
   const child = fork(join(process.resourcesPath, 'scripts', 'start-api-server.cjs'), [], {
     cwd: serverDir,
     stdio: 'pipe',
     execArgv: ['--require', dnsPreload, '--dns-result-order=ipv4first'],
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: '1',
+      HOST: API_SERVER_HOST,
+      PORT: String(API_SERVER_PORT)
+    }
   })
   trackApiServerProcess(child)
   const ready = await waitForPortState(true, 20000)
@@ -1574,9 +1499,13 @@ if (!gotSingleInstanceLock) {
   app.quit()
 } else {
   app.on('second-instance', () => {
-    // 退出过程中(updater 正在装包)不再重建渲染进程
+    // 退出过程中(updater 正在装包)不再拉起/聚焦窗口
     if (quitting) return
-    ensureWindowVisible()
+    const win = mainWindow
+    if (!win || win.isDestroyed()) return
+    if (win.isMinimized()) win.restore()
+    if (!win.isVisible()) win.show()
+    win.focus()
   })
 
   app.whenReady().then(async () => {
@@ -1605,57 +1534,25 @@ if (!gotSingleInstanceLock) {
     registerCacheProtocol()
     registerFileProtocol()
     registerCoverProtocol()
-    registerBgPlayerProtocol()
     registerIpcHandlers()
     registerDownloadIpcHandlers(() => mainWindow)
-    // 常驻音频引擎:音频永远在引擎窗口播放,主渲染进程只发控制命令。
-    // 引擎事件转发给活跃渲染层;渲染层被低内存回收后由降级会话接管切歌。
-    initAudioEngine()
-    attachAudioEngine({
-      isRendererAlive: () => {
-        const contents = mainWindow?.webContents
-        return Boolean(contents && !contents.isDestroyed())
-      }
-    })
-    setEngineEventForwarder((event) => {
-      const contents = mainWindow?.webContents
-      if (!contents || contents.isDestroyed()) return
-      if (event.type === 'media-action') {
-        // 系统媒体键:复用托盘命令通道,渲染层 App.vue 已有处理
-        const action =
-          event.action === 'prev' ? 'prev' : event.action === 'next' ? 'next' : 'play-pause'
-        contents.send('tray:command', action)
-        return
-      }
-      contents.send('audio:event', event)
-    })
-    // 引擎播放状态变化(切歌/暂停/停止)时刷新托盘菜单文字
-    onEngineStateChanged((playing, songName) => {
-      if (songName) tray?.setToolTip(`有谱 - ${songName}`)
-      else tray?.setToolTip('有谱')
-      tray?.setContextMenu(buildTrayMenu(playing || lastPlayerState === 'playing'))
-    })
-    // 低内存模式:先装载持久化的模式,再交出回收/重建回调。必须在首次 createMainWindow 之前,
-    // 否则窗口挂载时模式还是默认 off,回收监听装上了也不会生效。
-    setLowMemoryMode(loadPersistedMode())
-    initLowMemoryMode({
-      recreateWindow: createMainWindow,
-      getWindow: () => mainWindow,
-      onWindowTornDown: teardownMainWindowReference
-    })
-    try {
-      const ready = await startPackagedApiServer()
-      if (!ready) {
-        console.warn('[api-server] 打包后端启动后端口未就绪(20s 内未监听到 3000)')
+    // 仅打包模式启动内嵌后端；开发模式的后端由 concurrently 的 `server:dev` 负责。
+    // `startPackagedApiServer()` 在 dev 下必然返回 false，不能据此打印“端口未就绪”。
+    if (app.isPackaged) {
+      try {
+        const ready = await startPackagedApiServer()
+        if (!ready) {
+          console.warn(`[api-server] 打包后端启动后端口未就绪(20s 内未监听到 ${API_SERVER_PORT})`)
+          getApiServerLogStream()?.write(
+            `[api-server] 打包后端启动后端口未就绪(20s 内未监听到 ${API_SERVER_PORT})\n`
+          )
+        }
+      } catch (error) {
+        console.error('[api-server] 打包后端启动异常', error)
         getApiServerLogStream()?.write(
-          '[api-server] 打包后端启动后端口未就绪(20s 内未监听到 3000)\n'
+          `[api-server] 打包后端启动异常: ${error instanceof Error ? error.stack || error.message : String(error)}\n`
         )
       }
-    } catch (error) {
-      console.error('[api-server] 打包后端启动异常', error)
-      getApiServerLogStream()?.write(
-        `[api-server] 打包后端启动异常: ${error instanceof Error ? error.stack || error.message : String(error)}\n`
-      )
     }
     // 自动化测试钩子(仅开发/联调用):设置 YOUPU_TEST_AUTO_UPDATE=1 并配合
     // YOUPU_UPDATE_FEED_URL 指向本地更新源后,启动应用会自动走完
@@ -1687,9 +1584,9 @@ if (!gotSingleInstanceLock) {
     createTray()
 
     app.on('activate', () => {
-      // 被低内存模式回收后窗口已被销毁,这里不能直接 show(),要走重建路径
+      // 退出过程中不再重建窗口(updater 装包时避免又拉起一个渲染进程)
       if (quitting) return
-      ensureWindowVisible()
+      if (BrowserWindow.getAllWindows().length === 0) createMainWindow()
     })
   })
 }
@@ -1704,9 +1601,6 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   quitting = true
-  // 退出后不再回收/重建:清掉待触发的回收定时器与重建回调,销毁音频引擎
-  disposeLowMemoryMode()
-  destroyAudioEngine()
   if (apiServerProcess) killProcessTree(apiServerProcess)
   apiServerProcess = null
   // before-quit 时允许 destroy mainWindow(绕过 close 拦截)

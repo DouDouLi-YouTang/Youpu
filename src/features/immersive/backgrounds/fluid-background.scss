@@ -1,0 +1,143 @@
+// 流体背景（backgroundType = 'fluid'）—— 由 backgrounds/FluidBackground.vue 引入。
+//
+// ⚠️ 定位契约：`.rnp-bg > div`（父组件，特异性 0,2,1）压过本文件对同一元素的
+// 定位声明（0,2,0），所以下面 width/height 生效、而 left/top 会被父组件的 inset:0
+// 顶掉 —— 与改造前逐条一致，别顺手「修正」，那会改变流体层的锚点。
+
+.rnp-background-fluid {
+  // 流体背景容器需用专辑图填底（canvas 仅覆盖四角）
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  width: calc(100% + 150px);
+  height: calc(100% + 150px);
+  left: -150px;
+  top: -150px;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    backdrop-filter: blur(var(--fluid-blur, 64px));
+  }
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--rnp-accent-color-overlay);
+    opacity: var(--bg-dim-for-fluid-bg, 0.3);
+    z-index: 1;
+    pointer-events: none;
+  }
+}
+
+// SVG 滤镜定义（0×0）：与流体层同一个根元素内，不占布局
+.rnp-fluid-svg {
+  position: absolute;
+  pointer-events: none;
+}
+
+.rnp-background-fluid-rect {
+  position: relative;
+  width: max(100vw, 100vh);
+  height: max(100vw, 100vh);
+  top: calc(50% - 50vh);
+  left: calc(50% - 50vw);
+  filter: saturate(1.5) brightness(0.8) url(#rnp-fluid-filter);
+  animation: rnp-fluid-container-rotate 150s linear infinite;
+
+  &.paused {
+    animation-play-state: paused;
+
+    .rnp-background-fluid-canvas {
+      animation-play-state: paused;
+    }
+  }
+
+  // 流体帧率节流（对齐参考项目 experimental.scss 的 steps() 机制）
+  // 帧率 class 打在 .rnp-background-fluid-rect 自身，故此处须用同元素选择器
+  &.rnp-fluid-max-framerate-5 {
+    animation-timing-function: steps(750);
+  }
+
+  &.rnp-fluid-max-framerate-10 {
+    animation-timing-function: steps(1500);
+  }
+
+  &.rnp-fluid-max-framerate-30 {
+    animation-timing-function: steps(4500);
+  }
+
+  &.rnp-fluid-max-framerate-60 {
+    animation-timing-function: steps(9000);
+  }
+}
+
+.rnp-background-fluid-canvas {
+  position: absolute;
+  animation: rnp-fluid-block-rotate 60s linear infinite;
+  opacity: 1;
+
+  &[canvas-id='1'] {
+    animation-delay: 0s;
+  }
+
+  &[canvas-id='2'] {
+    animation-delay: -5s;
+  }
+
+  &[canvas-id='3'] {
+    animation-delay: -10s;
+  }
+
+  &[canvas-id='4'] {
+    animation-delay: -15s;
+  }
+}
+
+// canvas 是 rect 的子元素，保持后代选择器即可
+.rnp-fluid-max-framerate-5 {
+  .rnp-background-fluid-canvas {
+    animation-timing-function: steps(300);
+  }
+}
+
+.rnp-fluid-max-framerate-10 {
+  .rnp-background-fluid-canvas {
+    animation-timing-function: steps(600);
+  }
+}
+
+.rnp-fluid-max-framerate-30 {
+  .rnp-background-fluid-canvas {
+    animation-timing-function: steps(1800);
+  }
+}
+
+.rnp-fluid-max-framerate-60 {
+  .rnp-background-fluid-canvas {
+    animation-timing-function: steps(3600);
+  }
+}
+
+@keyframes rnp-fluid-block-rotate {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes rnp-fluid-container-rotate {
+  0% {
+    transform: scale(1.2) rotate(0deg);
+  }
+
+  100% {
+    transform: scale(1.2) rotate(-360deg);
+  }
+}

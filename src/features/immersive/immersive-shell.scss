@@ -1,6 +1,13 @@
-// 由 ImmersivePlayer.vue <style scoped src> 引入，不再经 barrel。
+// 由 skins/shared/SkinShell.vue <style scoped src> 引入（皮肤外壳 = 根 section + 窗口 chrome）。
 // 子组件内部元素（LyricLines / MiniSongInfo / LyricContributors / ImmersiveCover 渲染，
 // 不带宿主 data-v）尾部用 :deep() 穿透；宿主自身渲染的元素保持普通选择器。
+//
+// 皮肤的边界：内核（背景 / 迷你歌曲信息 / 内容层）由 skin 组件渲染 —— 它们**不是**本组件的
+// 元素，但 .immersive-root 上的状态 class（display-mode-* / cover-halign-* 等）必须能命中它们，
+// 因此下面对这类选择器用 `:deep()` 包裹（挂在真实存在的 .immersive-root 上）。
+// 窗口按钮（SkinChromeButtons 渲染）同理用 :deep() 命中。
+// 内容层的基础布局（.immersive-content / .immersive-cover-slot / .immersive-lyric）在
+// skins/classic/classic.scss（经典皮肤自己的样式）。
 
 .immersive-root {
   position: fixed;
@@ -12,8 +19,12 @@
   -webkit-app-region: no-drag;
   color: var(--color-text-primary);
 
-  // 底部控制条高度 = ImmersiveControls .immersive-controls 的 height，改动需同步两处
-  --bottombar-height: 90px;
+  // 底部控制条高度 —— `.immersive-controls` 的 height 直接读这个变量
+  // （见 ../immersive-controls.scss），进度条的贴底位置、控制条下沉距离、
+  // 歌词区底部留白也都由它派生。**改高度只改这里**；另一处 JS 常量
+  // `BOTTOMBAR_HEIGHT`（controls/use-controls-idle.ts，判定「鼠标是否停在
+  // 控制条区域」）需同步。
+  --bottombar-height: 76px;
   // 文字阴影：仅本 class 开启时定义 --rnp-drop-shadow，避免阴影常开；light 主题下阴影更浅
   &.rnp-shadow {
     --rnp-drop-shadow: drop-shadow(0px 4px 5px rgba(0, 0, 0, 0.3));
@@ -41,15 +52,33 @@
 
   &.rnp-light {
     --rnp-accent-color-shade-2: var(--rnp-accent-color-shade-2-light, #0f0f0f) !important;
-    --rnp-accent-color-shade-2-rgb: var(--rnp-accent-color-shade-2-light-rgb, 15, 15, 15) !important;
+    --rnp-accent-color-shade-2-rgb: var(
+      --rnp-accent-color-shade-2-light-rgb,
+      15,
+      15,
+      15
+    ) !important;
     --rnp-accent-color-overlay: #fff !important;
     --rnp-accent-color-bg: #f0f0f0 !important;
     --rnp-accent-color-bg-rgb: 240, 240, 240 !important;
     color: var(--rnp-accent-color-shade-2);
   }
-  // 全屏 + idle 隐藏光标
-  &.rnp-full-screen.rnp-idle {
+  // 鼠标静止（idle）时隐藏鼠标光标 —— **所有主题、全屏与非全屏一致**。
+  //
+  // 原来只在全屏下生效；非全屏时鼠标停在画面上不动，光标一直悬在歌词中间很碍眼。
+  // 光标跟随 `idle`（1.5s 静止，`use-controls-idle` 写入），鼠标一动立即恢复。
+  //
+  // ⚠️ 必须用 `:deep(*)` 而不是 `*`：两个原因叠加 ——
+  //  1. scoped 样式会给最后一段加本组件的属性选择器，`& *` 只能命中外壳自己的元素，
+  //     皮肤与控制条里的元素没有那个属性；
+  //  2. 按钮与滑块各自写着 `cursor: pointer`，与继承来的 `cursor: none` 抗不过，
+  //     所以要 `!important` 才压得住（否则鼠标停在按钮上时唯独那颗按钮露出箭头）。
+  &.rnp-idle {
     cursor: none;
+
+    :deep(*) {
+      cursor: none !important;
+    }
   }
   // 迷你歌曲信息：只在 lyric-only 模式显示，开启 autoHideMiniSongInfo 时跟随 rnp-idle 隐藏
   &.display-mode-lyric-only {
@@ -57,7 +86,7 @@
       opacity: 1;
     }
 
-    .immersive-lyric {
+    :deep(.immersive-lyric) {
       box-sizing: border-box;
       padding: clamp(28px, 4vh, 48px) clamp(72px, 9vw, 144px) clamp(8px, 1vh, 20px);
     }
@@ -82,8 +111,8 @@
       opacity: 0;
     }
 
-    .immersive-lyric:hover {
-      :deep(.rnp-contributors-inner) {
+    :deep(.immersive-lyric:hover) {
+      .rnp-contributors-inner {
         opacity: 0.5;
       }
     }
@@ -101,10 +130,29 @@
       right: 52px;
     }
 
-    .rnp-full-screen-button {
+    // 面板主题切换按钮紧挨设置按钮左侧（见 skins/shared/SkinSwitcher.vue）：
+    // 全屏时最小化/最大化已隐藏，整排收拢，切换按钮跟着左移一格（52 + 36 + 8 = 96）
+    :deep(.skin-switcher) {
+      right: 96px;
+    }
+
+    :deep(.rnp-full-screen-button) {
       -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 448 512'%3E%3Cpath d='M160 64c0-17.7-14.3-32-32-32S96 46.3 96 64v64H32c-17.7 0-32 14.3-32 32s14.3 32 32 32h96c17.7 0 32-14.3 32-32V64zM32 320c-17.7 0-32 14.3-32 32s14.3 32 32 32h64v64c0 17.7 14.3 32 32 32s32-14.3 32-32v-96c0-17.7-14.3-32-32-32H32zM352 64c0-17.7-14.3-32-32-32s-32 14.3-32 32v96c0 17.7 14.3 32 32 32h96c17.7 0 32-14.3 32-32s-14.3-32-32-32h-64V64zM320 320c-17.7 0-32 14.3-32 32v96c0 17.7 14.3 32 32 32s32-14.3 32-32v-64h64c17.7 0 32-14.3 32-32s-14.3-32-32-32h-64z'/%3E%3C/svg%3E");
     }
   }
+  // 兼容没有设置入口的皮肤（当前四套主题都有入口，保留这条兜底规则）：
+  // 设置按钮不渲染时，面板主题切换按钮占住它那一格，顶部那一排不留空洞。
+  // 特异性：「全屏有设置」那条与本条**同分**（都是 .immersive-root + 两个类），谁后写谁赢，
+  // 故本条的 140px 会盖掉上面的 96px —— 无妨，因为「全屏 + 无设置」由下面那条四分规则
+  // 单独接管（52px），它压过这两条，改这段时别只盯这两条的先后。
+  :deep(.skin-switcher.no-settings) {
+    right: 140px;
+  }
+
+  &.rnp-full-screen :deep(.skin-switcher.no-settings) {
+    right: 52px;
+  }
+
   // idle 隐藏（对齐关闭按钮 .immersive-close-hidden 的渐隐逻辑）
   &.rnp-idle {
     .rnp-settings-button {
@@ -122,14 +170,12 @@
   }
 
   &.display-mode-cover-only {
-    .immersive-cover-slot {
+    :deep(.immersive-cover-slot) {
       flex: 0 0 100%;
     }
 
-    .immersive-cover-slot.cover-halign-center {
-      :deep(.rnp-cover) {
-        margin-left: 0;
-      }
+    :deep(.immersive-cover-slot.cover-halign-center .rnp-cover) {
+      margin-left: 0;
     }
   }
 
@@ -147,8 +193,8 @@
     }
   }
 
-  &:not(.rnp-idle) .rnp-full-screen-button,
-  &.always-show-bottombar .rnp-full-screen-button {
+  &:not(.rnp-idle) :deep(.rnp-full-screen-button),
+  &.always-show-bottombar :deep(.rnp-full-screen-button) {
     opacity: 1;
     pointer-events: auto;
   }
@@ -198,58 +244,13 @@
   -webkit-app-region: drag;
 }
 
-.immersive-content {
-  position: relative;
-  z-index: 2;
-  // pointer-events:none 让全视口覆盖层不再拦截鼠标，进度条(z-index:1)在无歌词行处
-  // 可正常 hover/拖动；需交互的子元素（歌词行 .rnp-lyrics-line）各自恢复 auto
-  pointer-events: none;
-  display: flex;
-  height: 100%;
-  width: 100%;
-  align-items: center;
-  // 左 ~45% 封面 + 右 ~45% 歌词，两列并排布局
-  gap: 0;
-}
-
-.immersive-cover-slot {
-  display: flex;
-  flex: 0 0 45%;
-  flex-direction: column;
-  // 垂直/水平对齐由 cover-valign / cover-halign class 控制；默认 flex-end 对应 bottom
-  justify-content: flex-end;
-  align-items: flex-start;
-  height: 100%;
-  min-height: 0;
-  // 控制条 absolute 脱离布局、覆盖底部 --bottombar-height；封面槽须在底部让出该高度
-  // + 12px 呼吸，否则 cover-valign=bottom 时封面贴到窗口底被控制条压住
-  box-sizing: border-box;
-  padding-bottom: calc(var(--bottombar-height, 90px) + 12px);
-  // 封面块已强制正方/正圆且 flex 不压缩，窗口过矮时顶部裁切，绝不压扁成椭圆
-  overflow: hidden;
-
-  &.cover-valign-middle {
-    justify-content: center;
-  }
-
-  &.cover-halign-center {
-    align-items: center;
-  }
-}
-
-.immersive-lyric {
-  position: relative;
-  flex: 1;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-text-muted);
-}
+// 内容层基础布局（.immersive-content / .immersive-cover-slot / .immersive-lyric）
+// 已随「经典」皮肤搬到 skins/classic/classic.scss。
 
 // 关闭(right:8)/最小化(right:52)/最大化(right:96)/设置(right:140)四个按钮从右到左排列，
 // 均位于顶部拖拽带内，故切回 no-drag 以接收点击
-.immersive-minimize {
+// （关闭/最小化/最大化由 SkinChromeButtons 渲染，故用 :deep() 命中；设置按钮在本组件内）
+:deep(.immersive-minimize) {
   position: absolute;
   top: 8px;
   right: 52px;
@@ -274,7 +275,7 @@
   }
 }
 
-.immersive-maximize {
+:deep(.immersive-maximize) {
   position: absolute;
   top: 8px;
   right: 96px;
@@ -299,7 +300,7 @@
   }
 }
 
-.immersive-close {
+:deep(.immersive-close) {
   position: absolute;
   top: 8px;
   right: 8px;
@@ -324,15 +325,17 @@
   }
 }
 
-// 跟随控制条 idle：鼠标静止时随控制条一起渐隐，移动唤出（ESC 仍可退出）
-.immersive-close-hidden {
+// 跟随控制条 idle：鼠标静止时随控制条一起渐隐，移动唤出（ESC 仍可退出）。
+// 类名同时挂在 SkinChromeButtons 的按钮与 SkinSwitcher 上，故用 :deep() 命中
+:deep(.immersive-close-hidden) {
   opacity: 0;
   pointer-events: none;
 }
 
 // 全屏按钮 + 时钟：非 idle 或底栏常显时显示，全屏后切换为收起图标并亮起时钟；
 // 按钮恒贴左边(left:25px)——本应用左上角无原生窗口控件(TitleBar 按钮在右上角)，故非全屏态也贴边
-.rnp-full-screen-button {
+// （全屏按钮由 SkinChromeButtons 渲染，故用 :deep()；时钟在本组件内）
+:deep(.rnp-full-screen-button) {
   position: absolute;
   top: 20px;
   left: 25px;
@@ -396,6 +399,35 @@
   pointer-events: none;
   cursor: default;
   transition: left 0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+}
+
+/*
+ * 帧率显示：左上角，与全屏时钟同一行。
+ *
+ * 非全屏时时钟不渲染，它自己贴 left:20；全屏时时钟在 left:20，这里顺延到
+ * left:76（时钟宽 60 + 16 间距）由下面的 `.rnp-full-screen` 规则接管。
+ * 数字用等宽字形（`tabular-nums`），否则 59 ↔ 100 位数变化时整块会左右抖。
+ */
+.rnp-fps-meter {
+  position: absolute;
+  top: 18.5px;
+  left: 20px;
+  z-index: 6;
+  padding: 0 8px;
+  height: 25px;
+  border-radius: 9999px;
+  background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.08);
+  color: var(--rnp-accent-color-shade-2, var(--color-text-primary));
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 25px;
+  pointer-events: none;
+  cursor: default;
+}
+
+.rnp-full-screen .rnp-fps-meter {
+  left: 76px;
 }
 
 // 演示模式退出提示：顶部居中常驻，呼吸式淡入淡出提醒用户可退出

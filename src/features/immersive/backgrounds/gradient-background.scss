@@ -1,0 +1,41 @@
+// 渐变背景（backgroundType = 'gradient'）—— 由 backgrounds/GradientBackground.vue 引入。
+// 渐变字符串由组件从封面取色后写进内联 background-image，这里只负责铺展、遮罩与飘移动画。
+
+@use './background-shared.scss' as bg;
+
+.rnp-background-gradient {
+  background-size: 400% 400%;
+  background-position: 50% 50%;
+
+  &::before {
+    @include bg.dim-overlay('--bg-dim-for-gradient-bg', 0.45);
+  }
+}
+
+// 「背景飘移」开关（settings.gradientBgDynamic）—— 只命中本组件内部的渐变层。
+// （外壳根元素上也有一个同名类，见 use-backdrop 的 rootClasses，那条走非 scoped 规则。）
+.gradient-bg-dynamic {
+  animation: rnp-bg-gradient-animation 120s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+}
+
+@keyframes rnp-bg-gradient-animation {
+  0% {
+    background-position: 0% 0%;
+  }
+
+  25% {
+    background-position: 100% 0%;
+  }
+
+  50% {
+    background-position: 100% 100%;
+  }
+
+  75% {
+    background-position: 0% 100%;
+  }
+
+  100% {
+    background-position: 0% 0%;
+  }
+}

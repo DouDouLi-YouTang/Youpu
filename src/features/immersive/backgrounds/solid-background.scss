@@ -1,0 +1,7 @@
+// 纯色背景（backgroundType = 'solid'）—— 由 backgrounds/SolidBackground.vue 引入。
+// 把专辑提取的遮罩底色铺满；换歌 / 切类型时靠 transition 平滑过渡。
+
+.rnp-background-solid {
+  background-color: var(--rnp-accent-color-bg);
+  transition: background-color 1s ease;
+}

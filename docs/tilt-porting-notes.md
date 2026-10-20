@@ -1,0 +1,350 @@
+# 「倾诉」面板移植笔记（算法思路，非源码）
+
+> **许可说明**：Folia 是 AGPL-3.0，本项目是 MIT。
+> 本文件**只记录从阅读其源码中提炼的算法思路与参数**，不含任何 Folia 源码片段。
+> 实现代码全部用 Vue + TypeScript 独立重写。
+>
+> 参考仓库：`chthollyphile/folia-major`（commit `d824c0b`）
+> 参考文件：`src/components/visualizer/tilt/VisualizerTilt.tsx`（701 行）
+
+---
+
+## 1. 视觉意图
+
+一句话：**把一行歌词切成 1–4 段，其中最多一段用「斜体手写感 + 上下交错」呈现，其余用正常横排。**
+
+- 非倾斜段：正体、字间距略宽、逐字淡入
+- 倾斜段：斜体、字间距更宽、每个字按奇偶上下交错偏移
+  （Folia 原设计里两段还有字重差 —— 非倾斜段较细、倾斜段更细。**本项目自 2026-10-11
+  换成内置字体后已无此差**：两个内置字体只有 400 一个字面，300 是名义值、实际回落到 400。
+  详见 §8.3「字重已扁平化」）
+- 两段之间在时间上先后浮现（前一段出现后才轮到后一段）
+- 当前正在唱的字有轻微放大脉冲，唱完留一点余晖
+
+整体气质是「安静」，没有背景装饰，靠排版本身制造节奏。
+
+> 2026-10-19 起「倾诉」有 Folia 设置页：背景可由「原生（几何）」切到共享覆盖背景，
+> 字体链与字重可由 `settings.folia.fonts.tilt` 调整；字号、行距、分段与封面仍用内置值，
+> 不读取经典面板的外观字段。下文所有「用户可调」字样若指排版参数，本项目仍取内置默认值。
+
+---
+
+## 2. 分行决策
+
+### 2.1 决定切几段
+
+输入：`charCount`（行文本去空格后长度）、`seed`（用行起始时间做种子）、`splitProbability`（内置默认 0.75 —— 倾诉没有设置面板，它不是用户可调项）
+
+算法：
+
+1. 归一化长度：`normalized = log(charCount + 4) / log(24)`
+   - 4 与 24 是拟合常数，使约 20 字的行接近 1.0
+2. 抖动：`jitter = seededRandom(seed, 1) * 0.6 + 0.7` → 落在 [0.7, 1.3]
+3. 得分：`score = normalized * jitter * splitProbability`
+4. 按阈值分段：`< 0.45` → 1 段；`< 1.05` → 2 段；`< 1.7` → 3 段；否则 4 段
+
+**为什么用 log**：字数与「视觉上该分几行」不是线性关系。10 字和 20 字的差别远大于 30 字和 40 字。
+
+### 2.2 切分位置（5 级递进）
+
+从粗到细逐级尝试，每级只对「还不够多」的段再切：
+
+| 级别 | 切分依据 | 说明                                                           |
+| ---- | -------- | -------------------------------------------------------------- |
+| 1    | 标点     | `，。；！？、…·.,;!?` 之后切（标点归属前段，后随空格归属后段） |
+| 2    | 括号引号 | 成对符号外侧切                                                 |
+| 3    | 西文词   | 按 `[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*` 的词边界切                   |
+| 4    | CJK 空格 | 中文里的空格处切                                               |
+| 5    | 特殊字符 | 兜底                                                           |
+
+切完若段数仍不足目标，用「二次切分」补足；若超过目标则合并相邻段。
+
+### 2.3 选定哪一段倾斜
+
+1. 每段按 `seededRandom(seed, 100 + i) < tiltStyleProbability`（默认 0.35）成为候选
+2. 从候选中按 `seededRandom(seed, 200)` 选一个
+3. 候选为空则整行都是非倾斜
+
+**用行起始时间做种子的意义**：同一首歌每次播放排版一致（可复现），不同歌/不同行排版不同（有变化）。
+
+### 2.4 末段过短的补偿
+
+若最后一段不是倾斜段且长度 ≤ 2 字，且其长度 × 2 ≤ 前一段长度 → 标记为「短末段」，
+渲染时字号放大 1.18 倍，避免视觉上过于孤立。
+
+---
+
+## 3. 溢出处理
+
+测量所有段在对应字号下的宽度，与可用宽度（`window.innerWidth * 0.85`）比较。
+
+- **溢出比 ≥ 1.6**：重新切分成更多段（最多比原段数多 4 段），并按新段数重算倾斜选择
+- **溢出比 < 1.6**：整体等比缩放，下限 0.5（倾斜段）/ 0.55（非倾斜段）
+
+**为什么分两档**：轻微溢出靠缩放解决（保持分行结构），严重溢出说明分行本身不合理，得重切。
+
+### 3.1 纵向溢出（本项目补充，Folia 没有）
+
+Folia 的舞台高度写死 `70vh`，只做横向缩放。段数一多（重切最多到 +4 段）、
+窗口一矮（本项目最小高度 640）、字号一调大，整块歌词就会比舞台高，居中溢出后被
+`overflow: hidden` 上下双向切掉 —— 首段的上半和末段的下半看不见。
+
+本项目补一层纵向缩放，与横向同构：
+
+1. **先横后竖**：纵向判定必须在「重切」之后。重切会增加段数、从而增加所需高度，
+   顺序颠倒就会低估高度，算出的缩放偏大。
+2. **算总高**：`Σ (段字号 × 该段行高) + (段数−1) × 段间距`。
+   倾斜段行高 1.25、其余 1.35；末段命中过短补偿时字号 × 1.18。
+3. **段间距是固定 px**（`clamp(6px, 1.4vh, 20px)`，跟字号无关），所以要从可用高度里
+   **先扣掉它**、剩下的才是文字能占的份额：
+   `heightScale = min(max((可用高 − 间距和) / 文字高, 下限), 1)`。
+   写成「(总高 / 可用高) 取倒数」是错的 —— 段数一多间距占比上来，会把缩放算得偏大，
+   末段仍然被切。
+4. **下限与横向一致**：倾斜段 0.5 / 无倾斜段 0.55。两个方向同款地板，
+   免得出现「横向缩得比纵向狠」这种说不清的手感差异。
+5. **量的是舞台、不是内容带**：`.tilt-stage` 是「歌词可占的整块高度」（已被 flex 定死），
+   `.tilt-stage-inner` 是内容撑开的 —— 量后者等于自己跟自己比，永远「放得下」。
+
+---
+
+## 4. 字号与间距
+
+字号用 CSS `clamp()` 做响应式，三个锚点：
+
+```
+clamp(3.125rem, 6.875vw, 5.625rem)
+```
+
+再乘以 `fontScale` 与 `scaleMultiplier`（溢出缩放）。本项目里 `fontScale` 恒为
+`TILT_FONT_SCALE = 1`（倾诉没有设置，不吃用户的歌词字号），`scaleMultiplier` 才是活的。
+
+- 非倾斜段：`fontWeight 400`、`letterSpacing 0.08em`、`lineHeight 1.35`
+- 倾斜段：`fontStyle italic`、`fontWeight 300`、`letterSpacing 0.15em`、`lineHeight 1.25`
+  （300 是**声明值**；内置字体只有 400 字面，实际渲染即 400 —— 见 §8.3「字重已扁平化」）
+- 倾斜段的上下交错位移量：`yOffset = 当前字号 px / 6`
+
+---
+
+## 5. 逐字时间
+
+把词级时间戳均摊到字素（grapheme）：
+
+1. 用 `Intl.Segmenter(undefined, { granularity: 'grapheme' })` 切字素
+2. 找到该段文本在整行 `fullText` 中对应的字符区间
+3. 对区间内的每个词，把 `[startTime, endTime]` 均分给它的非空格字素
+4. 若词数不足（时间戳缺失），退化为「整段时长 / 非空格字素数」的均匀分配
+
+**为什么要到字素级**：emoji、组合字符、韩文音节等多码点字符，按 `length` 切会切碎。
+
+---
+
+## 6. 逐字脉冲
+
+对每个字，给定当前时间与它的 `[startTime, endTime]`：
+
+```
+duration = clamp(endTime - startTime, 0.2, 0.9)   // 钳制，避免极短/极长音
+elapsed = currentTime - startTime
+
+若 elapsed < 0            → 0（还没唱到）
+若 elapsed <= duration    → sin(elapsed / duration * π)        // 0→1→0 的钟形
+否则：
+    afterElapsed = elapsed - duration
+    ramp = duration * 1.2
+    若 afterElapsed >= ramp → 0.25                              // 余晖底噪(唱过的字保持略大 = "已唱"状态)
+    否则                    → 0.25 * (afterElapsed / ramp)      // 余晖线性升起
+```
+
+> ⚠️ 上面最后一行早期误写作「余晖线性**衰减**」，那是错的：钟形在 `elapsed = duration`
+> 处刚好归 0，而本式在 `afterElapsed = 0` 处也是 0 —— 两者连续，这正是 `ramp` 存在的
+> 意义。若是「衰减」，值就得从 0 跳到 0.25 以上再降回来，不连续。所以**公式为准**：
+> 曲线是 `0 → 1 → 0 →（升）→ 0.25` 后保持。实现见
+> `src/features/immersive/skins/tilt/core/char-pulse.ts`（单测断言余晖段**单调不减**）。
+
+放大倍率：倾斜段 `1 + intensity * 0.18`，非倾斜段 `1 + intensity * 0.15`。
+
+**钟形曲线的作用**：字在唱到的瞬间鼓一下，然后回落，比线性渐变更像「发声」。
+
+---
+
+## 7. 段落浮现时序
+
+每段的显示时间窗口由它包含的词的起止时间决定：
+
+- `start` = 段内第一个词的 `startTime`
+- `end` = 段内最后一个词的 `endTime`
+- 若段内无词（纯标点等），退化为整行的起止时间
+
+当前时间 `>= segment.start - 0.25` 时该段可见（提前 0.25 秒，让字先出来等声音）。
+
+段内逐字淡入延迟：非空格字的序号 × 0.04 秒（倾斜段 0.05 秒），缓动**内置固定值**
+（`tilt-line.scss` 里写死 `ease`，**不读**设置里 `lyricAnimationTiming` 对应的
+`--lyric-timing-function` —— 那是经典面板的「动画曲线」，倾诉没有设置）。
+时长走 `--tilt-fade-dur`（默认 400ms，来自 `CHAR_FADE_DURATION_MS`）。
+
+---
+
+## 8. 在本项目的适配要点
+
+### 8.1 数据形状差异
+
+|        | Folia                                                | 本项目                                                                  |
+| ------ | ---------------------------------------------------- | ----------------------------------------------------------------------- |
+| 行文本 | `line.fullText`                                      | `LyricLine.text`                                                        |
+| 逐字   | `line.words: { text, startTime, endTime }`（**秒**） | `LyricLine.words?: { word, timeMs, durationMs, trailing? }`（**毫秒**） |
+| 行起止 | `line.startTime / endTime`（秒）                     | 由 `timeMs` 与下一行 `timeMs` 推算                                      |
+| 翻译   | `line.translation`                                   | `LyricLine.translation`                                                 |
+| 罗马音 | `line.romanization`                                  | `LyricLine.romaji`                                                      |
+
+**注意**：本项目的 `words` 是**可选**的 —— 只有拿到 YRC 格式歌词才有逐字时间戳。没有 `words` 时必须退化为「整行时长均匀分配」，否则面板会完全不动。
+
+已核实（`src/services/api/endpoints/lyric.api.ts:21`）：本项目请求 `/lyric/new` 时显式传 `lv=0&tv=0&yv=0`，
+其中 `yv=0` 就是要 YRC 逐字歌词，所以**多数歌曲会有 `words`**。但仍有降级场景：
+
+- 部分老歌/冷门歌上游只有行级 LRC，`words` 为 `undefined`
+- 歌词加载中（`lyric.loading === true`）或确实无歌词（`lyric.hasLyric === false`）
+
+三种状态都要有对应的渲染分支，不能只处理「有 words」这一种。
+
+### 8.1.1 行结束时间的推算
+
+本项目 `LyricLine` **没有** `endTime` 字段（Folia 有）。需要自己推算：
+
+- 有下一行 → `nextLine.timeMs`
+- 最后一行 → `timeMs + 预估时长`（可用 `player.durationMs` 兜底，或固定值如 5 秒）
+
+这个推算值同时用于「段显示窗口的结束」与「无 words 时的均匀分配」。
+
+### 8.2 时间源
+
+Folia 用 `MotionValue<number>` + `currentTime.on('change')` 订阅；
+本项目改用 `SkinContext.currentTime()` getter + 组件内 rAF 循环读取。
+
+**rAF 循环由 `SkinShell.vue` 统一启停**（订阅数归零即停），皮肤自己不要另起循环。
+
+### 8.3 字体
+
+Folia 有 `Theme` 对象（`fontFamilyStack` / `fontWeight` 等）；
+倾听取 `settings.folia.fonts.tilt` 的 `custom` / `families` / `weight`；字体栈由
+`folia-font-settings.ts` 统一转义并追加主题内置族，字重默认仍为正文 400、倾斜段 300。
+它不读经典的 `customFont` / `customFontFamily` / `lyricFontWeight`，字号倍率仍固定
+`TILT_FONT_SCALE = 1`。
+
+**字重已扁平化**（2026-10-11 换内置字体后发现，用户确认接受）：
+`FONT_WEIGHT_PLAIN = 400` / `FONT_WEIGHT_TILT = 300`，但两个内置字体**各自只有 400 一个字面**，
+浏览器不会合成更细的字重，只会按字体匹配回落到 400 —— 倾斜段与普通段渲染出的字重**完全相同**。
+实测（canvas 量宽）：汉字 300→1030.4 / 400→1030.4，假名 300→800 / 400→800。
+倾斜段与普通段的区分现在靠**斜体 / 字间距（0.15 vs 0.08em）/ 主色 / 字号**；
+空态卡里歌名(400)与歌手(300)的层级靠**字号（0.45 vs 0.2 倍）与 opacity**。
+
+（换字体前的栈是系统字体 —— Windows 上 Segoe UI 含 Light 300 字面 —— 那时 300 是真更细，
+所以旧文档说的「细字重是倾诉的排版气质」是**历史陈述**。常量仍写 300 而不是改成 400：
+将来若给内置字体补了细字面，这里不用动就能自动生效；测量与渲染共用同一个常量，
+回落到 400 也是两边一起回落。）
+
+**默认字体是内置常量**（2026-10-11 用户定：「换成俏皮一点的字体」，2026-10-19 起可被当前主题覆盖）：
+
+```
+'ZCOOL KuaiLe', 'M PLUS Rounded 1c', sans-serif
+```
+
+- **站酷快乐体**（`ZCOOL KuaiLe`）出汉字 —— 圆胖笔画 + 弯钩，随包内置（OFL-1.1，726 KB）；
+- **M PLUS Rounded 1c** 出假名 —— 同是圆头笔画，混排不打架（OFL-1.1，902 KB）；
+- 末尾的系统通用族兜底两者都缺的字符。
+
+**为什么不是「一个字体走天下」**：快乐体是**纯简体字库**（5977 字），实测（fontTools 扫 cmap）
+**没有任何假名字形**。这个项目的歌词接口带罗马音（`lyricRomajiSizeEm`），日语歌是明确场景 ——
+单用一个快乐体，假名会静默掉到系统兜底字，**一行里出现两种笔画风格**。两个文件的声明都在
+`src/assets/fonts/fonts.scss`（全局注册，理由见该文件头），族名与顺序由
+`skins/tilt/use-tilt-font.ts` 的常量与 `skins/tilt/use-tilt-font.test.ts` 锁住。
+
+⚠️ **字体就绪是异步的**，而倾诉的排版要拿 canvas 量字宽（§8.6 的 pretext），
+若在文件到位前测量，就会按兜底字的宽度算溢出缩放、真字体上来后又不重算。
+所以 `use-tilt-font.ts` 把「就绪」做成可响应信号，接进 `useTiltLayout` 的 `fontKey` 触发重测。
+
+⚠️⚠️ **光有信号还不够：必须在重测前清掉 pretext 的测量缓存**（2026-10-11 实测发现的坑）。
+pretext 按 **(文本, font string)** 两级缓存测量结果，而**字体文件加载完成不会改变 font string** ——
+CSS 字体栈一个字都没变，只是同一个栈从「兜底字」换成了「真字形」。于是「字体就绪 → 重测」
+如果不清缓存，就只是把同一个键再问一遍，拿回兜底字量出的旧宽度：排版**永久**按错误的宽度
+缩放，不报错、不白屏，只是字号一直偏小。
+
+实测数据（pretext 0.0.9，开发渲染层，前后用**同一个** font string）：
+
+| 时机 | 量出的宽度 |
+| --- | --- |
+| 字体未就绪（兜底字） | 1120.00 |
+| 就绪后重测（**不清缓存**） | 1120.00 ← 被钉死 |
+| 就绪后重测（清缓存） | 1030.40 ← 真实值 |
+
+差 8%，正是「按兜底字宽度缩放」的偏差。修法在 `use-tilt-layout.ts`：
+`watch(() => toValue(options.fontKey), () => clearCache(), { immediate: true, flush: 'sync' })`。
+`flush: 'sync'` 是**必须的**（默认的 `'pre'` 排不进 computed 重算之前），
+回归测试见 `use-tilt-layout.test.ts`（用与 pretext 同构的假缓存复现该机制，
+把 watch 删掉即失败）。
+
+关于测量：`use-tilt-layout` 是 `getComputedStyle(panel).fontFamily` 读整个字体栈去让 canvas 量字的，
+所以**改 CSS 里的族名或顺序，测量口径跟着变** —— 两者必须同步改。
+
+（历史注记：曾短暂实现过「倾诉下隐藏字重那一行」的按面板裁剪，判据在
+`settings/panel-capabilities.ts` —— 该文件已随这套设计一并删除。）
+
+### 8.4 复用现有能力
+
+`LyricLines.vue` 已实现 zoom / blur / fade / stagger / rotate / karaoke / glow 七种动画。
+「倾诉」面板**不复用**它（布局逻辑完全不同），但下列能力应当对齐其行为：
+
+- 歌词点击 seek：调 `ctx.seekLyric(lineTimeMs)`（**毫秒**），由壳层扣掉 `lyricOffset`
+- `lyricStagger` 开启时提前 200ms 切行（在 `use-skin-context.ts` 的当前行下标里统一处理，两款皮肤同式）
+- 暂停时动画应定格（参考 `LyricLines.vue` 的暂停快照机制，用 `transition: none` + 手算中间值）
+
+### 8.5 无歌词 / 纯音乐（实现于 `SkinTilt.vue` 的 `emptyState`，2026-10-10 修订）
+
+Folia 只有一句「等待音乐」占位。本项目要区分状态，且**有歌时不该出现「等待」文案**
+（歌明明在放，写「等待」看着像没在播 —— 用户反馈）。落到五种显示：
+
+| 状态                                | 显示                           |
+| ----------------------------------- | ------------------------------ |
+| 歌词请求中（有歌）                  | **歌名（大字）+ 歌手（小字）** |
+| 有歌有词、还没唱到第一句（前奏）    | **同上**                       |
+| 请求成功但没有歌词 / 标了「纯音乐」 | `纯音乐，请欣赏`               |
+| 歌词请求失败                        | `暂无歌词`                     |
+| 一首歌都没选                        | `等待音乐`                     |
+
+两处坑（改这段逻辑前必读）：
+
+1. **分支顺序不能动** —— `loading` 期间 `hasLyric` 还是 `false`（见 `lyric.store.ts`），
+   先判 `isPureMusic` / `hasLyric` 会把「加载中」误报成「暂无歌词」；
+2. mapper 里 `isPureMusic = !hasLyric || 含「纯音乐」标记`（`lyric.mapper.ts:95`），
+   所以「成功加载但没有词」走的是纯音乐分支 ——「暂无歌词」实际只剩**请求失败**那条路。
+
+信息卡的排版在 `tilt.scss`：字号与歌词行同源（同一组 clamp 锚点）但只取 0.45 / 0.2 的
+**内置固定比例** —— 倾诉没有设置，不乘任何用户倍率；空态时也拿不到布局算出的
+`--tilt-font-size`，比例必须自己带。
+
+⚠️ 长歌名的省略号依赖 `.tilt-song-info { max-width: 100% }` 这一条：column flex +
+`align-items: center` 的 item 宽度按内容（max-content）撑开，子元素的 `max-width: 100%`
+于是「相对自身宽度」= 没有约束，省略号不生效、超长文本会被 `.tilt-lyric` 的
+`overflow: hidden` 硬裁成左右各切一截（2026-10-10 探针实测）。给 info 一个确定宽度后
+子元素的 `100%` 才真正生效。
+
+### 8.6 `@chenglou/pretext` 实际 API（已核实，2026-10-10）
+
+已装 `@chenglou/pretext@0.0.9`（`package.json:32`）。导出入口：`.`（layout）、`./rich-inline`。
+
+本次用得到的函数签名（`node_modules/@chenglou/pretext/dist/layout.d.ts:62-73`）：
+
+```ts
+prepare(text: string, font: string, options?: PrepareOptions): PreparedText
+prepareWithSegments(text: string, font: string, options?: PrepareOptions): PreparedTextWithSegments
+layoutWithLines(prepared: PreparedTextWithSegments, maxWidth: number, lineHeight: number): LayoutLinesResult
+measureNaturalWidth(prepared: PreparedTextWithSegments): number   // ← 溢出检测用这个
+clearCache(): void
+setLocale(locale?: string): void
+```
+
+`font` 参数是 CSS font shorthand 字符串，如 `'400 48px sans-serif'`。
+
+**⚠️ 全部需 canvas**：这些函数在 Node 环境直接抛
+`Text measurement requires OffscreenCanvas or a DOM canvas context.`
+（实测确认，见 [[pretext-needs-canvas-no-node-test]]）。
+因此「测量」与「算法」必须分层 —— 纯算法可写 vitest 单测，测量层不测。

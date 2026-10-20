@@ -1,0 +1,55 @@
+// 「流光」单词的三层结构（由 GlowWord.vue <style scoped src> 引入）。
+//
+// 这里只写**布局**，不写动画：位移 / 缩放 / 旋转由容器层的 motion variants 驱动
+// （内联 transform，不在样式表里），颜色 / 模糊由正文层的 variants 驱动，
+// 光晕由辉光层的 variants 驱动。样式表里出现 transform 或 filter 会与 motion 抢同一个属性。
+
+.glow-word {
+  // inline-block + 不换行：词内绝不折行（Folia `whitespace-nowrap`），
+  // 换行由外层 flex-wrap 决定 —— 那一层才是"行"的排版者
+  display: inline-block;
+  position: relative;
+  // 缩放 / 旋转的基准点在中心（Folia `origin-center`）
+  transform-origin: center;
+  // 提示浏览器提前建合成层：这些词每帧都在动
+  will-change: transform;
+  white-space: nowrap;
+  // 行高是**排版尺度**：1.22 让词在放大 1.4 倍时不至于把上下行挤开（上游原值）
+  line-height: 1.22;
+  // 有效字重由 GlowLine 按当前 Folia 字体设置写入；缺省时保持上游 700。
+  // canvas 测宽使用同一个值（见 use-glow-layout 与 glow-measure）。
+  font-weight: var(--glow-font-weight, 700);
+}
+
+.glow-word-glow {
+  // 辉光层完全覆盖正文层，靠绝对定位叠在它下面（z-index 由 DOM 顺序决定：
+  // 正文层有 position: relative + z-index，所以后出现的它在上）
+  position: absolute;
+  inset: 0;
+  display: block;
+  // 光晕层不该被选中，也不吃鼠标（否则拖动选词会选到一份透明副本）
+  user-select: none;
+  pointer-events: none;
+}
+
+.glow-word-body {
+  position: relative;
+  z-index: 10;
+  display: block;
+}
+
+.glow-word-ripple {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  // 用 transform 把涟漪中心挪到词中心；它自己的 scale 由 motion 驱动，
+  // 所以这里写成独立的 translate 属性（CSS 属性级的 translate 与 transform 互不干扰）
+  translate: -50% -50%;
+  height: 150%;
+  aspect-ratio: 1 / 1;
+  border-radius: 9999px;
+  border: 1px solid currentcolor;
+  pointer-events: none;
+  z-index: 0;
+  filter: blur(1px);
+}

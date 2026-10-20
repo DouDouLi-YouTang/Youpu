@@ -25,8 +25,15 @@ export interface RequestResult<T> {
 }
 
 /**
- * Default base URL for the local api-enhanced server started by `npm run dev`
- * via concurrently. Overridable through `VITE_API_BASE_URL`.
+ * Local api-enhanced server base URL.
+ *
+ * 优先级：
+ *  1. 主进程注入的 `window.muiceDesktop.apiBaseUrl`（端口来自 config/api-server.json，
+ *     开发后端与健康探活共用同一份配置）；
+ *  2. `VITE_API_BASE_URL`（纯浏览器 / `npm run dev:renderer` / 远程后端）；
+ *  3. 3000 —— 仅作为无任何配置时的历史默认值。
+ *
+ * 打包后 preload 一定会给出第一项，所以安装包里不存在"端口改了但前端还连 3000"。
  */
 const DEFAULT_BASE_URL = 'http://127.0.0.1:3000'
 
@@ -53,8 +60,9 @@ export interface RequestConfig {
 }
 
 function resolveBaseUrl(): string {
-  // 本模块同时被渲染进程与主进程低内存后台会话(electron/main/audio-engine.ts、bg-player.ts)复用;
-  // 主进程运行时没有 import.meta.env,防御式读取避免直接崩掉请求。
+  const injected = window.muiceDesktop?.apiBaseUrl
+  if (injected && injected.trim()) return injected.trim()
+  // 非 Vite 运行环境(如 vitest 的 node 环境)没有 import.meta.env,防御式读取避免直接崩掉请求。
   const fromEnv = (import.meta as { env?: { VITE_API_BASE_URL?: string } }).env?.VITE_API_BASE_URL
   return (fromEnv && fromEnv.trim()) || DEFAULT_BASE_URL
 }

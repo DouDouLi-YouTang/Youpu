@@ -64,6 +64,8 @@ AGENTS.md
 # Internal / local-only docs (canonical API docs live under server/public/docs/)
 /接口文档.md
 /TEST_REPORT.md
+# 皮肤改造的参考截图(33 MB),只在本地对照用,不入库
+/docs/panel-refs/
 
 # Soft-delete staging (local review before permanent delete)
 _待删除_请检查/

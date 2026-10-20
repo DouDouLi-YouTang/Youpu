@@ -3,10 +3,7 @@
   "compilerOptions": {
     "composite": false,
     "noEmit": true,
-    "types": ["node", "electron"],
-    "paths": {
-      "@/*": ["./src/*"]
-    }
+    "types": ["node", "electron"]
   },
   "include": ["electron/**/*.ts", "electron.vite.config.ts"]
 }

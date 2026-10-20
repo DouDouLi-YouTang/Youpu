@@ -1,0 +1,95 @@
+// 「流光」皮肤主体（由 SkinGlow.vue <style scoped src> 引入）。
+//
+// 结构：
+//   .immersive-content         内容层（铺满视口、不吃事件，见下）
+//     .glow-stage              占宽满、高 70vh 的舞台（本面板的主体）
+//       .glow-stage-float      呼吸浮动层（跨行常驻，无限循环）
+//         <GlowLine> / <SkinEmptyState>（AnimatePresence 内含）
+//       .glow-line-hit         整行跳转的透明按钮（最上层）
+//     .skin-subtitles          底部副字幕（共享组件，见 shared/SkinSubtitle.vue）
+//
+// 与「倾诉」同构：内容层 `pointer-events: none`，只有需要交互的元素单独放行。
+// 这样舞台上的字全部不可选、不可拖，鼠标事件照常落到下层的窗口拖拽带与控制条上。
+//
+// ⚠️ 背景的 z-index 是 0，本层是 2 —— 与「经典」「倾诉」一致（沉浸页的层序约定）。
+//
+// ⚠️ **副字幕不在舞台里**（2026-10-14 修正）。上游把字幕挂在铺满视口的 shell 上，
+// 底距是「从视口底起算」的；本项目一度把它挂在 70vh 的舞台里，
+// 于是实际底距 = 舞台底距 + 字幕底距（当时 112px，1080p 下约 274px），字幕整体低了一大截，
+// 而且不随控制条显隐变化。现在字幕是内容层的直接子元素（见下），锚点回到视口。
+
+.immersive-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  // 舞台在内容层里**垂直居中**（上游 shell 是 `items-center justify-center`）。
+  // 漏掉这一条的表现：舞台按交叉轴的默认 `stretch`/`flex-start` 贴顶，
+  // 1080p 下整块歌词比上游高约 15vh —— 这是「流光跟官网演示不一样」最直观的一条。
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  // 内容层不吃事件（见文件头），只有 .glow-line-hit 单独放行
+  pointer-events: none;
+
+  // 副字幕的底距**不写在这里**：它跟随控制条显隐（在场 98px / 隐藏 32px，
+  // 带过渡），由 `shared/use-subtitle-bottom` 逐帧算好后以行内 style 注入。
+  // 写死一个值的话，控制条隐没时字幕会一直悬在原来的高度上（上游会落回基线）。
+  // ⚠️ 注入点必须是本层（铺满视口）而不是 `.glow-stage`（只有 70vh），
+  // 否则锚点会跟着舞台走 —— 变量名归共享组件所有（`shared/SkinSubtitle.vue` 读它）。
+}
+
+.glow-stage {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  // 高度：Folia 的 `h-[70vh]`（由 SkinGlow 把 --glow-stage-height 注入到这里）
+  height: var(--glow-stage-height, 70vh);
+  box-sizing: border-box;
+  // Folia 的 `p-8`：舞台四周留白，窄窗口上大字不至于贴边
+  padding: 2rem;
+  // 内置衬线字体（Folia 系皮肤的正文族；族名常量在 shared/folia-font.ts）
+  font-family: 'Folia Noto Serif SC', serif;
+  // 行/词可能被放大或旋转超出舞台，不裁切（上游也没裁）
+  overflow: visible;
+
+  // 上游舞台带 `will-change-transform`：大字舞台首帧会做合成提升，
+  // 不加的话进场那一帧可能掉帧（词多时更明显）
+  will-change: transform;
+}
+
+// 呼吸浮动层：跨行常驻（见 GlowLine.vue 文件头）。
+// ⚠️ 这里不写 transform —— 由 motion 内联驱动，写在样式表会互相抢属性。
+.glow-stage-float {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  // 提示浏览器这一层每帧都在动
+  will-change: transform;
+}
+
+// 整行点击跳转：铺满舞台的透明按钮。
+// ⚠️ `pointer-events: auto` 是必需的：父级 .immersive-content 关掉了事件，
+// 否则这个按钮永远收不到点击（表现是"点了没反应"，且很难查）。
+.glow-line-hit {
+  position: absolute;
+  inset: 0;
+  // 透明但仍在布局里；用 background: transparent 而不是 opacity: 0，
+  // 后者在部分 Chromium 版本上会让元素退出命中测试
+  padding: 0;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  pointer-events: auto;
+
+  // 键盘可达性：聚焦时给一圈可见的提示（默认 outline 在透明元素上看不见位置）
+  &:focus-visible {
+    outline: 2px solid var(--rnp-accent-color, currentcolor);
+    outline-offset: -4px;
+  }
+}

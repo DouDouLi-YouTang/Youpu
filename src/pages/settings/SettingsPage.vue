@@ -51,7 +51,6 @@ import {
 } from '@/stores/settings.store'
 import packageJson from '../../../package.json'
 import logoUrl from '@/assets/logo.png'
-import LowMemorySettings from './components/LowMemorySettings.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -743,9 +742,6 @@ onUnmounted(() => {
           </div>
         </div>
       </section>
-
-      <!-- 低内存模式 -->
-      <LowMemorySettings />
 
       <!-- 账号 -->
       <section class="settings-card">

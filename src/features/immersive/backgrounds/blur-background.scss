@@ -1,0 +1,22 @@
+// 模糊背景（backgroundType = 'blur'）—— 由 backgrounds/BlurBackground.vue 引入。
+// 定位铺满由父组件 ImmersiveBackground.vue 的 `.rnp-bg > div` 负责，这里只管长相。
+
+@use './background-shared.scss' as bg;
+
+.rnp-background-blur {
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  transition: background-image 1.5s ease;
+
+  &::before {
+    @include bg.dim-overlay('--bg-dim', 0.55);
+  }
+
+  &::after {
+    @include bg.frost-layer('--bg-blur', 90px);
+
+    // 拆分前这一层单独声明过（无背景那层没有）——原样保留，见 mixin 的说明
+    pointer-events: none;
+  }
+}

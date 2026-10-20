@@ -1,0 +1,395 @@
+/**
+ * 「倾诉」排版布局 —— 分行 / 倾斜段选择 / 溢出处理（笔记 §2–§4）。
+ *
+ * 分工：
+ *  - 分行与倾斜选择本身是 core 的纯算法（determineLineCount / splitIntoSentences /
+ *    pickTiltSegment），本文件只负责「调用顺序 + 测量 + 决策」；
+ *  - 测量用 `@chenglou/pretext`（MIT）。它需要 canvas（OffscreenCanvas / DOM canvas），
+ *    Node 下会直接抛错，所以**整个测量过程包在 try/catch 里**：拿不到测量就不缩放、
+ *    不重切（只是可能偏宽），面板照常显示，绝不白屏；
+ *  - 只在「行变化 / 面板宽度变化 / 字号或字体变化」时测量，绝不逐帧测量。
+ *
+ * 溢出决策链（笔记 §3 横向 + 本项目新增的纵向，详见笔记 §3.1）：
+ *   ① 横向：测得最宽段 → 溢出比 = 最宽段 / 可用宽度
+ *        - 溢出比 ≥ 1.6 → 重新切分成更多段（至多 +4 段），按新段数重算倾斜选择，再测一遍
+ *        - 否则按比例缩放：scale = max(1 / 溢出比, 下限)，下限 0.5（有倾斜段）/ 0.55（没有）
+ *   ② 纵向：用①定下的字号算「这批段排下来要多少高」，超过舞台可用高度就再整体缩一次，
+ *        下限与横向同款（0.5 / 0.55）。Folia 只做横向，段数一多、窗口一矮就会把首尾段
+ *        切掉；本项目补上这一层，见 resolveTextHeightPx / resolveHeightScale。
+ *
+ * 顺序不能颠倒：先横后竖。重切会增加段数→增加所需高度，所以纵向必须在段数**定型后**算；
+ * 而纵向缩放只会让字变小，横向自然更放得下，不会反过来破坏①的结论。
+ */
+import {
+  computed,
+  onBeforeUnmount,
+  ref,
+  toValue,
+  watch,
+  type ComputedRef,
+  type MaybeRefOrGetter,
+  type Ref
+} from 'vue'
+
+import { measureNaturalWidth, prepareWithSegments, clearCache } from '@chenglou/pretext'
+
+import { countGraphemes } from '../shared/graphemes'
+import { determineLineCount } from './core/line-count'
+import { splitIntoSentences } from './core/segmentation'
+import { pickTiltSegment } from './core/tilt-pick'
+import {
+  EXTRA_SEGMENTS_ON_RESPLIT,
+  FALLBACK_REM_PX,
+  FONT_WEIGHT_PLAIN,
+  FONT_WEIGHT_TILT,
+  LETTER_SPACING_EM_PLAIN,
+  LETTER_SPACING_EM_TILT,
+  PLAIN_SCALE_FLOOR,
+  SHORT_LAST_SEGMENT_SCALE,
+  TILT_SCALE_FLOOR,
+  resolveAvailableWidth,
+  resolveBaseFontPx,
+  resolveHeightScale,
+  resolveOverflowScale,
+  resolveSegmentGapTotalPx,
+  resolveTextHeightPx,
+  round2,
+  shouldResplit,
+  type TiltLineSource
+} from './tilt-adapter'
+
+/** 布局后的一个段（= 渲染上的一行） */
+export interface TiltSegmentLayout {
+  text: string
+  /** 该段在整行文本中的 UTF-16 起始偏移（core 保证各段拼接 === 原文） */
+  offset: number
+  isTilt: boolean
+  /** 命中「末段过短」补偿（字号 × 1.18） */
+  isShortLast: boolean
+}
+
+export interface TiltLayout {
+  text: string
+  segments: TiltSegmentLayout[]
+  /** 最终字号 px = clamp 字号 × 用户倍率 × 横向溢出缩放 × 纵向溢出缩放 */
+  fontPx: number
+  /** 横向溢出缩放倍率（1 = 未缩放） */
+  scale: number
+  /** 纵向溢出缩放倍率（1 = 未缩放；Folia 没有这一层） */
+  heightScale: number
+  /** 是否成功测量过（false = pretext 不可用，回退为不缩放） */
+  measured: boolean
+  availableWidth: number
+  /** 舞台可用高度（px）—— 纵向缩放的参照，0 = 还没测到 */
+  availableHeight: number
+}
+
+/** 测量失败时的提示只打一次，避免每行刷屏 */
+let measureWarningPrinted = false
+
+function readViewportWidth(): number {
+  const width = typeof window === 'undefined' ? 0 : window.innerWidth
+  return Number.isFinite(width) && width > 0 ? width : 0
+}
+
+/** 视口高度（纵向缩放的段间距按 vh 算，见 resolveSegmentGapPx） */
+function readViewportHeight(): number {
+  const height = typeof window === 'undefined' ? 0 : window.innerHeight
+  return Number.isFinite(height) && height > 0 ? height : 0
+}
+
+/** 根字号（rem 锚点）。浏览器默认 16px，读不到就用兜底值 */
+function readRemPx(): number {
+  if (typeof document === 'undefined') return FALLBACK_REM_PX
+  const parsed = Number.parseFloat(getComputedStyle(document.documentElement).fontSize)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : FALLBACK_REM_PX
+}
+
+/**
+ * 测量各段在对应字号下的自然宽度，返回最宽值；测量不可用返回 null。
+ *
+ * 字重 / 字体 / 字间距必须与渲染时一致（笔记 §4），否则量出来的宽度没有意义：
+ * 字体族与字重优先取调用方传入的显式值（设置页自定义字体 / 字重），缺省时才从
+ * DOM 的 computed style 读内置栈；字间距 em → px 用当前字号换算。
+ *
+ * `shortLast` 为真时末段字号要乘 SHORT_LAST_SEGMENT_SCALE —— 渲染侧
+ * （tilt-line.scss 的 --tilt-row-scale）乘的是 font-size，字号变了宽度就跟着变，
+ * 测量不跟上的话溢出缩放会把这行算窄。
+ */
+function measureWidestSegment(
+  segmentTexts: readonly string[],
+  isTiltFlags: readonly boolean[],
+  fontPx: number,
+  fontFamily: string,
+  plainWeight: number,
+  tiltWeight: number,
+  shortLast: boolean
+): number | null {
+  try {
+    let widest = 0
+    for (let index = 0; index < segmentTexts.length; index++) {
+      const isTilt = isTiltFlags[index] === true
+      const isShortLast = shortLast && index === segmentTexts.length - 1
+      const px = isShortLast ? fontPx * SHORT_LAST_SEGMENT_SCALE : fontPx
+      const weight = isTilt ? tiltWeight : plainWeight
+      const font = `${isTilt ? 'italic ' : ''}${weight} ${px}px ${fontFamily}`
+      const letterSpacingEm = isTilt ? LETTER_SPACING_EM_TILT : LETTER_SPACING_EM_PLAIN
+      const prepared = prepareWithSegments(segmentTexts[index], font, {
+        letterSpacing: letterSpacingEm * px
+      })
+      const width = measureNaturalWidth(prepared)
+      if (Number.isFinite(width) && width > widest) widest = width
+    }
+    return widest
+  } catch (error) {
+    if (!measureWarningPrinted) {
+      measureWarningPrinted = true
+      console.warn('[倾诉] 文本测量不可用（pretext 需要 canvas），回退为不缩放排版', error)
+    }
+    return null
+  }
+}
+
+/** 规范字重：只接受有限数值；非法值退回内置档位，避免把 `NaN` 拼进 font string。 */
+function resolveMeasuredWeight(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+/**
+ * 布局 hook。
+ *
+ * @param options.source   当前行（null = 无行可排）。ComputedRef 或 getter 均可
+ * @param options.fontScale 字号倍率。倾诉不读设置，恒传 tilt-adapter 的 TILT_FONT_SCALE（=1）
+ * @param options.fontKey  字体的可响应标识：变化会触发重新测量。字族本身是从 DOM 的
+ *                         computed style 读的（见 readFontFamily），Vue 看不到它变化，
+ *                         所以调用方要给一个「字体可能变了」的信号。倾诉把内置字体就绪、
+ *                         自定义字体链和用户字重一起编进这个 key
+ * @param options.fontFamily 显式字体栈；不传时退回元素的 computed style（内置栈）
+ * @param options.plainWeight / options.tiltWeight 普通段与倾斜段的实际字重；
+ *                        不传时保持 tilt-adapter 的内置 400 / 300
+ * @param options.panel    排版带元素（测它的 clientWidth 当可用宽度，并用 ResizeObserver 跟随）
+ * @param options.stage    舞台元素（测它的 clientHeight 当可用高度，供纵向缩放）
+ */
+export function useTiltLayout(options: {
+  source: MaybeRefOrGetter<TiltLineSource | null>
+  fontScale: MaybeRefOrGetter<number>
+  /**
+   * 取值本身没人用，只用来建立响应式依赖（`void toValue(...)`）：值一变就重测。
+   * 因此类型是 `unknown` 而不是 `string` —— 它只是「字体可能变了」的信号，
+   * 不是字体名（字族从 DOM 读）。
+   */
+  fontKey: MaybeRefOrGetter<unknown>
+  fontFamily?: MaybeRefOrGetter<string | null | undefined>
+  plainWeight?: MaybeRefOrGetter<number | null | undefined>
+  tiltWeight?: MaybeRefOrGetter<number | null | undefined>
+  panel: Ref<HTMLElement | null>
+  stage: Ref<HTMLElement | null>
+}): { layout: ComputedRef<TiltLayout | null> } {
+  /** 排版带可用宽度（px）；0 = 还没测到 → 布局挂起，避免先用错宽度排一次再抖一下 */
+  const panelWidth = ref(0)
+  /**
+   * 舞台可用高度（px）—— 纵向缩放的参照。
+   *
+   * 必须量 `.tilt-stage`（歌词可占的整块高度）而不是 `.tilt-stage-inner`：
+   * 后者是内容撑开的，高度就等于内容高，量它等于自己跟自己比，**永远「放得下」**。
+   * 舞台已是纯布局容器（无内边距），clientHeight 可直接用。
+   */
+  const stageHeight = ref(0)
+  let widthObserver: ResizeObserver | null = null
+  let heightObserver: ResizeObserver | null = null
+
+  function readPanelWidth(): void {
+    const el = options.panel.value
+    const width = el && Number.isFinite(el.clientWidth) ? el.clientWidth : 0
+    panelWidth.value = width > 0 ? width : 0
+  }
+
+  function readStageHeight(): void {
+    const el = options.stage.value
+    const height = el && Number.isFinite(el.clientHeight) ? el.clientHeight : 0
+    stageHeight.value = height > 0 ? height : 0
+  }
+
+  // 元素引用在挂载后才出现，用 flush:'post' 确保读到的是已完成布局的尺寸
+  watch(
+    options.panel,
+    (el) => {
+      widthObserver?.disconnect()
+      widthObserver = null
+      if (!el) {
+        panelWidth.value = 0
+        return
+      }
+      readPanelWidth()
+      if (typeof ResizeObserver === 'function') {
+        widthObserver = new ResizeObserver(readPanelWidth)
+        widthObserver.observe(el)
+      }
+    },
+    { immediate: true, flush: 'post' }
+  )
+
+  // 舞台高度单独观察：窗口变矮 / 副字幕出现或消失都会改它，纵向缩放要跟着重算
+  watch(
+    options.stage,
+    (el) => {
+      heightObserver?.disconnect()
+      heightObserver = null
+      if (!el) {
+        stageHeight.value = 0
+        return
+      }
+      readStageHeight()
+      if (typeof ResizeObserver === 'function') {
+        heightObserver = new ResizeObserver(readStageHeight)
+        heightObserver.observe(el)
+      }
+    },
+    { immediate: true, flush: 'post' }
+  )
+
+  /**
+   * 字体标识一变就**先清测量缓存**，再去重测。
+   *
+   * 不清的话这次重测是空转：pretext 按 (文本, font string) 缓存测量结果，而
+   * **字体文件加载完成并不会改变 font string** —— CSS 字体栈一个字都没变，只是同一个栈
+   * 从「兜底字」换成了「真字形」。于是「字体就绪 → 重测」只是把同一个键再问一遍，
+   * 拿回兜底字量出的旧宽度，排版永久按错误的宽度缩放（不报错、不白屏，只是字号一直偏小）。
+   * 实测：未就绪 1120.00 → 就绪后不清缓存重测 1120.00 → 就绪后清缓存 1030.40，差 8%。
+   *
+   * 用 `flush: 'sync'` 是**必须的**：要让清缓存发生在 computed 重算**之前**。
+   * 默认的 'pre' 会排在渲染前、但那时 computed 可能已被求值（任何读取 layout 的
+   * 同步代码都会触发），顺序就没有保证了。immediate 的一次是首测保险：这一次测量前
+   * 无法确认缓存里有没有旧实例留下的条目。
+   */
+  watch(
+    () => toValue(options.fontKey),
+    () => clearCache(),
+    { immediate: true, flush: 'sync' }
+  )
+
+  onBeforeUnmount(() => {
+    widthObserver?.disconnect()
+    widthObserver = null
+    heightObserver?.disconnect()
+    heightObserver = null
+    // pretext 按 (文本, 字体) 缓存测量结果。行文本随歌曲无限增长，卸载时清一次，
+    // 避免一路播歌把缓存堆在内存里（也顺带释放它的 canvas）。
+    clearCache()
+  })
+
+  const layout = computed<TiltLayout | null>(() => {
+    // 依赖项：字体标识（字体族是从 DOM 读的，Vue 看不到它变化，靠这个 key 建依赖）
+    void toValue(options.fontKey)
+    const source = toValue(options.source)
+    if (!source || source.text.length === 0) return null
+    // 宽度没测到（未挂载 / 元素为 0）→ 挂起。高度为 0 时不挂起：那多半是舞台刚开始为 0，
+    // resolveHeightScale 对非法输入返回 1（不缩放），比整块歌词不显示要让位得少。
+    if (panelWidth.value <= 0) return null
+
+    const viewportWidth = readViewportWidth()
+    const availableWidth = resolveAvailableWidth(viewportWidth, panelWidth.value)
+    if (!(availableWidth > 0)) return null
+
+    const explicitFamily = toValue(options.fontFamily)
+    const family =
+      typeof explicitFamily === 'string' && explicitFamily.trim().length > 0
+        ? explicitFamily.trim()
+        : readFontFamily(options.panel.value)
+    const plainWeight = resolveMeasuredWeight(toValue(options.plainWeight), FONT_WEIGHT_PLAIN)
+    const tiltWeight = resolveMeasuredWeight(toValue(options.tiltWeight), FONT_WEIGHT_TILT)
+    const baseFontPx = resolveBaseFontPx(viewportWidth, readRemPx())
+    const rawFontScale = toValue(options.fontScale)
+    const fontScale = Number.isFinite(rawFontScale) && rawFontScale > 0 ? rawFontScale : 1
+    const baseWithScale = round2(baseFontPx * fontScale)
+
+    const seed = source.timeMs
+    const graphemeCount = Math.max(countGraphemes(source.text, { ignoreWhitespace: true }), 1)
+    let segmentTexts = splitIntoSentences(
+      source.text,
+      determineLineCount(graphemeCount, seed),
+      seed
+    )
+    let pick = pickTiltSegment(segmentTexts, seed)
+    let widest = measureWidestSegment(
+      segmentTexts,
+      segmentTexts.map((_, index) => index === pick.tiltIndex),
+      baseWithScale,
+      family,
+      plainWeight,
+      tiltWeight,
+      pick.shortLastSegment
+    )
+
+    if (widest !== null && shouldResplit(widest / availableWidth)) {
+      const target = Math.min(segmentTexts.length + EXTRA_SEGMENTS_ON_RESPLIT, graphemeCount)
+      const resplit = splitIntoSentences(source.text, target, seed)
+      if (resplit.length > segmentTexts.length) {
+        segmentTexts = resplit
+        pick = pickTiltSegment(segmentTexts, seed)
+        widest = measureWidestSegment(
+          segmentTexts,
+          segmentTexts.map((_, index) => index === pick.tiltIndex),
+          baseWithScale,
+          family,
+          plainWeight,
+          tiltWeight,
+          pick.shortLastSegment
+        )
+      }
+    }
+
+    // widest === null 表示测量不可用：不缩放、不重切，面板按原样排版（宁可能偏宽）
+    const measured = widest !== null
+    const hasTilt = pick.tiltIndex !== null
+    const scale = widest === null ? 1 : resolveOverflowScale(widest / availableWidth, hasTilt)
+
+    // 纵向：段数定型后再算总高（重切会加段，必须放在重切之后）
+    const viewportHeight = readViewportHeight()
+    const heightScale = resolveHeightScale(
+      resolveTextHeightPx({
+        segmentCount: segmentTexts.length,
+        fontPx: round2(baseWithScale * scale),
+        shortLast: pick.shortLastSegment,
+        tiltIndex: pick.tiltIndex
+      }),
+      resolveSegmentGapTotalPx(segmentTexts.length, viewportHeight),
+      stageHeight.value,
+      hasTilt ? TILT_SCALE_FLOOR : PLAIN_SCALE_FLOOR
+    )
+
+    let offset = 0
+    const segments = segmentTexts.map<TiltSegmentLayout>((text, index) => {
+      const isLast = index === segmentTexts.length - 1
+      const segment: TiltSegmentLayout = {
+        text,
+        offset,
+        isTilt: index === pick.tiltIndex,
+        isShortLast: isLast && pick.shortLastSegment
+      }
+      offset += text.length
+      return segment
+    })
+
+    return {
+      text: source.text,
+      segments,
+      // 纵向缩放只作用于字号（行高是单位数，随之等比）；段间距是固定 px、不随字号缩，
+      // 所以 resolveHeightScale 是先把它从可用高度里扣掉再算比例（见该函数注释）
+      fontPx: round2(baseWithScale * scale * heightScale),
+      scale,
+      heightScale,
+      measured,
+      availableWidth,
+      availableHeight: stageHeight.value
+    }
+  })
+
+  return { layout }
+}
+
+function readFontFamily(panel: HTMLElement | null): string {
+  if (!panel) return 'sans-serif'
+  const family = getComputedStyle(panel).fontFamily
+  return family && family.trim().length > 0 ? family : 'sans-serif'
+}

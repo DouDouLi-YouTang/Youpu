@@ -1,0 +1,55 @@
+// 「经典」皮肤的布局样式（内容层：.immersive-content / 封面槽 / 歌词区）。
+// 从 immersive-shell.scss 原样搬入（搬移前该文件第 201–248 行），选择器与声明一字未改。
+// 由 SkinClassic.vue <style scoped> 引入 —— 这些元素都带本组件的 data-v。
+//
+// 依赖外壳根 section 上的状态 class（display-mode-* / cover-halign-* / rnp-lyric-contributors-* 等）
+// 的规则仍留在外壳样式表里（那些 class 在外壳的根元素上），用 :deep() 命中本文件的类名。
+
+.immersive-content {
+  position: relative;
+  z-index: 2;
+  // pointer-events:none 让全视口覆盖层不再拦截鼠标，进度条(z-index:1)在无歌词行处
+  // 可正常 hover/拖动；需交互的子元素（歌词行 .rnp-lyrics-line）各自恢复 auto
+  pointer-events: none;
+  display: flex;
+  height: 100%;
+  width: 100%;
+  align-items: center;
+  // 左 ~45% 封面 + 右 ~45% 歌词，两列并排布局
+  gap: 0;
+}
+
+.immersive-cover-slot {
+  display: flex;
+  flex: 0 0 45%;
+  flex-direction: column;
+  // 垂直/水平对齐由 cover-valign / cover-halign class 控制；默认 flex-end 对应 bottom
+  justify-content: flex-end;
+  align-items: flex-start;
+  height: 100%;
+  min-height: 0;
+  // 控制条 absolute 脱离布局、覆盖底部 --bottombar-height；封面槽须在底部让出该高度
+  // + 12px 呼吸，否则 cover-valign=bottom 时封面贴到窗口底被控制条压住
+  box-sizing: border-box;
+  padding-bottom: calc(var(--bottombar-height, 76px) + 12px);
+  // 封面块已强制正方/正圆且 flex 不压缩，窗口过矮时顶部裁切，绝不压扁成椭圆
+  overflow: hidden;
+
+  &.cover-valign-middle {
+    justify-content: center;
+  }
+
+  &.cover-halign-center {
+    align-items: center;
+  }
+}
+
+.immersive-lyric {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+}

@@ -1,0 +1,92 @@
+// 「倾诉」面板的内置字体（2026-10-11 定）。
+//
+// 倾诉**没有设置面板**（用户定：外观全部固定），所以字体不是用户选项，而是这个面板
+// 长相的一部分 —— 换字体 = 换气质，与「背景恒为几何」同理。
+//
+// **为什么 @font-face 写在这里（全局样式）而不是倾诉自己的 scoped 样式块**：
+//  1. @font-face 是「向文档注册一个字体」，没有选择器可供 scoped 加哈希，
+//     本来就是文档级的事；
+//  2. 倾诉是异步组件（registry 用 defineAsyncComponent），它的样式块随 chunk 才加载，
+//     注册时机晚于外壳 —— 而测量层（use-tilt-layout 的 readFontFamily）在首帧就要从
+//     computed style 读字体族名，晚注册等于首帧拿到兜底字的名字。
+// 声明本身**不触发下载**：浏览器只在真有文字用到该字体族时才去取文件，所以放在全局
+// 不会让「从没打开过倾诉」的用户多付流量。
+// （注意：**打开过**倾诉就会把两个文件都取下来 —— `use-tilt-font.ts` 为了拿到可靠的就绪
+//   信号，会显式 `document.fonts.load` 探测两个族，不管这首歌的歌词里有没有假名。
+//   Electron 下是读本地文件，没有流量成本；代价只是首次进入时的加载等待。）
+//
+// 两个字体都是 OFL-1.1（允许随应用分发）。
+//
+// ⚠️ 许可证原文在**两个**地方各留一份，这不是重复：
+//  - `src/assets/fonts/*-OFL.txt` —— 源码树里与字体文件放一起，改字体的人一眼能看见；
+//  - `public/licenses/*-OFL.txt` —— **随包分发的那一份**。OFL 要求「再分发时附带许可证原文」，
+//    而打包只带 `out/**`（见 electron-builder.ts 的 files），`src/` 不进安装包；
+//    `public/` 是 Vite 的静态目录，会被原样拷进 `out/renderer/`。
+// 两处内容必须一致，改一处记得同步另一处。
+//
+// 分工：**站酷快乐体出汉字、M PLUS Rounded 1c 出假名** —— 快乐体是纯简体字库
+// （5977 字，实测无任何假名字形），日语歌词的假名会掉到系统兜底字、一行里出现两种
+// 笔画风格；两者都是圆头笔画，混排不打架（见 use-tilt-font.ts 的说明）。
+
+// 汉字主力：站酷快乐体 —— 圆胖笔画 + 弯钩，中文里最标准的「俏皮」。
+// GB2312 一级常用字覆盖 99.9%（3755 字只缺 4 个：毖谰耪锨），缺的都是生僻字，
+// 由下面的假名字体与系统字体依次兜底。
+@font-face {
+  font-family: 'ZCOOL KuaiLe';
+  src: url('./zcool-kuaile-400.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  // 随包文件也是异步就绪的（要等文件读进来），先用兜底字画、到位再换，
+  // 免得首帧整个歌词块空着。排版收敛由 use-tilt-font 的就绪信号触发重测。
+  font-display: swap;
+}
+
+// 假名（以及快乐体缺的生僻字）：M PLUS Rounded 1c —— 日本圆体，与快乐体同为圆头笔画。
+// **刻意不写 unicode-range 把它限死在假名区**：日语歌词是「假名 + 汉字」混排，
+// 其中気/図/帰 这类日式新字体汉字并不在快乐体里，要留给这一层接住。
+@font-face {
+  font-family: 'M PLUS Rounded 1c';
+  src: url('./m-plus-rounded-1c-400.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+// ── Folia 系皮肤（流光 / 浮名）的衬线内置字体 ────────────────────────────────
+//
+// 来源与 Folia 一致：`@fontsource/noto-serif-sc@5.2.9` 的
+// `noto-serif-sc-chinese-simplified-{400,500}-normal.woff2`（OFL-1.1）。
+// Folia 原本从 CDN 引这两个文件（它的 src/index.css 里 @font-face 的 src 就是
+// cdn.jsdmirror.cn/npm/@fontsource/noto-serif-sc@5.2.9/files/…），本项目**随包分发**：
+// Electron 离线也要能出字，不能依赖 CDN。
+//
+// ⚠️ 族名刻意写成 `'Folia Noto Serif SC'` 而不是上游的 `'Noto Serif SC'`：
+//  - 与 Folia 的字栈逐字对应（它的字体栈里就是这个族名），将来对照源码时不至于张冠李戴；
+//  - 不和系统里可能已装的 `Noto Serif SC` 撞名 —— 撞名会让"用户自己装的版本"参与进来，
+//    测量（canvas measureText）与最终渲染（CSS）就未必是同一套字形。
+//
+// ⚠️ 这个 "chinese-simplified" 子集**没有 unicode-range**（files/ 里那份 CSS 可证），
+// 意味着它对**所有**码位生效 —— 拉丁字母、标点、假名全部走它。这正是要的效果：
+// 日文歌词「假名 + 汉字 + 拉丁」混排时笔画风格统一，不会一半宋体一半黑体。
+// 代价是它不含 emoji 字形，那类字符仍由系统兜底（字体栈末端的衬线族）。
+//
+// 字重只有 400 / 500 两档（与 Folia 相同）。歌词正文用 700 时浏览器会从 500 合成，
+// 与 Folia 的表现一致，不要为了"更真"去补一个自造的 700。
+//
+// 许可证：OFL-1.1，原文见 `./Noto-Serif-SC-OFL.txt`（源码树）
+// 与 `public/licenses/Noto-Serif-SC-OFL.txt`（随包分发的那一份），两处内容必须一致。
+@font-face {
+  font-family: 'Folia Noto Serif SC';
+  src: url('./noto-serif-sc-400.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Folia Noto Serif SC';
+  src: url('./noto-serif-sc-500.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}

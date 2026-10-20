@@ -1,0 +1,33 @@
+// LyricTab 独有样式（分组标题 / 设置行 / 说明文字等通用样式由外壳的 settings-rows.scss 提供）。
+/* 歌词全局偏移 ±100ms 步进 + 状态提示(对齐参考 settings-menu.html:235-250) */
+.lyric-offset-stepper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  .step-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: 0;
+    border-radius: 9999px;
+    background: transparent;
+    color: inherit;
+    font-size: 1rem;
+    line-height: 1;
+    opacity: 0.6;
+    cursor: pointer;
+    transition:
+      opacity 0.2s ease,
+      background 0.2s ease;
+    &:hover {
+      opacity: 1;
+      background: rgba(var(--rnp-accent-color-shade-2-rgb, 255, 255, 255), 0.1);
+    }
+  }
+  .setting-note {
+    flex: 1;
+    text-align: center;
+  }
+}

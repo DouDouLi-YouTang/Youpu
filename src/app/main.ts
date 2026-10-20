@@ -7,14 +7,15 @@ import { installThemeProvider } from './providers/theme-provider'
 import { router } from './router'
 import { usePlayerStore } from '@/stores/player.store'
 import { useAuthStore } from '@/stores/auth.store'
-import {
-  applyLowMemoryRestore,
-  useLowMemoryRestore
-} from '@/features/player/use-low-memory-restore'
 import { initLa51Analytics } from '@/services/la51-analytics'
 import '@/assets/styles/tokens.scss'
 import '@/assets/styles/tailwind.css'
 import '@/assets/styles/index.scss'
+// 「倾诉」面板的内置字体（站酷快乐体 + 圆体假名兜底）。**全局注册**是刻意的：
+// 倾诉是异步组件（chunk 随皮肤切换才加载），而 @font-face 必须先注册好、
+// FontFaceSet 才认得它（见文件头与 skins/tilt/use-tilt-font.ts）。
+// 声明不触发下载 —— 没打开过倾诉就不会多取字体文件。
+import '@/assets/fonts/fonts.scss'
 // 0.1.21 打包产物整包 CSS（已剥离 data-v-*），强制 BEM/组件视觉与昨天安装包一致
 
 installThemeProvider()
@@ -23,16 +24,10 @@ initLa51Analytics()
 
 const app = createApp(App)
 app.use(pinia)
-// 低内存模式:登记“重建而非冷启动”,开启播放状态快照持续写入(主进程回收
-// 本渲染进程时据此建立降级切歌会话)。必须在 player.init() 之前跑。
-useLowMemoryRestore()
 // Initialize the player store's audio controller now that pinia + provider are
 // ready. Done imperatively (rather than lazily) so playback state is available
 // as soon as the app mounts.
 usePlayerStore().init()
-// 与音频引擎对齐:主进程清除降级会话,若引擎在播/暂停在有曲目则恢复队列与
-// 曲目到 store(纯 UI 对齐,不 load 音频 —— 播放从未中断)。
-void applyLowMemoryRestore()
 // Verify the persisted auth cookie (if any) and settle login state. Runs
 // concurrently with mount — the router guard reads `isLoggedIn` reactively, so
 // a still-pending check (`loginState === 'unknown'`) is treated as logged-out

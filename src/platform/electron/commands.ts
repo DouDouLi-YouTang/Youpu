@@ -31,8 +31,6 @@ export type DesktopCommand =
   | 'playback-cache:clear'
   | 'playback-cache:remove-entry'
   | 'theme:set-source'
-  | 'low-memory:get-status'
-  | 'low-memory:set-mode'
 
 export function isElectronRuntime(): boolean {
   return typeof window !== 'undefined' && window.muiceDesktop !== undefined

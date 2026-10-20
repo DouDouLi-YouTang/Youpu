@@ -1,0 +1,107 @@
+// 底部副字幕（由 SkinSubtitle.vue <style scoped src> 引入）。全部 Folia 系皮肤共享。
+//
+// 结构：
+//   .skin-subtitles        定位层（absolute，贴底栏上方）
+//     .skin-subtitle-glow  辉光底（外扩 + 模糊的椭圆渐变，颜色由内联注入）
+//     .skin-subtitle-stack 文字栈（罗马音 / 译文，或"接下来几句"预览）
+//
+// ⚠️ 字号**不写在这里**：轨道字号由调用方按 `shared/subtitle-tracks` 的 clamp 与
+// 降档系数算好、以行内 style 传进来（次级轨道 0.88 倍、预览的 0.875rem 档）。
+// 写死在这里会让"同一首歌在流光/浮名两边字号不同"。本文件只管排布与质感。
+//
+// ⚠️ 底距也不写在这里：读 `--skin-subtitle-bottom`（缺省 0），由各皮肤设在**自己的**
+// 定位容器上 —— 流光的容器是 70vh 的舞台，浮名的是铺满的 canvas 宿主，
+// 两者的落点本来就不一样。
+
+.skin-subtitles {
+  position: absolute;
+  right: 0;
+  bottom: var(--skin-subtitle-bottom, 0);
+  left: 0;
+  z-index: 20;
+  // 居中：文字栈是 inline-block，靠 text-align 居中（与外扩的辉光底不冲突）
+  padding: 0 1rem;
+  text-align: center;
+  pointer-events: none;
+}
+
+// 内容层：上游 `relative isolate inline-block px-1.5 py-0.5`。
+// 辉光底相对**这一层**外扩（见下），所以这层的内边距不能省。
+.skin-subtitle-content {
+  position: relative;
+  display: inline-block;
+  padding: 0.125rem 0.375rem;
+  // isolate：把辉光底的合成层限制在这一层里（上游的 isolate）
+  isolation: isolate;
+}
+
+// 文字栈：`space-y-2` + `max-w-4xl mx-auto`
+.skin-subtitle-stack {
+  position: relative;
+  z-index: 10;
+  display: inline-block;
+  // max-w-4xl = 56rem；配 .skin-subtitles 的 text-align:center 实现居中
+  max-width: 56rem;
+  // 注意：不能加 `text-align: left`，否则上面的居中失效
+}
+
+// 辉光底：铺在文字下面的一层椭圆渐变。
+// ⚠️ 尺寸 / 模糊**不能**与 color-mix 的语法混写：颜色在 TS 侧算好（共享层公式），
+// 这里只负责"多大、多糊、在哪"。`-inset-*` 是相对 .skin-subtitles 的外扩量。
+.skin-subtitle-glow {
+  position: absolute;
+  inset: -1.5rem -2.5rem;
+  z-index: 0;
+  // `blur-2xl` = 40px：辉光底的边缘必须完全糊掉，否则能看到一个椭圆轮廓
+  filter: blur(40px);
+  pointer-events: none;
+  // 上游的 `translateZ(0)` + `backface-visibility: hidden`：
+  // iOS Safari 在邻近 WebKit mask 重新合成时可能丢掉带 filter 的负层 ——
+  // 显式提升成独立合成层可以避开那个丢失（Electron 下无副作用）。
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+// 副字幕行：`truncate`（单行省略）+ 字重兜底 500（首行）/ 400（次级与预览）
+.skin-subtitle {
+  position: relative;
+  z-index: 10;
+  margin: 0 auto;
+  // max-w-2xl = 42rem（上游对预览行就是这个宽度）
+  max-width: 42rem;
+  overflow: hidden;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  // 行间距 `space-y-2` = 0.5rem；次级轨道另有自己的 em 间距（见下）
+  & + & {
+    margin-top: 0.5rem;
+  }
+}
+
+// 次级轨道（译文）：在首行基础上降一档。
+// 字号由行内 style 给（调用方乘了 SECONDARY_TRACK_SIZE_FACTOR），
+// 这里只降字重与不透明度 —— 与上游 `subtitleTrackStyle` 的分工一致。
+.skin-subtitle.is-secondary {
+  font-weight: 400;
+  opacity: 0.82;
+  // ⚠️ 次级轨道的间距是 0.25em（相对**它自己**字号），覆盖上面的 0.5rem
+  margin-top: 0.25em;
+}
+
+// 预览行：`blur-[1px]` + 字重 400
+.skin-subtitle.is-upcoming {
+  font-weight: 400;
+  // 1px 的模糊：足够提示"这不是正在唱的那句"，又不影响读
+  filter: blur(1px);
+  // 上游的 `transition-all duration-500`：预览行在"哪两行进预览"之间切换时
+  // 是**渐隐渐显**，不是硬切。少了这条，长间奏里预览行会一跳一跳地换。
+  transition: all 0.5s;
+}
+
+// 关闭「副歌词模糊效果」时的预览行：保留淡入淡出，去掉文字模糊。
+.skin-subtitle.is-upcoming.is-clear {
+  filter: none;
+}

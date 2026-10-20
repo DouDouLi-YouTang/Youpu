@@ -1,0 +1,25 @@
+// Folia 设置页签的独有样式。通用行 / 控件外观仍由 shell 的 settings-rows.scss
+// 与 settings-panel.scss 提供。
+
+.setting-row {
+  min-width: 0;
+}
+
+.folia-background-select {
+  width: 100%;
+}
+
+.folia-about {
+  gap: 0.625rem;
+}
+
+.folia-about-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.folia-about-link {
+  color: var(--rnp-accent-color, var(--color-primary));
+  overflow-wrap: anywhere;
+}
