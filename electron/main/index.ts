@@ -3,10 +3,12 @@ import { execFile, fork, spawn, type ChildProcess } from 'node:child_process'
 import {
   createReadStream,
   createWriteStream,
+  existsSync,
   mkdirSync,
   readFileSync,
   statSync,
-  truncateSync
+  truncateSync,
+  writeFileSync
 } from 'node:fs'
 import { mkdir, open, readFile, readdir, rm, rmdir, stat, unlink } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -31,6 +33,7 @@ import {
 
 import { getCoverPath, saveCover } from './cover-cache'
 import { registerDownloadIpcHandlers } from './downloads'
+import { createLogLineForwarder, redactLogText } from './log-redact'
 import {
   checkForAppUpdate,
   downloadAppUpdate,
@@ -691,6 +694,27 @@ async function stopTrackedApiServer(): Promise<boolean> {
 /** api-server 日志文件上限:超过则清空,避免长期运行无限增长,只保留近期日志。 */
 const API_SERVER_LOG_MAX_BYTES = 5 * 1024 * 1024
 let apiServerLogStream: ReturnType<typeof createWriteStream> | null = null
+let apiServerLogScrubbed = false
+
+/**
+ * 首次打开日志前,把历史日志里可能残留的明文凭据就地脱敏。
+ *
+ * 旧版本直接把后端原始输出落盘,升级后这些行里仍有可用的 MUSIC_U。日志是用户反馈
+ * 问题时会发出来的文件,所以要在新版本第一次写日志前清掉(每次启动只做一次)。
+ * 失败不影响日志功能,下次启动再试。
+ */
+function scrubExistingApiServerLog(logPath: string): void {
+  if (apiServerLogScrubbed) return
+  apiServerLogScrubbed = true
+  try {
+    if (!existsSync(logPath)) return
+    const raw = readFileSync(logPath, 'utf8')
+    const clean = redactLogText(raw)
+    if (clean !== raw) writeFileSync(logPath, clean)
+  } catch {
+    // 忽略:脱敏失败不应影响日志与后端启动
+  }
+}
 
 /** 打开(必要时创建)api-server 日志文件流,追加写入 userData/logs/api-server.log。
  *  打包 GUI 下 process.stdout 不可见,日志落盘后才能在出问题时定位 server 崩溃原因。 */
@@ -714,6 +738,7 @@ function getApiServerLogStream(): ReturnType<typeof createWriteStream> | null {
   }
   try {
     mkdirSync(logDir, { recursive: true })
+    scrubExistingApiServerLog(logPath)
     apiServerLogStream = createWriteStream(logPath, { flags: 'a' })
     apiServerLogStream.on('error', (error) => {
       console.warn('[api-server] 日志文件写入失败', error)
@@ -735,15 +760,21 @@ function trackApiServerProcess(child: ChildProcess): void {
   // (打包后可诊断);exit 原因也一并记录。
   // 每次写日志都重新取流:日志流出错后 getApiServerLogStream 会重建新流,若闭包捕获一次
   // 会持续写已 errored 的旧流(静默丢弃)且旧流未 destroy。
-  child.stdout?.on('data', (chunk: Buffer) => {
-    process.stdout?.write(`[api-server] ${chunk}`)
-    getApiServerLogStream()?.write(chunk)
+  // 落盘与转发前统一脱敏:后端会把带 cookie 的完整 URL 写进请求日志。
+  const stdoutForwarder = createLogLineForwarder((text) => {
+    process.stdout?.write(`[api-server] ${text}`)
+    getApiServerLogStream()?.write(text)
   })
-  child.stderr?.on('data', (chunk: Buffer) => {
-    process.stderr?.write(`[api-server] ${chunk}`)
-    getApiServerLogStream()?.write(chunk)
+  const stderrForwarder = createLogLineForwarder((text) => {
+    process.stderr?.write(`[api-server] ${text}`)
+    getApiServerLogStream()?.write(text)
   })
+  child.stdout?.on('data', (chunk: Buffer) => stdoutForwarder.push(chunk.toString()))
+  child.stderr?.on('data', (chunk: Buffer) => stderrForwarder.push(chunk.toString()))
   child.once('exit', (code, signal) => {
+    // 进程退出时最后一段可能没有换行,先冲刷再记录退出原因
+    stdoutForwarder.flush()
+    stderrForwarder.flush()
     if (apiServerProcess === child) apiServerProcess = null
     const msg = `[api-server] 后端进程退出, code=${code} signal=${signal}\n`
     console.warn(msg)
